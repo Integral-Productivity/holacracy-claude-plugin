@@ -1,0 +1,6 @@
+{
+  "glassfrog": {
+    "type": "http",
+    "url": "https://ipllc-glassfrog-mcp-server.vercel.app/mcp"
+  }
+}

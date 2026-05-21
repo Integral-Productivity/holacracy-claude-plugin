@@ -1,0 +1,19 @@
+{
+  "name": "holacracy",
+  "description": "Engage with Holacracy from inside Claude — AI co-pilots for Facilitator, Secretary, Lead Link, and Rep Link, plus a governance-aware operating frame. Pairs with the GlassFrog MCP connector.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Kraig Parkinson",
+    "organization": "Integral Productivity LLC"
+  },
+  "keywords": [
+    "holacracy",
+    "glassfrog",
+    "governance",
+    "self-management",
+    "facilitator",
+    "secretary",
+    "lead-link",
+    "rep-link"
+  ]
+}

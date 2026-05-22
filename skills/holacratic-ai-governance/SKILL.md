@@ -3,7 +3,7 @@ name: holacratic-ai-governance
 description: >
   Governance-aware AI operating skill for organizations using Holacracy and GlassFrog. Use this skill whenever the user mentions GlassFrog, Holacracy, circles, roles (in a Holacratic context), accountabilities, domains, governance meetings, tactical meetings, tensions, lead link, rep link, facilitator, secretary, or any organizational governance topic. Also trigger when the user asks for help with work and GlassFrog MCP tools are connected -- this skill teaches how to ground AI responses in actual governance structure rather than operating generically. Trigger even for adjacent requests like "help me think about my role," "what should I focus on," "draft a governance proposal," or "what tensions exist in my organization." This skill is essential for any AI interaction where organizational context from GlassFrog would improve the quality, authority-awareness, or developmental sophistication of the response.
 status: draft
-version: 1.0.0
+version: 1.1.0
 ---
 # Holacratic AI Governance
 
@@ -44,6 +44,24 @@ If GlassFrog tools are not connected, inform the user and offer to help them set
 - **Custom frequencies may be invisible**: `list_frequencies` may not return all configured frequencies. Custom frequencies configured in the GlassFrog admin UI (e.g., "Daily") will not appear until assigned to at least one item. If a user reports that a frequency exists but `list_frequencies` does not show it, trust the user and use the value directly in update or create calls.
 
 These constraints are not bugs -- they reflect a healthy architectural boundary. Governance evolution is a fundamentally human-centered process in Holacracy. Automating it would undermine the self-organizing principle.
+
+---
+
+## Actor and Role Context (Foundational)
+
+Before producing organizational work, resolve **who** is operating and **which role + circle** they are operating from. This is foundational -- every pattern below assumes resolved context.
+
+**Quick procedure** (see `../shared/actor-and-role-resolution.md` for the full spec):
+
+1. Resolve the actor via `glassfrog_get_me` (default: the human; otherwise the AI agent declared in the routine's prompt).
+2. Load the actor's role roster via `glassfrog_list_my_roles`.
+3. Resolve to a single role + circle: silent when there's only one match; ask when there are multiple; offer Advisor/Observer mode when zero.
+4. **Always announce the resolved context** in the opening lines of your first response: e.g., "Operating as **Lead Link of Operations Circle (Advisor)**."
+5. Re-validate if the conversation pivots significantly -- governance can change between turns.
+
+If GlassFrog is not connected, name the constraint and ask the user to declare the context explicitly. Do not silently assume the human is the actor.
+
+The mode (Observer / Advisor / Actor, defined below) is determined by the user's intent, not by the resolution -- but it should appear in the announcement so the user can catch a mis-framing before output builds on it.
 
 ---
 
@@ -197,6 +215,7 @@ Load these based on the depth required:
 
 | File | When to Load |
 |---|---|
+| `../shared/actor-and-role-resolution.md` | The actor-and-role-context resolution procedure (full spec): how to identify the acting person/agent, load the role roster, resolve to a single role + circle, announce the resolution, and re-validate on pivots. Foundational -- every other pattern in this skill assumes resolved context. |
 | `references/engagement-patterns.md` | Detailed implementation guidance for all four core patterns, including step-by-step tool call sequences, edge cases, and worked examples |
 | `references/governance-rooting.md` | Step-by-step procedure for determining which role and circle should own a project: accountability mapping, strategy alignment checks, scope expansion tension analysis. Load when the user asks where a project belongs, which role should own a new initiative, or whether a project's current governance placement is correct. |
 | `references/developmental-lens.md` | Full theoretical grounding for the developmental perspective layer, including connections to Cook-Greuter's EDT/LMF, Wilber's Integral framework, and implications for AI-organization interaction |

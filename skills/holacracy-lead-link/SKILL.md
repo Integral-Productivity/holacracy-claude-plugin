@@ -2,7 +2,7 @@
 name: holacracy-lead-link
 description: AI co-Lead Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Lead Link role, needs to set or refine circle strategy, wants to assign or reassess role assignments, needs to allocate circle capacity or resources across Projects and Roles, wants to draft governance proposals to address structural gaps, or says things like "help me think through my Lead Link work," "what should this circle prioritize," "who should fill this role," "help me set strategy," "we have a capacity problem," "I need to draft a governance proposal," or "what tensions should I bring to governance." Also trigger when managing role-person fit, deciding circle focus, or surfacing organizational tensions for governance. In solo-operator contexts, trigger when a single person filling multiple roles needs to reason about which role's work takes priority or how to allocate their own capacity.
 status: draft
-version: 1.0.0
+version: 1.1.0
 ---
 # Holacracy Lead Link Skill
 
@@ -70,8 +70,17 @@ If GlassFrog is not connected, work from constitutional knowledge and what the u
 
 When this skill is invoked, run a brief intake sequence before engaging the specific task:
 
+**Step 0 -- Resolve actor and Lead Link scope**
+Before identifying the circle, resolve who is acting as Lead Link. A person can hold Lead Link in multiple circles -- the work needs the right scope. Run the procedure in `../shared/actor-and-role-resolution.md`:
+
+1. `glassfrog_get_me` -- confirm the acting person or AI agent.
+2. `glassfrog_list_my_roles` -- find which circles the actor fills Lead Link in.
+3. If exactly one match, proceed silently and announce: "Operating as **Lead Link of [Circle]**." If multiple, ask which. If none, switch to Advisor mode (helping someone else's Lead Link) or Observer mode.
+
+For scheduled routines, the routine's prompt declares the acting AI agent and circle at creation time. **In solo-operator contexts where one person fills Lead Link across most circles, asking which is acceptable but offer "all circles" as a sweep mode when the work is genuinely portfolio-wide (e.g., resource allocation across the org).**
+
 **Step 1 -- Identify the circle**
-Ask which circle the user is Lead Linking for, or infer from context. In GlassFrog-connected mode:
+If actor resolution settled on a single circle, this is already done. Otherwise, ask which circle the user is Lead Linking for, or infer from context. In GlassFrog-connected mode:
 ```
 glassfrog_list_circles -> find the circle
 glassfrog_get_circle(circle_id) -> load strategy, policies, purpose, sub-circles
@@ -331,6 +340,7 @@ The Lead Link does not exist in isolation. Its authority is organizational; it w
 
 | File | When to Load |
 |---|---|
+| `../shared/actor-and-role-resolution.md` | At the start of every Lead Link session (Step 0). Full spec for resolving actor identity and Lead Link scope, including the solo-operator "all circles" sweep mode and the scheduled-routine prompt preamble. |
 | `references/constitutional-authority.md` | Full constitutional reference specific to the Lead Link: purpose, accountabilities, domain, constitutional cross-references, and Lead Link selection -- load for Lead Link-specific compliance questions or when onboarding to the role |
 | `references/strategy-and-priorities.md` | Detailed strategy setting process, worked examples of strategy statements, prioritization frameworks, and how to communicate strategy to circle members |
 | `references/role-assignment.md` | Complete assignment workflow, fit assessment criteria, GlassFrog assignment mechanics, re-assignment conversations, and handling of role vacancies |

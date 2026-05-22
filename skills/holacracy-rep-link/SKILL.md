@@ -1,7 +1,7 @@
 ---
 name: holacracy-rep-link
 status: draft
-version: 1.0.0
+version: 1.1.0
 description: >
   AI co-Rep Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Rep Link role in a Holacracy organization, wants help surfacing tensions to the enclosing circle, needs to prepare for an enclosing circle tactical or governance meeting, wants to triage which member tensions belong in the enclosing circle vs. staying local, needs help identifying or drafting proposals to remove constraints the broader organization is imposing on their sub-circle, or says things like "help me prep for the enclosing circle meeting," "should I escalate this tension?", "help me remove this constraint," or "what tensions should I carry?" Also trigger when someone asks what a Rep Link does, how to energize the Rep Link role, or wants to understand what crosses the circle boundary. Load GlassFrog context before beginning Rep Link work when the GlassFrog MCP is available.
 ---
@@ -56,9 +56,15 @@ When GlassFrog MCP tools are available, load live governance data before beginni
 
 When this skill activates, establish context before diving into specific tasks:
 
-1. **Identify the circles.** Ask:
-   - Which circle are you the Rep Link *for* (the sub-circle)?
-   - Which is the enclosing circle you link out to?
+0. **Resolve actor and Rep Link scope.** Rep Link is per-sub-circle -- a person can be Rep Link for multiple sub-circles to multiple enclosing circles. Run the procedure in `../shared/actor-and-role-resolution.md`:
+
+   - `glassfrog_get_me` -- confirm the acting person or AI agent.
+   - `glassfrog_list_my_roles` -- find which sub-circles the actor fills Rep Link in.
+   - If exactly one match, proceed silently and announce: "Operating as **Rep Link of [Sub-Circle] to [Enclosing Circle]**." If multiple, ask which. If none, switch to Observer mode (explaining the role) or Advisor mode (helping someone else's Rep Link).
+
+   For scheduled routines, the routine's prompt declares the acting AI agent and sub-circle at creation time.
+
+1. **Identify the enclosing circle.** Once Rep Link scope is resolved, the sub-circle is known; ask which enclosing circle you link out to if it isn't obvious from governance.
 
 2. **Load governance context** -- use the GlassFrog integration table above.
 
@@ -261,5 +267,7 @@ For a library of common constraint patterns and worked proposal examples, load `
 
 | File | When to load |
 |---|---|
+| `../shared/actor-and-role-resolution.md` | At the start of every Rep Link session (Activation Step 0). Full spec for resolving actor identity, the per-sub-circle scope, and the scheduled-routine prompt preamble. |
 | `references/constitutional-duties.md` | Full constitutional duties text for the Rep Link role, governance proposal format, Rep Link vs. Lead Link distinction, and common constitutional interpretation questions |
 | `references/tension-triage-guide.md` | Extended triage guidance with worked examples, common edge cases, and the boundary between Rep Link tensions and IDR/relationship issues |
+| `../shared/authority-boundaries.md` | When carrying tensions raises authority questions (governance vs. operational, Domain authority, Lead Link/Rep Link interactions). |

@@ -26,9 +26,19 @@ Or add this repo directly to your plugin sources.
 
 - [`holacratic-ai-governance`](skills/holacratic-ai-governance/SKILL.md) — operating framework for AI engaging with any Holacracy-governed organization through GlassFrog. Grounds AI work in real role structure rather than generic assumptions.
 
-**Shared reference**
+**Shared references**
 
 - [`shared/authority-boundaries.md`](skills/shared/authority-boundaries.md) — cross-role authority reference loaded by the four role skills when authority questions span more than one Core Role.
+- [`shared/actor-and-role-resolution.md`](skills/shared/actor-and-role-resolution.md) — actor identity + role/circle resolution procedure. Every role skill loads this to figure out who's acting and from which circle/role before producing any output. Defines the prompt preamble for scheduled routines (v0.3+).
+
+**Slash commands**
+
+- [`/holacracy:context`](commands/context.md) — resolve and display the current actor + role roster across circles. Optionally focus on one circle (`/holacracy:context Operations Circle`).
+- [`/holacracy:check-authority`](commands/check-authority.md) — informational authority lookup for a scenario, grounded in `authority-boundaries.md` and the Constitution. Surfaces the path to a formal Secretary ruling when appropriate.
+
+**Session hook**
+
+- [`hooks/session-start`](hooks/hooks.json) — silent by default. When the agentic-routines mechanism (v0.3+) has registered routines for this actor and either there are fires today or there are anomalies, this hook surfaces a brief briefing at session start. Fail-silent on any error.
 
 ## GlassFrog connector
 
@@ -64,13 +74,23 @@ The first time a skill invokes a `glassfrog_*` tool, Claude runs the OAuth hands
 
 All five skills degrade gracefully if the GlassFrog MCP is not connected. They will operate on constitutional knowledge and context the user provides directly, and will name that limitation clearly (e.g., "I don't have live governance data, so I'm working from what you've shared.").
 
-## Future work
+## What's coming
 
-Tracked as issues on this repo:
+The plugin is being expanded in three phases. v0.2.0 (this release) ships the foundation: actor + role-context awareness across all five skills, the first two slash commands, and a conditional SessionStart hook. The next two releases build on that:
 
-- [Add slash commands](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues) — `/holacracy:tactical`, `/holacracy:governance`, `/holacracy:check-authority`, `/holacracy:propose`
-- Add a `holacracy-coach` subagent for context-isolated heavy lifting (e.g., processing full Governance Meeting transcripts)
-- Add an optional SessionStart hook that primes `holacratic-ai-governance` when GlassFrog tools are detected
+**v0.3.0 — Agentic Core Roles + most commands**
+- Shared `skills/shared/agentic-routines.md` reference defining the routine-catalog mechanism, the prompt preamble for scheduled work, and constitutional safeguards.
+- Per-role routine catalogs for Facilitator, Secretary, Lead Link, Rep Link (e.g., pre-tactical prep, post-tactical anti-pattern audit, quarterly strategy review, pre-enclosing-circle prep, weekly self-audit).
+- Routines never auto-file proposals, auto-issue rulings, or auto-assign roles. They draft for human review.
+- Slash commands: `/holacracy:tactical`, `/holacracy:governance`, `/holacracy:propose`, `/holacracy:routines:list`.
+
+**v0.4.0 — Policy work + new skills + subagent**
+- New `holacracy-policy-steward` skill: cross-circle policy inventory, conflict/gap audit, single-circle proposal drafting, **cascading multi-circle proposal drafting** (filing N proposals across N circles with rollup tracking, two-stage review).
+- New skills: `holacracy-circle-member`, `holacracy-tension-coach`, `holacracy-role-onboarding`, `holacracy-cross-circle-coordination`.
+- `holacracy-coach` subagent for context-isolated heavy lifting (governance meeting transcript processing, org-wide audits, cascade drafting).
+- Slash commands: `/holacracy:policy:audit`, `/holacracy:policy:cascade`.
+
+Tracked as issues on this repo as the work is broken out.
 
 ## License
 

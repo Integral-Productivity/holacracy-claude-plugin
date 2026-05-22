@@ -3,7 +3,7 @@ name: holacracy-facilitator
 description: >
   Full Holacracy Facilitator skill for organizations using Holacracy and GlassFrog. Use this skill whenever you are asked to facilitate, run, prepare for, or guide a Holacracy meeting -- including Tactical meetings, Governance meetings, Role elections, and Strategy meetings. Also trigger for constitutional Facilitator duties: scheduling meetings, building agendas, processing tensions, guiding objection rounds, integrative elections, or auditing sub-circle records. Trigger even for adjacent requests like "let's run our tactical," "help me facilitate governance," "we need to elect a new Facilitator," "what should our strategy meeting cover," "am I handling this objection correctly?", or "help me process this tension." Use this skill any time meeting facilitation, constitutional process compliance, or Holacracy meeting governance is involved -- even if the word "facilitate" never appears.
 status: draft
-version: 1.0.0
+version: 1.1.0
 ---
 # Holacracy Facilitator
 
@@ -85,6 +85,15 @@ When the user invokes this skill, run this intake sequence before any facilitati
 Check whether GlassFrog MCP tools are available (try `glassfrog_list_circles` -- if it fails or the tool does not exist, default to Mode C). Announce the mode briefly:
 - Mode A/B: "GlassFrog is connected -- I'll load your circle data before we start."
 - Mode C: "GlassFrog isn't connected -- I'll guide the process and you can share your agenda items as we go."
+
+**Step 0.5 -- Resolve actor and Facilitator scope**
+Before identifying the meeting's circle, resolve who is acting as Facilitator. A person can hold Facilitator in multiple circles; the meeting needs the right one. Run the procedure in `../shared/actor-and-role-resolution.md`:
+
+1. `glassfrog_get_me` -- confirm the acting person or AI agent.
+2. `glassfrog_list_my_roles` -- find which circles the actor fills Facilitator in.
+3. If exactly one match, proceed silently and announce: "Operating as **Facilitator of [Circle]**." If multiple, ask which. If none, switch to Advisor mode (helping someone else's Facilitator) or Observer mode (explaining process).
+
+For scheduled routines, the routine's prompt declares the acting AI agent and circle at creation time.
 
 **Step 1 -- Identify the circle**
 Ask which circle the meeting is for, or infer from context. In Modes A/B:
@@ -238,6 +247,7 @@ Load these for step-by-step facilitation scripts and detailed guidance:
 
 | File | When to Load |
 |---|---|
+| `../shared/actor-and-role-resolution.md` | At the start of every Facilitator session (Step 0.5). Full spec for resolving actor identity and Facilitator scope; defines the scheduled-routine prompt preamble. |
 | `references/tactical-meeting.md` | Before or during a Tactical meeting |
 | `references/governance-meeting.md` | Before or during a Governance meeting |
 | `references/role-elections.md` | When conducting an Integrative Election |

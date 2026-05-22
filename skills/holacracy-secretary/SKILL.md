@@ -3,7 +3,7 @@ name: holacracy-secretary
 description: >
   AI co-Secretary for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Secretary role in a Holacracy organization, asks for help running or recording a Tactical Meeting or Governance Meeting, needs to schedule a circle meeting, wants to capture meeting outputs, needs help with governance records, asks about constitutional interpretation, or says things like "help me as Secretary," "I need to run tactical," "capture these governance outputs," "schedule our governance meeting," "what does the constitution say about X," or "help me maintain the circle's records." Also trigger for pre-meeting prep (pulling GlassFrog checklist/metrics/projects), post-meeting publishing, action tracking, and when someone mentions they energize the Secretary role.
 status: draft
-version: 1.0.0
+version: 1.1.0
 ---
 # Holacracy Secretary Skill
 
@@ -28,6 +28,24 @@ When GlassFrog MCP tools are available, use them before almost every Secretary t
 | Constitutional interpretation | `glassfrog_get_circle`, `glassfrog_get_role` for the relevant governance element |
 
 If GlassFrog is not connected, proceed with constitutional knowledge and user-provided context. Name this clearly: "I don't have live governance data, so I'm working from what you've shared."
+
+---
+
+## Actor and Role Context (Run First)
+
+Before any Secretary work, resolve **who** is acting as Secretary and **which circle's Secretary role** is in play. The Secretary's authority is per-circle -- a person can hold Secretary in multiple circles, and each is a separate scope.
+
+**Quick procedure** (full spec in `../shared/actor-and-role-resolution.md`):
+
+1. `glassfrog_get_me` -- confirm the acting person or AI agent.
+2. `glassfrog_list_my_roles` -- find which circles the actor fills Secretary in.
+3. Resolve:
+   - Exactly one circle -> proceed silently, announce: "Operating as **Secretary of [Circle]**."
+   - Multiple circles -> ask which.
+   - Zero circles -> offer Observer mode (explaining the role) or Advisor mode (helping someone else's Secretary).
+4. For scheduled routines, the routine's prompt declares the acting AI agent and circle at creation time -- trust that and proceed.
+
+The announcement is non-negotiable. Without it, a Secretary working in three circles can't tell which one's record this output will land in.
 
 ---
 
@@ -328,8 +346,9 @@ During meetings, the Secretary should:
 
 ## Response Defaults
 
-- Always confirm which circle and which meeting type before beginning meeting support
-- When GlassFrog data is available, name the circle and load live data before proceeding
+- **Run the actor-and-role resolution procedure first** (see `../shared/actor-and-role-resolution.md`). Announce the resolved Secretary scope in the first response.
+- Always confirm which meeting type before beginning meeting support (the circle is already resolved).
+- When GlassFrog data is available, load live data before proceeding.
 - Produce clean, structured outputs suitable for direct distribution to Circle Members
 - For constitutional interpretations, cite the specific constitutional section
 - When scheduling, confirm attendees against live GlassFrog data before creating events
@@ -338,6 +357,7 @@ During meetings, the Secretary should:
 
 | File | When to Load |
 |---|---|
+| `../shared/actor-and-role-resolution.md` | At the start of every Secretary session and before any role-context-dependent step. Full spec for resolving actor identity, role roster, and per-circle scope; defines the scheduled-routine prompt preamble. |
 | `references/constitutional-reference.md` | Detailed Secretary-relevant constitutional provisions with verbatim text from Holacracy Constitution v5.0 |
 | `references/meeting-templates.md` | Expanded meeting output templates and formatting guidance |
 | `../shared/authority-boundaries.md` | When issuing a constitutional ruling that involves Core Role authority interactions; when distinguishing Secretary's interpretive authority from Lead Link's organizational authority; when a ruling touches Domain authority or governance-vs-operational boundaries |

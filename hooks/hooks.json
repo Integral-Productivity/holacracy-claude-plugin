@@ -1,0 +1,15 @@
+{
+  "description": "Holacracy plugin SessionStart hook. Surfaces today's scheduled-task routines (tagged holacracy/*) and any anomalies. Silent when there's nothing to report. Fail-silent on error so a broken hook never blocks a session.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks-handlers/session-start.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

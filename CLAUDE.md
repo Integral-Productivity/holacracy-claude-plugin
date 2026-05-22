@@ -9,7 +9,7 @@ A public Claude Code plugin for engaging with [Holacracy](https://www.holacracy.
 ## Layout
 
 ```
-holacracy/
+holacracy-claude-plugin/
 ├── .claude-plugin/plugin.json     manifest
 ├── .mcp.json                      GlassFrog MCP connector (HTTP + OAuth)
 ├── LICENSE                        MIT

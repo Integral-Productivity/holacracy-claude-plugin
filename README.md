@@ -1,4 +1,4 @@
-# holacracy
+# holacracy-claude-plugin
 
 A Claude Code plugin for engaging with [Holacracy](https://www.holacracy.org/) from inside Claude — AI co-pilots that energize each of the four Core Roles (Facilitator, Secretary, Lead Link, Rep Link), a governance-aware operating frame for AI working inside any Holacracy-governed organization, and the GlassFrog MCP wired in as a connector so the skills can read live circle structure, roles, checklists, metrics, and projects.
 
@@ -68,7 +68,7 @@ All five skills degrade gracefully if the GlassFrog MCP is not connected. They w
 
 Tracked as issues on this repo:
 
-- [Add slash commands](https://github.com/Integral-Productivity/holacracy/issues) — `/holacracy:tactical`, `/holacracy:governance`, `/holacracy:check-authority`, `/holacracy:propose`
+- [Add slash commands](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues) — `/holacracy:tactical`, `/holacracy:governance`, `/holacracy:check-authority`, `/holacracy:propose`
 - Add a `holacracy-coach` subagent for context-isolated heavy lifting (e.g., processing full Governance Meeting transcripts)
 - Add an optional SessionStart hook that primes `holacratic-ai-governance` when GlassFrog tools are detected
 

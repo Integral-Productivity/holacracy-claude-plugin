@@ -1,0 +1,63 @@
+name: Promote to stable
+
+# Advances the `stable` branch to a tagged release commit.
+# The Integral-Productivity marketplace listing
+# (https://github.com/Integral-Productivity/marketplace) tracks the
+# `stable` ref for this plugin. Tagging vX.Y.Z is what publishes a
+# release to marketplace users.
+#
+# Triggered by: push of a semver tag like `v0.2.0`. Pre-release suffixes
+# (e.g. `v0.2.0-rc.1`) are intentionally NOT matched and will not advance
+# `stable`.
+#
+# Guarantees:
+#   - The tag SHA's `.claude-plugin/plugin.json` `version` must match the
+#     tag (minus the `v` prefix). Mismatches fail the run, leaving
+#     `stable` untouched.
+#   - The push is a fast-forward only. If the tagged commit is not a
+#     descendant of the current `stable`, the push fails — `stable` is
+#     never rewound or force-overwritten.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so the fast-forward push can resolve the
+          # relationship between the tagged commit and any existing
+          # `stable` branch.
+          fetch-depth: 0
+
+      - name: Verify plugin.json version matches tag
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          tag_version="${tag#v}"
+          plugin_version=$(python3 -c "import json,sys; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          echo "Tag:           ${tag}"
+          echo "Tag version:   ${tag_version}"
+          echo "plugin.json:   ${plugin_version}"
+          if [ "${tag_version}" != "${plugin_version}" ]; then
+            echo "::error::Tag ${tag} does not match plugin.json version ${plugin_version}. Refusing to advance stable." >&2
+            exit 1
+          fi
+
+      - name: Fast-forward stable to tagged commit
+        run: |
+          set -euo pipefail
+          tag_sha="$(git rev-parse HEAD)"
+          echo "Advancing refs/heads/stable to ${tag_sha} (${GITHUB_REF_NAME})"
+          # No --force. If `stable` exists and the tagged commit is not a
+          # fast-forward descendant, this push fails and `stable` is left
+          # alone — exactly what we want.
+          git push origin "${tag_sha}:refs/heads/stable"

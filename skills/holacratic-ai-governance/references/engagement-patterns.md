@@ -270,6 +270,7 @@ Pattern 5 is gentle. The user is *working*, not auditing tensions. One offer per
 - The user is in a focused execution mode (e.g., "stop talking and just do X"). Read the room.
 - The conversation is about something other than the user's own work -- e.g., the user is helping someone else, or analyzing a hypothetical. Tensions belong to the lived role-filler; if the user isn't the role-filler, capture is the wrong move.
 - The user has just declined a similar offer in this session. Give the pattern a few turns before re-attempting.
+- **The user is in an active Tactical Meeting** (invoked `/holacracy:tactical`, or the `holacracy-secretary` skill is the loaded skill driving live tactical capture). The Secretary's "Backlog-first tension capture" in `skills/holacracy-secretary/SKILL.md` is the right surface for in-meeting tension capture — Pattern 5 should not interrupt the meeting flow with parallel offers. Pattern 5 owns everything outside the active tactical-meeting context.
 
 ### Session-closing offer
 

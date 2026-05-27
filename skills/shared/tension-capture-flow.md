@@ -2,7 +2,7 @@
 
 This document specifies the canonical **B-flow** used by every tension capture in this plugin: the on-demand `/holacracy:capture-tension` command, the ambient detection in `holacratic-ai-governance`, and the `tension-capture` subagent.
 
-The B-flow is **draft-and-confirm**: Claude proposes a complete tension (sensing role + body + meeting_type), the human confirms or edits per-tension, and only on explicit confirmation does the API call fire. No auto-file. No silent file. Per-tension confirmation, never batched.
+The B-flow is **draft-and-confirm**: Claude proposes a complete tension (sensing role + body + suggested meeting venue), the human confirms or edits per-tension, and only on explicit confirmation does the API call fire. No auto-file. No silent file. Per-tension confirmation, never batched. The "suggested meeting venue" is an annotation for the user's own mental routing — there is no `meeting_type` field on tensions in the GlassFrog API ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)); all filed tensions go to a role's durable backlog.
 
 This is the v0.3 contract. Option D (auto-file from explicit human statements) and AI-agent self-filing are deferred to v0.4 with their own ADRs.
 
@@ -50,32 +50,34 @@ This gate runs *before* drafting the body, because drafting a person tension and
 
 Preserve the user's own words as much as possible. Tensions are lived experiences; the user's framing is part of the data.
 
-Three guidelines:
+Four guidelines:
 
+- **Front-load the topic in the first sentence.** Because the API has no `label` field, the body is the only thing a backlog reader can scan. Start with the topic, then the detail. *"Vendor approval bottleneck on Operations Circle — IT Governance hasn't responded to our request in 3 weeks, blocking Tool X rollout"* beats *"We've been waiting weeks for IT Governance to respond to a vendor approval, which is blocking Tool X rollout — the issue is..."*
 - **Keep it concrete.** "The IT Governance role hasn't responded to our approval request in 3 weeks, blocking the rollout of Tool X" is better than "we have an IT problem."
 - **Name the gap, not the desired fix.** Tensions describe what *is* vs. what *could be*. Proposed solutions belong in the governance proposal that processes the tension, not in the tension body itself.
-- **Attribution-on-behalf-of.** If the tension is being carried for someone else (per `./tension-triage.md` Step 1, "Carrying tensions on behalf of others"), prepend the body with `Sensed by [name], carried as [role]:`.
+- **Attribution-on-behalf-of.** If the tension is being carried for someone else (per `./tension-triage.md` Step 1, "Carrying tensions on behalf of others"), prepend the body with `Sensed by [name], carried as [role]:` *before* the front-loaded topic.
 
 The body must be 1–5000 characters (API constraint). Most tensions fit in 1–3 sentences.
 
-### Step 5 -- Route to meeting type (Step 2 of `./tension-triage.md`)
+### Step 5 -- Annotate suggested meeting venue (mental routing for the user)
 
-Suggest a `meeting_type`:
+`glassfrog_create_tension` does **not** store a `meeting_type` on the tension — that field is not part of the stable API schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). Suggested venue is *for the user's mental model*, not the API. Per `./tension-triage.md` Step 2:
 
 - **governance** if the tension implies a structural change.
 - **tactical** if the tension implies operational coordination or unblocking.
-- **omit** if genuinely ambiguous; surface the ambiguity to the user.
+- **either / unclear** if genuinely ambiguous.
 
-The user can override. If they pick neither and the field is omitted, the tension is still filed -- it just routes to neither agenda until later triaged.
+The annotation appears in the per-tension confirmation block so the user knows which agenda to bring this tension to. It is **not** written to GlassFrog. If desired, the user can encode the venue in the *body* itself (e.g., start with `"[GOVERNANCE]"` or `"[TACTICAL]"` as a body prefix) so the backlog stays scannable.
 
 ### Step 6 -- Present the per-tension confirmation
 
 Show the user a single, compact confirmation block. The format:
 
 ```
-Sensing role:  [Role name] of [Circle name]    (role_id: role_xxx...)
-Body:          [Tension body, with attribution preamble if applicable]
-Meeting type:  [governance | tactical | (none)]
+Sensing role:    [Role name] of [Circle name]    (role_id: role_xxx...)
+Body:            [Tension body, with attribution preamble if applicable;
+                  topic front-loaded in first sentence]
+Suggested venue: [governance | tactical | either]   (annotation only, not stored)
 
 File this? [y] yes  [e] edit  [n] no
 ```
@@ -83,32 +85,37 @@ File this? [y] yes  [e] edit  [n] no
 The user can:
 
 - **y / yes** -> Proceed to Step 7.
-- **e / edit** -> Allow editing any of the three fields, then re-present.
+- **e / edit** -> Allow editing any of the three fields, then re-present. (Editing "Suggested venue" changes the annotation Claude shows; it does not change anything written to GlassFrog.)
 - **n / no** -> Abort. Confirm the abort and return to the original conversation.
 
 Per-tension confirmation. Never batched. This is the v0.3 contract.
 
 ### Step 7 -- File the tension
 
-On confirmation, two-call sequence:
+On confirmation, a single call:
 
-1. `glassfrog_create_tension(role_id, body, status: "unprocessed")` -- returns the new tension. **`label` and `meeting_type` are rejected on `create_tension`** (see `holacratic-ai-governance/references/glassfrog-api-constraints.md`).
-2. If the user specified a `meeting_type` (or a label), follow up with `glassfrog_update_tension(tension_id, meeting_type: ..., label: ...)`.
+```
+glassfrog_create_tension(role_id, body) -> returns Tension { id, role, body, status, ... }
+```
+
+The signature is body-only — `label` and `meeting_type` are not part of the stable schema. No follow-up `update_tension` is needed at filing time.
 
 If `create_tension` fails (network, permissions, role no longer exists), surface the error honestly: *"I couldn't file the tension -- GlassFrog returned [error]. The draft is still here; want me to retry or adjust?"*
+
+**Capture the returned tension ID into the session-tension cache.** This is required because `glassfrog_list_role_tensions` may not return the just-created tension immediately (propagation/scoping). The cache is what `/holacracy:supersession-sweep` reads when its scope is `session`. Format: `{ tension_id, role_id, role_name, circle_name, body, suggested_venue, filed_at }`.
 
 ### Step 8 -- Acknowledge and return
 
 Return to the user a compact confirmation:
 
 ```
-Filed: [body excerpt or label]
-Tension ID: ten_xxx...
+Filed: [body excerpt, ~60 chars]
+Tension ID: [ten_xxx]
 On role: [Role name] of [Circle name]
-Routed to: [meeting type]
+Suggested venue: [governance | tactical | either]
 ```
 
-Then continue the original conversation. Do not interrogate the user about the next step; they will process the tension in a meeting on their own time.
+Then continue the original conversation. Do not interrogate the user about the next step; they will process the tension in a meeting on their own time. Do not attempt to verify via `glassfrog_list_role_tensions` — the response ID is the only reliable same-session confirmation.
 
 ---
 
@@ -126,8 +133,9 @@ Then continue the original conversation. Do not interrogate the user about the n
 
 | Surface | How it uses this flow |
 |---|---|
-| `/holacracy:capture-tension` | Entry at Step 1.1 (explicit command). Runs Steps 2–8 via the subagent. |
+| `/holacracy:capture-tension` | Entry at Step 1.1 (explicit command). Runs Steps 2–8 via the subagent. The cross-role, out-of-meeting companion to `/holacracy:tactical`. |
+| `/holacracy:tactical` (Secretary in-meeting) | Has its own in-meeting capture path documented in `skills/holacracy-secretary/SKILL.md` Backlog-first tension capture. Same `create_tension(role_id, body)` primitive, different conversational shape (live tactical triage with the proposer naming the body in real time). |
 | `holacratic-ai-governance` (ambient detection) | Entry at Step 1.2 (ambient). On user assent, dispatches the `tension-capture` subagent to run Steps 2–8. |
-| `/holacracy:process-inbox` | Skips Steps 1–6 (the tension is already filed). Runs `update_tension` for routing/archiving, using `./tension-triage.md` Steps 2–3 as the decision guide. |
-| `/holacracy:supersession-sweep` | Runs `./tension-triage.md` Step 3 (supersession) across recent or session-filed tensions. On confirmation, archives subsumed tensions via `update_tension(status: "archived")`. |
+| `/holacracy:process-inbox` | Skips Steps 1–6 (the tension is already filed). Operates on `glassfrog_list_role_tensions` results (older tensions, not same-session) and uses `glassfrog_update_tension` to archive, mark processed, edit body, or defer. There is no API-level meeting_type routing; suggested venue is a user-facing annotation only. |
+| `/holacracy:supersession-sweep` | Runs `./tension-triage.md` Step 3 (supersession). For `session` scope, reads the session-tension cache populated at Step 7. For `recent` or per-circle scope, reads via `glassfrog_list_role_tensions`. On confirmation, archives subsumed tensions via `glassfrog_update_tension(status: "archived")`. |
 | `holacratic-ai-governance` Pattern 3 (Tension Sensing) | Detects candidate tensions from data patterns. For each, can route into this flow at Step 1.3 (Pattern 3 follow-up). |

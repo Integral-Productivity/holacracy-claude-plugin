@@ -49,15 +49,15 @@ This keeps attribution honest when the tension is later processed.
 
 ---
 
-## Step 2 -- Is this a governance-meeting tension or a tactical-meeting tension?
+## Step 2 -- Which meeting venue should the user bring this to?
 
-The `update_tension` endpoint accepts `meeting_type: "governance" | "tactical"`. Routing correctly is the difference between "this lands in the right meeting agenda" and "this gets bounced around for weeks."
+**Important:** This is a *suggestion for the user's mental routing*, not a field written to GlassFrog. The GlassFrog tension API does not have a `meeting_type` field ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)); all tensions filed via `glassfrog_create_tension` land on a role's durable backlog regardless of venue. The user still benefits from a venue annotation in the capture confirmation, because they will bring the tension to one specific meeting agenda — but Claude is annotating their thinking, not the API record.
 
-**Governance.** Needs a structural change: new role, modified accountability, new policy, domain clarification, role placement change, or removal of a constraint that governance imposes.
+**Governance venue.** Needs a structural change: new role, modified accountability, new policy, domain clarification, role placement change, or removal of a constraint that governance imposes.
 
 *Indicators:* "We don't have a role for...", "the accountability doesn't cover...", "the policy prevents...", "no one owns...", recurring ambiguity about authority.
 
-**Tactical.** Needs operational coordination, a resource, a project assignment, or unblocking. The structure is fine; the work just needs to flow.
+**Tactical venue.** Needs operational coordination, a resource, a project assignment, or unblocking. The structure is fine; the work just needs to flow.
 
 *Indicators:* "I need X to happen", "we're waiting on...", "this project is stuck because...", "can someone update...", a one-off request rather than a recurring pattern.
 
@@ -65,9 +65,11 @@ The `update_tension` endpoint accepts `meeting_type: "governance" | "tactical"`.
 
 **Decision:**
 
-- **Governance** -> `meeting_type: "governance"`.
-- **Tactical** -> `meeting_type: "tactical"`.
-- **Genuinely ambiguous** -> File without `meeting_type` (omit the field) and surface the ambiguity to the user. Filed tensions can be re-routed later via `update_tension`.
+- **Governance** -> annotate as "Suggested venue: governance" in the per-tension confirmation.
+- **Tactical** -> annotate as "Suggested venue: tactical".
+- **Genuinely ambiguous** -> annotate as "Suggested venue: either / unclear" and surface the ambiguity to the user.
+
+If the user wants the venue encoded *in the GlassFrog record itself*, they can include a body prefix (e.g., start the body with `[GOVERNANCE]` or `[TACTICAL]`) so the backlog stays scannable. That is body-level convention, not an API field.
 
 ---
 
@@ -106,9 +108,10 @@ Tensions are filed *on a role*. The API requires `role_id`. The role must be one
 A tension that passes all four steps is ready to file:
 
 - `role_id`: the sensing role resolved in Step 4
-- `body`: the tension text, with Step 1 attribution preamble if applicable
-- `status`: `"unprocessed"` (always, on initial filing)
-- `meeting_type`: routed per Step 2, *to be set via a follow-up `update_tension` call* (the API rejects `meeting_type` on `create_tension`; see `holacratic-ai-governance/references/glassfrog-api-constraints.md`)
+- `body`: the tension text, with topic front-loaded in the first sentence and the Step 1 attribution preamble if applicable
+- Suggested venue (from Step 2): annotation surfaced in the user-facing confirmation block — *not* written to the API record
+
+The actual call is `glassfrog_create_tension(role_id, body)`. Status defaults to `unprocessed` on the API side and is not parameterized at file time. See `skills/shared/tension-capture-flow.md` for the full flow.
 
 A tension that fails Step 1 is not filed. A tension that fails Step 4 (no role to file on) is not filed; the constraint is named to the user.
 
@@ -121,7 +124,7 @@ A tension flagged in Step 3 is filed only if the user confirms it's genuinely in
 If the user is mid-conversation and just wants to capture a quick tension, do not run the triage as a four-question interrogation. Run it *internally* and only surface the steps that produce a decision the user needs to make:
 
 - Step 1 surfaces only when the tension reads like a person tension -- otherwise silent.
-- Step 2 surfaces as the suggested `meeting_type` field in the per-tension confirmation -- the user can override.
+- Step 2 surfaces as the suggested meeting venue annotation in the per-tension confirmation -- the user can override; not stored on the API record.
 - Step 3 surfaces only during explicit sweep or inbox processing, not during initial capture.
 - Step 4 surfaces only when role attribution is ambiguous.
 

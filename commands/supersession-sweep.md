@@ -5,20 +5,27 @@ argument-hint: [scope: "session" | "recent" | circle name, optional; default "se
 
 # /holacracy:supersession-sweep
 
-End-of-session deduplication for filed tensions. Applies the constitutional supersession test from S.5.5.1d -- *"would the tension still exist if the other were resolved?"* -- to pairs of tensions in scope, and offers to archive or merge subsumed ones.
+End-of-session deduplication for filed tensions. Applies the constitutional supersession test from S.5.5.1d — *"would the tension still exist if the other were resolved?"* — to pairs of tensions in scope, and offers to archive or merge subsumed ones.
 
 This command is also offered implicitly by the `holacratic-ai-governance` skill when Claude detects session-closing signals ("done for now", "that's it for today"). Invoking it explicitly is an override or a manual trigger.
 
 ## What this command does
 
-1. **Resolve scope from $ARGUMENTS.** Default is `session`: tensions filed during the current Claude session (Claude maintains this list internally as it dispatches the `tension-capture` subagent). Alternatives:
-   - `recent` -> tensions with `status: "unprocessed"` on any role the actor fills (last 30 days, ranked newest first).
-   - A circle name -> unprocessed tensions on roles the actor fills in that circle.
-2. **Load the in-scope tensions.** For `session`, use the internally tracked list. For `recent` or a named circle, resolve the actor's roles via `glassfrog_list_my_roles` and then `glassfrog_list_role_tensions(role_id, status: "unprocessed")` for each.
+1. **Resolve scope from $ARGUMENTS.** Default is `session`: tensions filed during the current Claude session via the session-tension cache populated by the `tension-capture` subagent at Step 7 of `skills/shared/tension-capture-flow.md`. Alternatives:
+   - `recent` -> tensions with `status: "unprocessed"` on any role the actor fills (resolved via `glassfrog_list_my_roles` then per-role `glassfrog_list_role_tensions`).
+   - A circle name -> unprocessed tensions on roles the actor fills in that circle, via `list_role_tensions`.
+
+   **Why the default is `session`:** `glassfrog_list_role_tensions` is unreliable for same-session reads (propagation/scoping). Tensions filed earlier in this Claude session may not appear in a fresh `list_role_tensions` call. The session-tension cache is the only reliable source for fresh tensions; using it for the default sweep is what lets the implicit session-close offer actually find the tensions it just filed.
+
+2. **Load the in-scope tensions.**
+   - For `session`: read the in-conversation session-tension cache. Each cache entry has `{ tension_id, role_id, role_name, circle_name, body, suggested_venue, filed_at }`.
+   - For `recent` or a named circle: call `glassfrog_list_my_roles`, then `glassfrog_list_role_tensions(role_id, status: "unprocessed")` per role, and aggregate.
+
 3. **Apply the supersession test** (`skills/shared/tension-triage.md` Step 3) across all candidate pairs:
-   - For each pair (A, B), ask the substantive question: "Would Tension A still be a felt gap if Tension B were resolved?"
+   - For each pair (A, B), ask: "Would Tension A still be a felt gap if Tension B were resolved?"
    - If no -> A is superseded by B. Flag the pair.
    - If yes for both directions -> both stand; do not flag.
+
 4. **Present flagged pairs to the user one at a time:**
 
    ```
@@ -49,15 +56,15 @@ This command is also offered implicitly by the `holacratic-ai-governance` skill 
 
 ## When the implicit offer fires
 
-The `holacratic-ai-governance` skill teaches Claude to recognize session-closing signals -- "done for now", "that's it", "closing out", "wrapping up" -- and offer the sweep before retro/closing:
+The `holacratic-ai-governance` skill teaches Claude to recognize session-closing signals — "done for now", "that's it", "closing out", "wrapping up" — and offer the sweep before retro/closing:
 
 > *"Before we close, would you like me to sweep the tensions filed this session for supersession?"*
 
-If the user assents, this command runs with default scope (`session`). If they decline, no action. The implicit offer is silent when no tensions were filed in the session.
+If the user assents, this command runs with default scope (`session`). If they decline, no action. The implicit offer is silent when the session-tension cache is empty.
 
 ## What this command does NOT do
 
 - It does not delete tensions. Archive is the only collapse mechanism.
-- It does not process tensions (`status: "processed"`) -- that's for `/holacracy:process-inbox` and only in meeting-day catch-up.
-- It does not file new tensions; if the sweep surfaces a *meta*-tension ("the inbox keeps getting these overlapping items because [structural reason]"), this command will note it but not file it -- it's a job for `/holacracy:capture-tension` afterwards.
+- It does not process tensions (`status: "processed"`) — that's for `/holacracy:process-inbox` and only for catch-up of tensions actually worked in meetings.
+- It does not file new tensions; if the sweep surfaces a *meta*-tension ("the inbox keeps getting these overlapping items because [structural reason]"), this command will note it but not file it — that's a job for `/holacracy:capture-tension` afterwards.
 - It does not run automatically. Implicit offer + explicit command, both opt-in.

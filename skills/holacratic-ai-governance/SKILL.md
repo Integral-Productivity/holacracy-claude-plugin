@@ -3,7 +3,7 @@ name: holacratic-ai-governance
 description: >
   Governance-aware AI operating skill for organizations using Holacracy and GlassFrog. Use this skill whenever the user mentions GlassFrog, Holacracy, circles, roles (in a Holacratic context), accountabilities, domains, governance meetings, tactical meetings, tensions, lead link, rep link, facilitator, secretary, or any organizational governance topic. Also trigger when the user asks for help with work and GlassFrog MCP tools are connected -- this skill teaches how to ground AI responses in actual governance structure rather than operating generically. Trigger even for adjacent requests like "help me think about my role," "what should I focus on," "draft a governance proposal," or "what tensions exist in my organization." This skill is essential for any AI interaction where organizational context from GlassFrog would improve the quality, authority-awareness, or developmental sophistication of the response.
 status: draft
-version: 1.1.0
+version: 1.1.1
 ---
 # Holacratic AI Governance
 
@@ -31,7 +31,7 @@ This skill requires a connected GlassFrog MCP server. Before engaging any patter
 | **Item Management** | `create_checklist_item`, `create_metric`, `create_project`, `delete_checklist_item`, `delete_metric`, `delete_project` | Create and delete operational items |
 | **People Management** | `create_person`, `delete_person` | Add and remove organization members |
 | **Role Assignment** | `assign_person_to_role`, `unassign_person_from_role` | Assign and unassign people to roles |
-| **Tensions** | `create_tension`, `list_role_tensions`, `get_tension`, `update_tension`, `delete_tension` | Capture, read, route, archive, and (rarely) delete tensions. Used only via the draft-and-confirm flow in `skills/shared/tension-capture-flow.md`. |
+| **Tensions** | `create_tension`, `list_role_tensions`, `get_tension`, `update_tension`, `delete_tension` | Capture (`role_id` + `body` only), read (with same-session list-back unreliability — see [`references/glassfrog-api-constraints.md`](references/glassfrog-api-constraints.md)), archive, mark processed, edit body, and (rarely) delete tensions. Used only via the draft-and-confirm flow in `skills/shared/tension-capture-flow.md`. |
 | **Reference** | `list_frequencies` | Discover available cadences |
 
 If GlassFrog tools are not connected, inform the user and offer to help them set up the MCP server connection. Do not attempt to operate governance-aware patterns without live data.
@@ -39,7 +39,7 @@ If GlassFrog tools are not connected, inform the user and offer to help them set
 ### Critical API Constraints
 
 - **Read-only governance**: Roles, circles, accountabilities, domains, and policies cannot be created, modified, or deleted via API. Governance changes happen only through the human governance meeting process.
-- **Tension *capture* is supported; tension *processing* is not.** The API allows creating, reading, routing (`meeting_type`), archiving, and deleting tensions, but the plugin operates these only via the draft-and-confirm contract in `skills/shared/tension-capture-flow.md`. AI may draft and -- on explicit per-tension human confirmation -- file. Marking a tension `processed` is reserved for human governance and tactical meetings (with `/holacracy:process-inbox` available for meeting-day catch-up under explicit direction). `create_tension` has an asymmetric quirk: it rejects `label` and `meeting_type` on create; the plugin handles this with a follow-up `update_tension`.
+- **Tension *capture* is supported; tension *processing* is not.** The API allows creating, reading, archiving, and editing tensions on a role's backlog, but the plugin operates these only via the draft-and-confirm contract in `skills/shared/tension-capture-flow.md`. AI may draft and -- on explicit per-tension human confirmation -- file. Marking a tension `processed` is reserved for human governance and tactical meetings (with `/holacracy:process-inbox` available for meeting-day catch-up under explicit direction). The `create_tension` signature is `role_id` + `body` only — `label` and `meeting_type` are not part of the stable schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). The remaining genuine API gap is meeting-association ([glassfrog-mcp-server#60](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/60)); filed tensions go to a role's durable backlog, not to a specific meeting record.
 - **No checklist completion**: The API cannot mark checklist items as done/not-done. That happens in tactical meetings via the GlassFrog UI.
 - **No metric reporting**: The API cannot record metric values reported in tactical meetings. Only the metric definition (description, frequency) can be updated.
 - **Custom frequencies may be invisible**: `list_frequencies` may not return all configured frequencies. Custom frequencies configured in the GlassFrog admin UI (e.g., "Daily") will not appear until assigned to at least one item. If a user reports that a frequency exists but `list_frequencies` does not show it, trust the user and use the value directly in update or create calls.
@@ -149,6 +149,8 @@ Cross-reference governance data to identify potential tensions. The AI becomes a
 ### Pattern 5: Proactive Tension Sensing (in conversation)
 
 In addition to data-driven tension detection (Pattern 3), Claude listens for tension language during ordinary conversation and offers to capture in flow. This is the heart of being a "proactive" tension-sensing partner.
+
+**Scope note.** Pattern 5 is the cross-role, out-of-meeting surface. When the user is in an active Tactical Meeting (typically signalled by having invoked `/holacracy:tactical` or by the `holacracy-secretary` skill being the loaded skill), the Secretary's "Backlog-first tension capture" in `skills/holacracy-secretary/SKILL.md` is the right surface — it has its own meeting-grounded consent contract. Pattern 5 covers everything outside that context: code work, calendar review, email triage, planning, the spaces between meetings.
 
 **Triggers -- conversation patterns that suggest a tension is being felt:**
 

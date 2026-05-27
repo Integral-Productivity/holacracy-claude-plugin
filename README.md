@@ -30,20 +30,21 @@ Or add this repo directly to your plugin sources.
 
 - [`shared/authority-boundaries.md`](skills/shared/authority-boundaries.md) — cross-role authority reference loaded by the four role skills when authority questions span more than one Core Role.
 - [`shared/actor-and-role-resolution.md`](skills/shared/actor-and-role-resolution.md) — actor identity + role/circle resolution procedure. Every role skill loads this to figure out who's acting and from which circle/role before producing any output. Defines the prompt preamble for scheduled routines.
-- [`shared/tension-triage.md`](skills/shared/tension-triage.md) — canonical role-vs-person triage gate, meeting-type routing (governance vs tactical), supersession check (S.5.5.1d), and role-attribution policy. Loaded by Pattern 3, Pattern 5 (proactive sensing), the `tension-capture` subagent, and the three `/holacracy:*` tension commands.
-- [`shared/tension-capture-flow.md`](skills/shared/tension-capture-flow.md) — the draft-and-confirm B-flow used to file tensions to GlassFrog. Per-tension confirmation; no auto-file; constitutional safeguard preserved.
+- [`shared/tension-triage.md`](skills/shared/tension-triage.md) — canonical role-vs-person triage gate, suggested-meeting-venue annotation (governance vs tactical, for the user's mental model — not an API field), supersession check (S.5.5.1d), and role-attribution policy. Loaded by Pattern 3, Pattern 5 (proactive sensing), the `tension-capture` subagent, and the three new `/holacracy:*` tension commands.
+- [`shared/tension-capture-flow.md`](skills/shared/tension-capture-flow.md) — the draft-and-confirm B-flow used to file tensions to a role's GlassFrog backlog via `glassfrog_create_tension(role_id, body)`. Per-tension confirmation; no auto-file; constitutional safeguard preserved.
 
 **Subagents**
 
-- [`agents/tension-capture.md`](agents/tension-capture.md) — handles the multi-step tension capture flow (resolve sensing role → triage → draft body → per-tension confirm → file via `create_tension` + `update_tension` for routing). Dispatched by both the explicit slash command and ambient detection in `holacratic-ai-governance`.
+- [`agents/tension-capture.md`](agents/tension-capture.md) — handles the multi-step tension capture flow (resolve sensing role → triage → draft body → per-tension confirm → `glassfrog_create_tension(role_id, body)`). Dispatched by `/holacracy:capture-tension` and by ambient tension-language detection in `holacratic-ai-governance`. The Secretary-scoped `/holacracy:tactical` flow has its own in-meeting capture path documented in `skills/holacracy-secretary/SKILL.md` — this subagent is the cross-role, out-of-meeting surface.
 
 **Slash commands**
 
 - [`/holacracy:context`](commands/context.md) — resolve and display the current actor + role roster across circles. Optionally focus on one circle (`/holacracy:context Operations Circle`).
 - [`/holacracy:check-authority`](commands/check-authority.md) — informational authority lookup for a scenario, grounded in `authority-boundaries.md` and the Constitution. Surfaces the path to a formal Secretary ruling when appropriate.
-- [`/holacracy:capture-tension`](commands/capture-tension.md) — capture a tension to GlassFrog via the draft-and-confirm flow. Optional `$ARGUMENTS` for inline tension text. Files exactly one tension per invocation; the constitutional safeguard requires explicit human confirmation before any write.
-- [`/holacracy:process-inbox`](commands/process-inbox.md) — walk through unprocessed tensions on the actor's roles and decide what to do with each (route to tactical, route to governance, archive, mark processed, edit body, or defer). Per-tension decisions; surfaces supersession candidates inline.
-- [`/holacracy:supersession-sweep`](commands/supersession-sweep.md) — sweep recent or session-filed tensions for supersession (S.5.5.1d). Offers archive or merge for subsumed tensions. Also offered implicitly by `holacratic-ai-governance` on session-close signals.
+- [`/holacracy:tactical`](commands/tactical.md) — prime Secretary scope for an in-meeting Tactical capture session. Operates MCP-first (durable role-backlog capture, not the ephemeral GlassFrog meeting UI queue) and surfaces a pre-tactical-prep packet if a v0.3 routine has produced one. Accepts an optional circle-name argument (`/holacracy:tactical Operations Circle`).
+- [`/holacracy:capture-tension`](commands/capture-tension.md) — capture a tension to a role's GlassFrog backlog outside the in-meeting context, via a draft-and-confirm flow. Optional `$ARGUMENTS` for inline tension text. Files exactly one tension per invocation; the constitutional safeguard requires explicit human confirmation before any write. The cross-role, cross-session companion to `/holacracy:tactical`'s in-meeting capture.
+- [`/holacracy:process-inbox`](commands/process-inbox.md) — walk through unprocessed tensions on the actor's roles and decide what to do with each (archive false positives, mark catch-up processed, edit body, or defer). Per-tension decisions; surfaces supersession candidates inline. A user-facing surface for clearing role-backlog debt between meetings.
+- [`/holacracy:supersession-sweep`](commands/supersession-sweep.md) — sweep tensions filed in the current session for supersession (S.5.5.1d). Offers archive or merge for subsumed tensions. Also offered implicitly by `holacratic-ai-governance` on session-close signals. Useful because in-flow capture can produce overlapping tensions that benefit from a single review pass.
 
 **Session hook**
 
@@ -83,9 +84,14 @@ The first time a skill invokes a `glassfrog_*` tool, Claude runs the OAuth hands
 
 All five skills degrade gracefully if the GlassFrog MCP is not connected. They will operate on constitutional knowledge and context the user provides directly, and will name that limitation clearly (e.g., "I don't have live governance data, so I'm working from what you've shared.").
 
-### Tension capture requires the tension endpoints
+### Tension capture and the underlying API surface
 
-The three new tension commands (`/holacracy:capture-tension`, `/holacracy:process-inbox`, `/holacracy:supersession-sweep`) and the ambient proactive-sensing offer rely on the GlassFrog MCP exposing the tension endpoints: `create_tension`, `list_role_tensions`, `get_tension`, `update_tension`, `delete_tension`. The MCP server hosted at the URL above includes them. If a different / older MCP server is wired up without these endpoints, the `tension-capture` subagent falls back to drafting a plain-text tension formatted for manual entry into the GlassFrog UI, and the inbox/sweep commands degrade with a clear message: *"Your GlassFrog MCP server doesn't expose tension listing — triage in the GlassFrog UI."*
+The three new tension commands rely on `glassfrog_create_tension(role_id, body)`, `glassfrog_list_role_tensions`, `glassfrog_get_tension`, `glassfrog_update_tension`, and `glassfrog_delete_tension`. The MCP server hosted at the URL above includes them. Two practical caveats documented in [`glassfrog-api-constraints.md`](skills/holacratic-ai-governance/references/glassfrog-api-constraints.md):
+
+- **Body-only create.** `glassfrog_create_tension` takes `role_id` and `body` only. The `label` and `meeting_type` fields are not part of the stable signature ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). Front-load the topic in the first sentence of the body since there is no label.
+- **Same-session list-back is unreliable.** Immediately after creation, `glassfrog_list_role_tensions` may not include the new tension (propagation/scoping). The capture subagent treats the `create_tension` response ID as the only reliable same-session confirmation; the supersession sweep uses an internal session-ID cache for the same reason.
+
+If a different / older GlassFrog MCP server is wired up without these endpoints, the `tension-capture` subagent falls back to drafting a plain-text tension formatted for manual entry, and the inbox/sweep commands degrade with a clear message.
 
 ## What's coming
 

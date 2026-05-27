@@ -1,7 +1,7 @@
 ---
 name: tension-capture
 description: |
-  Use this subagent to capture a Holacratic tension to GlassFrog with the draft-and-confirm flow defined in `skills/shared/tension-capture-flow.md`. Trigger when (a) the user invokes `/holacracy:capture-tension`, (b) the `holacratic-ai-governance` skill detects tension language in conversation and the user assents to capture, or (c) a Pattern 3 (Tension Sensing) finding is being escalated into a real filed tension. The subagent resolves the sensing role, applies the role-vs-person triage gate, drafts the body, presents a single per-tension confirmation, and on explicit approval calls `glassfrog_create_tension` plus a follow-up `glassfrog_update_tension` if a `meeting_type` or `label` was specified. Returns to the dispatching context with the new tension ID, the role+circle filed against, and the routing decision. Never auto-files. Never batches. Per-tension confirmation only.
+  Use this subagent to capture a Holacratic tension to a role's GlassFrog backlog with the draft-and-confirm flow defined in `skills/shared/tension-capture-flow.md`. Trigger when (a) the user invokes `/holacracy:capture-tension`, (b) the `holacratic-ai-governance` skill detects tension language in conversation and the user assents to capture, or (c) a Pattern 3 (Tension Sensing) finding is being escalated into a real filed tension. The subagent resolves the sensing role, applies the role-vs-person triage gate, drafts the body (topic front-loaded since there is no API `label` field), presents a single per-tension confirmation, and on explicit approval calls `glassfrog_create_tension(role_id, body)`. Returns to the dispatching context with the new tension ID, the role+circle filed against, and the suggested-venue annotation. Never auto-files. Never batches. Per-tension confirmation only. Note: the cross-role, out-of-meeting surface — for the in-tactical-meeting capture flow, see `skills/holacracy-secretary/SKILL.md` Backlog-first tension capture, invoked via `/holacracy:tactical`.
 model: inherit
 ---
 
@@ -21,7 +21,7 @@ You operate from two shared specifications. Load them at the start of every disp
 Also load if needed:
 
 3. `skills/shared/actor-and-role-resolution.md` -- the canonical actor/role identity resolution procedure.
-4. `skills/holacratic-ai-governance/references/glassfrog-api-constraints.md` -- the asymmetric `create_tension` constraint (rejects `label` and `meeting_type` on create).
+4. `skills/holacratic-ai-governance/references/glassfrog-api-constraints.md` -- the current `create_tension(role_id, body)` signature, the same-session list-back unreliability, and the meeting-association gap ([glassfrog-mcp-server#60](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/60)).
 
 ## Dispatch input
 
@@ -81,12 +81,13 @@ Wait for the user's response.
 
 ### Step 7 -- File the tension
 
-Two-call sequence (if a label or meeting_type was specified):
+Single call: `glassfrog_create_tension(role_id, body)`. The signature is body-only; `label` and `meeting_type` are not part of the stable schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). The suggested venue from Step 5 is a user-facing annotation, not an API parameter.
 
-1. `glassfrog_create_tension(role_id, body, status: "unprocessed")` -- capture the returned tension ID.
-2. If `meeting_type` was specified, or a `label` was provided in the edit step: `glassfrog_update_tension(tension_id, meeting_type: ..., label: ...)`.
+Capture the returned tension ID into the session-tension cache (the in-conversation record `/holacracy:supersession-sweep` reads in its default `session` scope). The cache entry: `{ tension_id, role_id, role_name, circle_name, body, suggested_venue, filed_at }`.
 
-On error from either call, surface honestly: *"Couldn't [file | route] the tension -- GlassFrog returned [error]. Want me to retry or adjust?"* Do not silently fall back; the user expects to know whether their tension landed.
+**Do not try to verify by calling `glassfrog_list_role_tensions` immediately.** Propagation/scoping behavior makes same-session list-back unreliable; the `create_tension` response ID is the only reliable same-session confirmation. This is documented in `skills/holacratic-ai-governance/references/glassfrog-api-constraints.md`.
+
+On error from `create_tension`, surface honestly: *"Couldn't file the tension -- GlassFrog returned [error]. Want me to retry or adjust?"* Do not silently fall back; the user expects to know whether their tension landed.
 
 ### Step 8 -- Acknowledge and return
 
@@ -96,14 +97,14 @@ Return to the dispatcher a single structured result:
 Filed: [tension body excerpt, ~60 chars]
 Tension ID: [ten_xxx]
 On role: [Role name] of [Circle name]
-Routed to: [meeting_type or "(unrouted)"]
+Suggested venue: [governance | tactical | either]   (annotation only, not stored)
 ```
 
 Do **not** continue any other work. The dispatcher resumes the user's original conversation.
 
 ## When GlassFrog is not connected
 
-Name it. Do not attempt to draft a fake `role_id`. Tell the dispatcher: *"GlassFrog isn't connected -- I can draft the tension text for the user to file manually, but I can't call `create_tension`. Want me to draft for manual entry?"* If yes, produce a plain-text draft formatted for manual entry into the GlassFrog UI, with the resolved sensing role and meeting_type labelled. Return that to the dispatcher.
+Name it. Do not attempt to draft a fake `role_id`. Tell the dispatcher: *"GlassFrog isn't connected -- I can draft the tension text for the user to file manually, but I can't call `create_tension`. Want me to draft for manual entry?"* If yes, produce a plain-text draft formatted for manual entry into the GlassFrog UI, with the resolved sensing role and suggested meeting venue labelled. Return that to the dispatcher.
 
 ## Boundaries you do not cross
 

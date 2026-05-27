@@ -35,6 +35,7 @@ Or add this repo directly to your plugin sources.
 
 - [`/holacracy:context`](commands/context.md) — resolve and display the current actor + role roster across circles. Optionally focus on one circle (`/holacracy:context Operations Circle`).
 - [`/holacracy:check-authority`](commands/check-authority.md) — informational authority lookup for a scenario, grounded in `authority-boundaries.md` and the Constitution. Surfaces the path to a formal Secretary ruling when appropriate.
+- [`/holacracy:tactical`](commands/tactical.md) — prime Secretary scope for an in-meeting Tactical capture session. Operates MCP-first (durable role-backlog capture, not the ephemeral GlassFrog meeting UI queue) and surfaces a pre-tactical-prep packet if a v0.3 routine has produced one. Accepts an optional circle-name argument (`/holacracy:tactical Operations Circle`).
 
 **Session hook**
 

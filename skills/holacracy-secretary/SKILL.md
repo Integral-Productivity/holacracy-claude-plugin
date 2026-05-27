@@ -3,7 +3,7 @@ name: holacracy-secretary
 description: >
   AI co-Secretary for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Secretary role in a Holacracy organization, asks for help running or recording a Tactical Meeting or Governance Meeting, needs to schedule a circle meeting, wants to capture meeting outputs, needs help with governance records, asks about constitutional interpretation, or says things like "help me as Secretary," "I need to run tactical," "capture these governance outputs," "schedule our governance meeting," "what does the constitution say about X," or "help me maintain the circle's records." Also trigger for pre-meeting prep (pulling GlassFrog checklist/metrics/projects), post-meeting publishing, action tracking, and when someone mentions they energize the Secretary role.
 status: draft
-version: 1.1.0
+version: 1.2.0
 ---
 # Holacracy Secretary Skill
 
@@ -67,6 +67,21 @@ The Secretary's job during a Tactical Meeting is to run the capture layer while 
    - **Projects**: new projects proposed and who owns them
    - **Tensions noted**: any tensions that need governance but can't be resolved here
 7. **Closing Round** -- Each participant shares a closing reflection. Record who closed.
+
+**Backlog-first tension capture (durability vs. ephemerality):**
+
+GlassFrog stores tensions in two distinct places, and they behave very differently:
+
+- **Meeting-queued tensions** -- entered via the GlassFrog meeting UI's triage panel. These are *ephemeral*: if the meeting times out (and GlassFrog tactical meetings do time out), every tension still sitting in that queue is lost. Meeting-queued tensions are also not queryable via MCP.
+- **Role-backlog tensions** -- created via `glassfrog_create_tension(role_id, body)`. These are *durable*: tied to a role, survive any meeting state, and remain on the role's backlog until processed.
+
+Capture to the role backlog **at the moment a tension is sensed during triage**, not at meeting-close time. Do not lean on the meeting UI's queue as the primary record. The Constitution's intent is that tensions are sensed by roles, not by meetings -- backlog-first capture matches that intent and protects against any meeting timeout.
+
+**Current API constraint (until issue #5 is resolved):** `glassfrog_create_tension` accepts `role_id` and `body` only. The `label` and `meeting_type` fields both return 422 on the live API and must be omitted. Because the `label` field is unavailable, front-load the tension topic in the first sentence of the body so the backlog stays readable -- e.g., body starts with `"Checklist frequency drift on Operations Circle metrics -- ..."` rather than burying the topic mid-paragraph.
+
+**Verification caveat:** `glassfrog_list_role_tensions` may return empty in the same session immediately after creation (propagation delay or scoping behaviour). Use the IDs returned by `glassfrog_create_tension` as the only reliable same-session confirmation -- do not try to list-back to verify.
+
+**Projects and actions follow the same pattern**, with no current constraints: call `glassfrog_create_role_project` and `glassfrog_create_action` at triage time, not at meeting close. (Note: `references/glassfrog-api-constraints.md` in the sibling `holacratic-ai-governance` skill is out of date and still lists tension/project/action creation as unsupported -- it predates the current MCP tool surface. Trust this section over that file until it is updated.)
 
 **Tactical Meeting output template:**
 

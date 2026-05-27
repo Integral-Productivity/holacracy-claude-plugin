@@ -1,5 +1,7 @@
 # Tension Triage Guide for Rep Links
 
+> **Cross-reference.** The role-vs-person Step 1 decision tree and the meeting-type routing logic (governance vs. tactical) are the canonical references for *all* tension capture in this plugin -- not just Rep Link work. They live at [`../../shared/tension-triage.md`](../../shared/tension-triage.md). The Rep Link role layers an additional decision (does the tension cross the circle boundary into the enclosing circle?) on top of those universal gates, which is what this guide covers. If you are evaluating a general tension, start with the shared guide; come here when the question is specifically about whether to escalate.
+
 Extended guidance on the most nuanced Rep Link accountability: determining which tensions cross the circle boundary.
 
 ---

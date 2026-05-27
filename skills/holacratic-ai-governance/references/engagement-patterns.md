@@ -10,8 +10,9 @@ This reference provides step-by-step implementation guidance for each core engag
 2. [Pattern 2: Multi-Perspective Synthesis](#pattern-2-multi-perspective-synthesis)
 3. [Pattern 3: Tension Sensing](#pattern-3-tension-sensing)
 4. [Pattern 4: Governance-Aware Response Calibration](#pattern-4-governance-aware-response-calibration)
-5. [Composite Workflows](#composite-workflows)
-6. [Edge Cases and Failure Modes](#edge-cases-and-failure-modes)
+5. [Pattern 5: Proactive Tension Sensing (in conversation)](#pattern-5-proactive-tension-sensing-in-conversation)
+6. [Composite Workflows](#composite-workflows)
+7. [Edge Cases and Failure Modes](#edge-cases-and-failure-modes)
 
 ---
 
@@ -195,13 +196,89 @@ For each detected tension:
 - **Observation**: [What the data shows]
 - **Suggested tension statement**: [Formatted for a Holacratic meeting, e.g., "I sense that [accountability X] in [Role Y] may overlap with [accountability Z] in [Role W], creating ambiguity about who owns [outcome]. I'd like to propose clarifying this in governance."]
 - **Recommended meeting**: [Governance | Tactical]
+- **Capture?**: [yes / no / skip]
 ```
+
+**Step 5 -- Offer per-finding capture**
+
+For each finding in the report, offer the user the option to convert it into a real filed tension via the `tension-capture` subagent. The subagent runs `skills/shared/tension-capture-flow.md` Steps 2–8: it resolves the sensing role from the actor's role roster, applies the role-vs-person triage gate, drafts the body using the report's suggested tension statement as the seed, suggests `meeting_type` per the report's recommendation, and waits for the user's per-tension confirmation before calling `glassfrog_create_tension`.
+
+The user can:
+
+- **Capture one or more** findings -- the subagent runs once per finding the user picks.
+- **Treat the whole report as text** -- the original v0.2 behavior. Useful when reviewing en masse before any filing.
+- **Skip individual findings** as false positives. Pattern 3 outputs candidate tensions; the user is the final arbiter of which are real.
 
 ### Important Boundaries
 
-- Tension *detection* is appropriate for AI. Tension *processing* -- deciding what to do about a tension -- is a human governance activity. Never present AI-detected tensions as decisions to be made; present them as signals for human attention.
-- Not all detected anomalies are real tensions. Orphaned data may reflect a governance change that the API data hasn't fully propagated. Present findings with appropriate epistemic humility.
+- Tension *detection* is appropriate for AI. Tension *processing* -- deciding what to do about a tension -- is a human governance activity. The capture-via-subagent path does not blur this: filing a tension as `status: "unprocessed"` is still capture, not processing. Processing happens when a human governance or tactical meeting works the tension.
+- Not all detected anomalies are real tensions. Orphaned data may reflect a governance change that the API data hasn't fully propagated. Present findings with appropriate epistemic humility, and never force-capture; the user opts in per finding.
 - The user may want to filter tensions by severity, type, or circle. Support flexible output.
+
+---
+
+## Pattern 5: Proactive Tension Sensing (in conversation)
+
+### Purpose
+
+Listen for tension language during ordinary conversation and offer to capture in flow. Where Pattern 3 mines structured governance data for anomalies, Pattern 5 reads the *user's own words* for the felt experience of a gap.
+
+This is the heart of the plugin's "proactive" stance: tensions are surfaced where they emerge -- in the user's framing of their work -- not held back until a periodic audit fires.
+
+### When to invoke
+
+Continuously, while the `holacratic-ai-governance` skill is loaded and the session is in interactive (non-routine) context. There is no separate command to run Pattern 5; it is an ambient attention pattern.
+
+### Trigger phrases
+
+Watch for the conversational shapes that signal a tension is being lived:
+
+- **Recurrence:** "we keep hitting...", "this happens every time...", "the third time this quarter...", "for the Nth time..."
+- **Gap framing:** "no one owns...", "there's no clear path...", "the accountability doesn't cover...", "the role wasn't designed for..."
+- **Blockage:** "I can't get...", "we're waiting on...", "I need approval but...", "I'm blocked by..."
+- **Friction:** "it's frustrating that...", "this is taking way too long because...", "I'm stuck on...", "the process makes me..."
+- **Structural misfit:** "the way this is set up...", "this doesn't fit anywhere", "I had to invent a workaround because..."
+
+### Procedure
+
+**Step 1 -- Pause briefly.**
+
+When a trigger phrase appears, complete the immediate exchange (don't cut off the user mid-thought), then pause.
+
+**Step 2 -- Offer to capture.**
+
+Use natural language, not a structured prompt. *"That sounds like a tension worth filing -- want me to draft one?"* Or *"Want me to capture that as a tension before we move on?"*
+
+**Step 3 -- If the user assents, dispatch the subagent.**
+
+Dispatch the `tension-capture` subagent with: the conversational excerpt that surfaced the tension, any circle context already known from the session, and a hint about which role the actor seemed to be operating from. The subagent runs Steps 2–8 of `skills/shared/tension-capture-flow.md`.
+
+**Step 4 -- If the user declines or deflects, drop it.**
+
+Decline takes many shapes: "not now", "let me think about it", "let's keep going", or just continuing to answer the original question. In any case, drop the offer cleanly and resume the original work. Do not re-offer the same tension; if it's real, it will surface again.
+
+**Step 5 -- On subagent return, resume the original work.**
+
+The subagent returns a structured result (tension ID, role/circle, meeting type). Surface it as a one-line acknowledgment and return to the original conversation thread.
+
+### Calibration
+
+Pattern 5 is gentle. The user is *working*, not auditing tensions. One offer per detected tension, no nag, no batching. If the user files three tensions in one session, the supersession sweep at session close catches any overlap.
+
+### When to suppress Pattern 5
+
+- The user is in a focused execution mode (e.g., "stop talking and just do X"). Read the room.
+- The conversation is about something other than the user's own work -- e.g., the user is helping someone else, or analyzing a hypothetical. Tensions belong to the lived role-filler; if the user isn't the role-filler, capture is the wrong move.
+- The user has just declined a similar offer in this session. Give the pattern a few turns before re-attempting.
+- **The user is in an active Tactical Meeting** (invoked `/holacracy:tactical`, or the `holacracy-secretary` skill is the loaded skill driving live tactical capture). The Secretary's "Backlog-first tension capture" in `skills/holacracy-secretary/SKILL.md` is the right surface for in-meeting tension capture — Pattern 5 should not interrupt the meeting flow with parallel offers. Pattern 5 owns everything outside the active tactical-meeting context.
+
+### Session-closing offer
+
+When the user signals session closing ("done for now", "that's it for today", "good enough", "wrapping up"), and tensions were filed during the session, offer:
+
+> *"Before we close -- want me to sweep the tensions filed this session for supersession?"*
+
+If yes, run `/holacracy:supersession-sweep` with the default `session` scope. If no, close normally. Silent when no tensions were filed.
 
 ---
 

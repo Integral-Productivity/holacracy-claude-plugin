@@ -31,6 +31,7 @@ This skill requires a connected GlassFrog MCP server. Before engaging any patter
 | **Item Management** | `create_checklist_item`, `create_metric`, `create_project`, `delete_checklist_item`, `delete_metric`, `delete_project` | Create and delete operational items |
 | **People Management** | `create_person`, `delete_person` | Add and remove organization members |
 | **Role Assignment** | `assign_person_to_role`, `unassign_person_from_role` | Assign and unassign people to roles |
+| **Tensions** | `create_tension`, `list_role_tensions`, `get_tension`, `update_tension`, `delete_tension` | Capture (`role_id` + `body` only), read (with same-session list-back unreliability — see [`references/glassfrog-api-constraints.md`](references/glassfrog-api-constraints.md)), archive, mark processed, edit body, and (rarely) delete tensions. Used only via the draft-and-confirm flow in `skills/shared/tension-capture-flow.md`. |
 | **Reference** | `list_frequencies` | Discover available cadences |
 
 If GlassFrog tools are not connected, inform the user and offer to help them set up the MCP server connection. Do not attempt to operate governance-aware patterns without live data.
@@ -38,7 +39,7 @@ If GlassFrog tools are not connected, inform the user and offer to help them set
 ### Critical API Constraints
 
 - **Read-only governance**: Roles, circles, accountabilities, domains, and policies cannot be created, modified, or deleted via API. Governance changes happen only through the human governance meeting process.
-- **No tension filing**: The GlassFrog API does not support creating tensions. Tensions must be processed through human governance and tactical meetings.
+- **Tension *capture* is supported; tension *processing* is not.** The API allows creating, reading, archiving, and editing tensions on a role's backlog, but the plugin operates these only via the draft-and-confirm contract in `skills/shared/tension-capture-flow.md`. AI may draft and -- on explicit per-tension human confirmation -- file. Marking a tension `processed` is reserved for human governance and tactical meetings (with `/holacracy:process-inbox` available for meeting-day catch-up under explicit direction). The `create_tension` signature is `role_id` + `body` only — `label` and `meeting_type` are not part of the stable schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). The remaining genuine API gap is meeting-association ([glassfrog-mcp-server#60](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/60)); filed tensions go to a role's durable backlog, not to a specific meeting record.
 - **No checklist completion**: The API cannot mark checklist items as done/not-done. That happens in tactical meetings via the GlassFrog UI.
 - **No metric reporting**: The API cannot record metric values reported in tactical meetings. Only the metric definition (description, frequency) can be updated.
 - **Custom frequencies may be invisible**: `list_frequencies` may not return all configured frequencies. Custom frequencies configured in the GlassFrog admin UI (e.g., "Daily") will not appear until assigned to at least one item. If a user reports that a frequency exists but `list_frequencies` does not show it, trust the user and use the value directly in update or create calls.
@@ -133,14 +134,52 @@ Load multiple role definitions simultaneously and reason across all perspectives
 
 ### Pattern 3: Tension Sensing
 
-Cross-reference governance data to identify potential tensions -- even without the ability to file them via API. The AI becomes a tension *sensor*, not a tension *processor*.
+Cross-reference governance data to identify potential tensions. The AI becomes a tension *sensor* (always) and, when the user confirms, a tension *capture assistant* (the draft-and-confirm contract). The AI is never a tension *processor* -- processing happens in human meetings.
 
 **Procedure:**
-1. Fetch checklist items, metrics, and projects for a circle (or all circles)
-2. Scan for: orphaned role assignments (items pointing to nonexistent roles), null or missing frequencies, metrics without recent signal, projects with stale status, accountability overlaps between sister roles
-3. Present findings as a structured tension report the human can bring to governance or tactical meetings
+1. Fetch checklist items, metrics, and projects for a circle (or all circles).
+2. Scan for: orphaned role assignments (items pointing to nonexistent roles), null or missing frequencies, metrics without recent signal, projects with stale status, accountability overlaps between sister roles.
+3. Present findings as a structured tension report and offer per-tension capture via the `tension-capture` subagent. The user can:
+   - Capture one or more into GlassFrog (subagent runs `skills/shared/tension-capture-flow.md` Steps 2–8).
+   - Treat the report as text-only and act on it manually.
+   - Skip individual findings that are false positives.
 
-**Output format**: For each detected tension, provide: the governance element involved, what appears misaligned, which role or circle is affected, and a suggested tension statement formatted for a Holacratic meeting.
+**Output format**: For each detected tension, provide: the governance element involved, what appears misaligned, which role or circle is affected, and a suggested tension statement formatted for a Holacratic meeting. Plus an inline `[capture]` affordance for converting the candidate into a real filed tension.
+
+### Pattern 5: Proactive Tension Sensing (in conversation)
+
+In addition to data-driven tension detection (Pattern 3), Claude listens for tension language during ordinary conversation and offers to capture in flow. This is the heart of being a "proactive" tension-sensing partner.
+
+**Scope note.** Pattern 5 is the cross-role, out-of-meeting surface. When the user is in an active Tactical Meeting (typically signalled by having invoked `/holacracy:tactical` or by the `holacracy-secretary` skill being the loaded skill), the Secretary's "Backlog-first tension capture" in `skills/holacracy-secretary/SKILL.md` is the right surface — it has its own meeting-grounded consent contract. Pattern 5 covers everything outside that context: code work, calendar review, email triage, planning, the spaces between meetings.
+
+**Triggers -- conversation patterns that suggest a tension is being felt:**
+
+- *Recurrence:* "we keep hitting...", "this happens every time...", "the third time this quarter..."
+- *Gap framing:* "no one owns...", "there's no clear path...", "the accountability doesn't cover..."
+- *Blockage:* "I can't get...", "we're waiting on...", "I need approval but..."
+- *Friction:* "it's frustrating that...", "this is taking way too long because...", "I'm stuck on..."
+- *Structural misfit:* "the way this is set up...", "the role wasn't designed for...", "this doesn't fit anywhere"
+
+When you observe these patterns:
+
+1. **Pause** the current work briefly.
+2. **Offer to capture:** *"That sounds like a tension worth filing -- want me to draft one?"*
+3. **If the user assents**, dispatch the `tension-capture` subagent. It will resolve sensing role, apply the role-vs-person triage gate, draft, confirm, and file. Then it returns; you resume the original work.
+4. **If the user deflects** ("not now", "let me think about it", or just answers the original question), drop the offer and continue. Do not nag. The pattern will re-emerge if it's real.
+
+**What this is NOT:**
+
+- It is not interrogation. One offer per detected tension. If declined, move on.
+- It is not auto-file. The subagent's confirmation step is mandatory.
+- It is not for person tensions. The triage gate in `skills/shared/tension-triage.md` Step 1 refuses to draft for person tensions and surfaces the IDR route instead.
+
+**Session closing -- offer the supersession sweep.**
+
+When the user signals session closing ("done for now", "that's it for today", "wrapping up", "good enough"), and at least one tension was filed during this session, offer:
+
+> *"Before we close -- want me to sweep the tensions filed this session for supersession?"*
+
+If yes, run `/holacracy:supersession-sweep` with default scope. If no, close normally. Silent when no tensions were filed.
 
 ### Pattern 4: Governance-Aware Response Calibration
 
@@ -216,7 +255,9 @@ Load these based on the depth required:
 | File | When to Load |
 |---|---|
 | `../shared/actor-and-role-resolution.md` | The actor-and-role-context resolution procedure (full spec): how to identify the acting person/agent, load the role roster, resolve to a single role + circle, announce the resolution, and re-validate on pivots. Foundational -- every other pattern in this skill assumes resolved context. |
-| `references/engagement-patterns.md` | Detailed implementation guidance for all four core patterns, including step-by-step tool call sequences, edge cases, and worked examples |
+| `../shared/tension-triage.md` | Canonical role-vs-person triage gate, meeting-type routing (governance vs tactical), supersession check, and role-attribution policy. Loaded by Pattern 3, Pattern 5, and the `tension-capture` subagent. |
+| `../shared/tension-capture-flow.md` | The canonical draft-and-confirm capture flow (Steps 1–8) used by the `tension-capture` subagent and by all `/holacracy:*` tension commands. |
+| `references/engagement-patterns.md` | Detailed implementation guidance for all five core patterns (including Pattern 5: Proactive Tension Sensing), step-by-step tool call sequences, edge cases, and worked examples |
 | `references/governance-rooting.md` | Step-by-step procedure for determining which role and circle should own a project: accountability mapping, strategy alignment checks, scope expansion tension analysis. Load when the user asks where a project belongs, which role should own a new initiative, or whether a project's current governance placement is correct. |
 | `references/developmental-lens.md` | Full theoretical grounding for the developmental perspective layer, including connections to Cook-Greuter's EDT/LMF, Wilber's Integral framework, and implications for AI-organization interaction |
 | `references/glassfrog-api-constraints.md` | Comprehensive documentation of GlassFrog API capabilities, known limitations, workarounds, and the rationale for human-only governance processes |

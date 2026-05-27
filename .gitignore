@@ -6,3 +6,6 @@ node_modules/
 !.env.example
 .vscode/
 .idea/
+
+# Compound Engineering local config (per-machine, not committed)
+.compound-engineering/*.local.yaml

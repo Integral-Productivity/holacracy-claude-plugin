@@ -52,6 +52,15 @@ A standard GlassFrog MCP server exposes tools across these categories:
 | `create_metric` | description, frequency, circle_id, role_id | New metric tied to a role in a circle |
 | `create_project` | description, circle_id, role_id | New project tied to a role in a circle |
 
+### Tension, Role Project, and Action Creation (3 tools)
+| Tool | Input | Creates |
+|---|---|---|
+| `glassfrog_create_tension` | role_id, body | New tension on a role's backlog (durable; survives meeting timeouts) |
+| `glassfrog_create_role_project` | role_id, ... | New project tied to a role (parallel to `create_project` but role-scoped) |
+| `glassfrog_create_action` | ... | New next-action |
+
+See **Write Capabilities → Tensions, Role Projects, and Actions** below for current call shapes and constraints.
+
 ### Item Deletion Operations (3 tools)
 | Tool | Input | Deletes |
 |---|---|---|
@@ -102,7 +111,7 @@ A standard GlassFrog MCP server exposes tools across these categories:
 
 - **Policies**: GlassFrog policies are not exposed through the standard API. This is a significant gap -- policies constrain how roles operate, and without them, the AI's governance understanding is incomplete. When relevant, ask the user for policy context directly.
 - **Meeting history**: Past governance and tactical meeting records are not available via API.
-- **Tension history**: Filed tensions are not accessible.
+- **Tension history (reliably)**: `glassfrog_list_role_tensions` exists, but in live use it has shown propagation or scoping behavior that makes same-session reads unreliable -- a tension just created via `glassfrog_create_tension` may not be returned by an immediate list-back. Treat the creation response ID as the only reliable same-session confirmation. Meeting-queued tensions (entered via the GlassFrog meeting UI's triage panel) are not exposed via MCP at all.
 - **Checklist completion records**: Whether a checklist item was marked done/not-done in a particular meeting.
 - **Metric reported values**: The actual numbers reported for metrics. Only the metric definition (what to track, how often) is available.
 - **Governance change history**: When a role was created or modified, by whom, or what changed.
@@ -123,6 +132,15 @@ A standard GlassFrog MCP server exposes tools across these categories:
 **People**: Can create new organization members (triggers a welcome email with password setup), update name/email/external ID, and delete members permanently.
 
 **Role assignments**: Can assign a person to a role and unassign a person from a role. For Lead Link roles, assigning a new person replaces the current filler rather than adding additively.
+
+**Tensions, role projects, and actions** (added in 2026; the rest of this file historically claimed these were impossible):
+
+- `glassfrog_create_tension(role_id, body)` -- creates a tension on a role's backlog. This is the *durable* tension location (vs. the ephemeral GlassFrog meeting-UI triage queue, which is lost on meeting timeout). The Secretary co-pilot uses this for backlog-first capture during tactical meetings.
+  - **Current call shape:** `role_id` and `body` only. The schema previously advertised `label` and `meeting_type`, but those were dropped from the MCP tool because the underlying GlassFrog API rejects them -- see [glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58) (resolved). This is the stable signature, not a workaround.
+  - **Front-load the topic in the first sentence of the body.** Because there is no `label` field, the body is the only place a reader can scan to understand what the tension is about. Example: start with `"Checklist frequency drift on Operations Circle metrics -- ..."` rather than burying the topic mid-paragraph.
+  - **Same-session verification caveat:** `glassfrog_list_role_tensions` may return empty immediately after creation. Use the ID returned by `glassfrog_create_tension` as the only reliable same-session confirmation -- do not try to list-back to verify.
+- `glassfrog_create_role_project(role_id, ...)` -- creates a project tied to a role. No current constraints; the Secretary uses this at triage time during tactical meetings to make project commitments durable immediately rather than batching at meeting close.
+- `glassfrog_create_action(...)` -- creates a next-action. No current constraints; same triage-time pattern as role projects.
 
 ### Important Distinctions
 
@@ -146,10 +164,10 @@ These are actions that **cannot be performed via the GlassFrog API under any cir
 - Moving roles between circles
 - Converting a role to a circle or vice versa
 
-### Tension Management (Cannot Be Done via API)
-- Filing a tension
-- Processing or resolving a tension
-- Reading existing tensions
+### Meeting-Associated Tensions (Cannot Be Done via API)
+- Associating a tension with an active GlassFrog meeting record (Tactical or Governance). Tensions can be filed on a *role's backlog* via `glassfrog_create_tension` (see Write Capabilities), but there is no API path to link that tension to the meeting in which it was sensed. Tracked in [glassfrog-mcp-server#60](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/60).
+- Processing or resolving a tension through governance or tactical flow (only backlog creation is supported).
+- Tensions in the GlassFrog meeting-UI triage panel are ephemeral and lost on meeting timeout -- they are not the durable record. Use the role backlog.
 
 ### Meeting Operations (Cannot Be Done via API)
 - Starting, running, or recording meetings
@@ -175,19 +193,21 @@ Allowing API-driven governance changes would:
 
 The read-only constraint preserves governance as a human developmental practice. The AI's role is to support that practice -- by surfacing relevant context, sensing potential tensions, and drafting proposals -- not to replace it.
 
-### Why Tension Filing is Not Supported
+### Why Tension Capture is Human-Sensed, AI-Mediated
 
-Tensions in Holacracy are *lived experiences* of a gap between what is and what could be. They are inherently personal and require the tension-holder to process them through governance or tactical meetings. An API-filed tension would lack the embodied context that makes the tension real and processable.
+Tensions in Holacracy are *lived experiences* of a gap between what is and what could be. They are inherently personal -- the role-filler who senses one is the one who must process it through governance or tactical meetings.
 
-The AI can *detect* potential tensions in governance data (Pattern 3), but the decision to file and process them must remain with the human who feels them.
+The API now supports filing tensions on a role's backlog (via `glassfrog_create_tension`), which the Secretary co-pilot uses to capture tensions during live meeting triage. This is appropriate because the AI is acting *on behalf of* a human who has just sensed the tension out loud -- the AI is the scribe, not the source. The tension still originates from a human's lived experience.
+
+What the AI should *not* do: autonomously file tensions it has "detected" in governance data without a human in the loop. Pattern-detection outputs (Pattern 3) should be surfaced as observations the user can confirm before filing, not as direct writes. The line is between *capturing* a tension a human just named (fine) and *manufacturing* a tension from pattern analysis (not fine).
 
 ### The Healthy Boundary
 
 These constraints create a clear division of labor:
-- **AI**: Reads structure, senses patterns, holds perspectives, produces work artifacts
-- **Humans**: Evolve structure, process tensions, make governance decisions, embody roles
+- **AI**: Reads structure, senses patterns, holds perspectives, produces work artifacts, captures tensions on a human's behalf during meetings
+- **Humans**: Evolve structure, sense tensions, make governance decisions, embody roles
 
-This division supports both operational efficiency (AI handles data-intensive pattern detection) and developmental integrity (humans retain authority over meaning-making and structural evolution).
+This division supports both operational efficiency (AI handles data-intensive pattern detection and meeting capture) and developmental integrity (humans retain authority over meaning-making and structural evolution).
 
 ---
 
@@ -201,9 +221,9 @@ For capabilities the API does not support, these proxies can partially close the
 - The user brings it to a governance meeting manually
 
 ### For tension filing
-- Format detected tensions as tension statements
-- Organize them by circle and meeting type (governance vs. tactical)
-- Present a "tension report" the user can reference during meetings
+Direct filing to a role's backlog is now supported via `glassfrog_create_tension(role_id, body)` -- see Write Capabilities. The remaining workarounds apply to two cases:
+- **AI-detected pattern tensions**: do not auto-file. Surface as observations, organized by circle and role; let the user confirm before any `glassfrog_create_tension` call.
+- **Meeting-associated tensions** (linking a tension to a specific meeting record): not supported via API. Format and present a "tension report" the user can reference during the meeting itself.
 
 ### For checklist completion tracking
 - If the user verbally reports completion status, record it in the conversation context

@@ -22,7 +22,7 @@ Open this session in **in-meeting Tactical capture** mode as Secretary of a spec
 
 This command operates **MCP-first**, not GlassFrog-UI-first. Tensions sensed during triage are captured to the role backlog at the moment they surface -- via `glassfrog_create_tension(role_id, body)` -- not queued in the GlassFrog meeting triage panel.
 
-Why: meeting-UI tension queues are ephemeral. If the meeting times out, queued items are lost. The role backlog is durable. See the **Backlog-first tension capture** subsection in `skills/holacracy-secretary/SKILL.md` for the full pattern, including the current `label`/`meeting_type` 422 workaround (track via issue #5).
+Why: meeting-UI tension queues are ephemeral. If the meeting times out, queued items are lost. The role backlog is durable. See the **Backlog-first tension capture** subsection in `skills/holacracy-secretary/SKILL.md` for the full pattern. The current `glassfrog_create_tension(role_id, body)` signature is the stable shape -- `label` and `meeting_type` were dropped from the schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58), resolved).
 
 ## Behaviour
 

@@ -107,7 +107,19 @@ jobs:
             echo "::error::Failed to read PEM from 1P (missing vault item op://ip-automation/ip-releaser/private_key, expired OP_SERVICE_ACCOUNT_TOKEN, or 1P outage). See Integral-Productivity/ip-bots/docs/runbooks/migrate-to-1password.md for vault provisioning."
             exit 1
           fi
-          echo "::add-mask::$PEM"
+          # GitHub's `::add-mask::` directive is line-oriented — a single
+          # `::add-mask::$PEM` on a multi-line value only registers the
+          # first line as masked. Subsequent PEM body lines hit the log
+          # unmasked, both from this step and from the downstream
+          # `actions/create-github-app-token@v3` step's `with:` block
+          # logging. Mask each non-empty line individually so every line
+          # of the PEM matches a registered mask substring. See
+          # devops-excellence#133 for the fix in the upstream composite
+          # actions; this is the inlined backport.
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            echo "::add-mask::$line"
+          done <<< "$PEM"
           {
             echo "private-key<<EOF_PEM"
             echo "$PEM"

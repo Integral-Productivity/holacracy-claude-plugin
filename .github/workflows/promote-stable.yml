@@ -1,7 +1,7 @@
 name: Promote to stable
 
-# Advances the `stable` branch to a tagged release commit.
-# The Integral-Productivity marketplace listing
+# Advances the `stable` branch to a tagged release commit. The
+# Integral-Productivity marketplace listing
 # (https://github.com/Integral-Productivity/marketplace) tracks the
 # `stable` ref for this plugin. Tagging vX.Y.Z is what publishes a
 # release to marketplace users.
@@ -10,13 +10,74 @@ name: Promote to stable
 # (e.g. `v0.2.0-rc.1`) are intentionally NOT matched and will not advance
 # `stable`.
 #
-# Guarantees:
+# Why this is App-mediated
+# ------------------------
+#
+# `refs/heads/stable` is protected by a repo-level ruleset that allows
+# pushes only from the `ip-releaser` GitHub App (Integral-Productivity/
+# ip-bots#50/#51). The protection exists so that no human can advance
+# `stable` from a laptop — every release goes through this tag-driven
+# workflow, with the version-match assertion and fast-forward-only push
+# as load-bearing safety rails (see ADR-0002 and
+# holacracy-claude-plugin#21).
+#
+# The default `GITHUB_TOKEN` is not a valid bypass actor on repo-level
+# rulesets (GitHub Actions is built-in, not an org-installed App). So
+# this workflow mints an installation token from `ip-releaser` and pushes
+# `stable` as that App identity. The App's `contents:write` permission
+# is sized for exactly this use case (see ip-releaser manifest's
+# _permissions_rationale).
+#
+# Why this isn't a `uses:` call to devops-excellence's reusable
+# -------------------------------------------------------------
+#
+# devops-excellence/.github/workflows/reusable-release-please.yml
+# demonstrates the canonical credentials block this workflow inlines —
+# but GitHub Actions blocks PUBLIC repos (this one) from calling PRIVATE
+# reusable workflows (devops-excellence is private). The orchestrator
+# startup-rejects such workflows before any job runs (0s duration, no
+# logs). See
+# https://docs.github.com/en/actions/sharing-automations/reusing-workflows#access-to-reusable-workflows
+# and Integral-Productivity/devops-excellence#126 (tracking issue for a
+# public-host repo that would restore the DRY consumption pattern).
+#
+# Until #126 lands, the credentials steps below are inlined from the
+# reusable's body. The pattern is the same one the inlined
+# `release-please.yml` in this repo uses; keep them in sync.
+#
+# Credentials surface
+# -------------------
+#
+#   vars.IP_RELEASER_APP_ID          numeric, public identifier
+#                                    (org var, visibility: all)
+#   vars.IP_RELEASER_APP_CLIENT_ID   alphanumeric Iv23li..., consumed by
+#                                    actions/create-github-app-token@v3
+#                                    (org var, visibility: all)
+#   secrets.OP_SERVICE_ACCOUNT_TOKEN 1P service account token, read-only
+#                                    on the ip-automation vault (org
+#                                    secret)
+#
+# Hard-failure contract
+# ---------------------
+#
+# Unlike `release-please.yml` (which runs on every push to main and
+# soft-fails to avoid reddening routine CI), this workflow fires only on
+# a real release tag. Every fire IS a release attempt. If credentials
+# are missing or token-mint fails, the run goes red — a silently skipped
+# release where `stable` never advances would leave marketplace users on
+# the prior version with no signal that something broke.
+#
+# Guarantees
+# ----------
+#
 #   - The tag SHA's `.claude-plugin/plugin.json` `version` must match the
 #     tag (minus the `v` prefix). Mismatches fail the run, leaving
 #     `stable` untouched.
 #   - The push is a fast-forward only. If the tagged commit is not a
 #     descendant of the current `stable`, the push fails — `stable` is
-#     never rewound or force-overwritten.
+#     never rewound or force-overwritten. Belt-and-braces with Ruleset B
+#     on the repo, which also refuses force-pushes at the platform layer
+#     regardless of actor.
 
 on:
   push:
@@ -30,13 +91,65 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout tagged commit
+      - name: Verify org variable identifiers are configured
+        env:
+          APP_ID: ${{ vars.IP_RELEASER_APP_ID }}
+          CLIENT_ID: ${{ vars.IP_RELEASER_APP_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ -z "${APP_ID:-}" ]; then
+            echo "::error::vars.IP_RELEASER_APP_ID is not set on this repo or the org. Fix: gh variable set IP_RELEASER_APP_ID --org Integral-Productivity --visibility all --body '<numeric-app-id>'"
+            missing=1
+          fi
+          if [ -z "${CLIENT_ID:-}" ]; then
+            echo "::error::vars.IP_RELEASER_APP_CLIENT_ID is not set on this repo or the org. Fix: gh variable set IP_RELEASER_APP_CLIENT_ID --org Integral-Productivity --visibility all --body '<Iv23li...>'"
+            missing=1
+          fi
+          if [ "$missing" = "1" ]; then
+            echo "::error::Cannot mint ip-releaser App token without identifiers. Refusing to promote stable."
+            exit 1
+          fi
+
+      - name: Install 1Password CLI
+        uses: 1password/install-cli-action@8d006a0d0a4fd505af7f7ce589e7f768385ff5e4 # v3.0.0
+
+      - name: Read ip-releaser App PEM from 1Password
+        id: pem
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          set -euo pipefail
+          PEM=$(op read "op://ip-automation/ip-releaser/private_key" 2>/dev/null || true)
+          if [ -z "$PEM" ]; then
+            echo "::error::Failed to read PEM from 1P (missing vault item op://ip-automation/ip-releaser/private_key, expired OP_SERVICE_ACCOUNT_TOKEN, or 1P outage). See Integral-Productivity/ip-bots/docs/runbooks/migrate-to-1password.md for vault provisioning."
+            exit 1
+          fi
+          echo "::add-mask::$PEM"
+          {
+            echo "private-key<<EOF_PEM"
+            echo "$PEM"
+            echo "EOF_PEM"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.IP_RELEASER_APP_CLIENT_ID }}
+          private-key: ${{ steps.pem.outputs.private-key }}
+
+      - name: Checkout tagged commit (as ip-releaser)
         uses: actions/checkout@v4
         with:
           # Fetch full history so the fast-forward push can resolve the
           # relationship between the tagged commit and any existing
           # `stable` branch.
           fetch-depth: 0
+          # Push to refs/heads/stable below must authenticate as
+          # ip-releaser, not the default GITHUB_TOKEN, to bypass the
+          # repo's `stable` ruleset (see header comment).
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Verify plugin.json version matches tag
         run: |

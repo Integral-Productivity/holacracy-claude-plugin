@@ -75,9 +75,11 @@ name: Promote to stable
 #     `stable` untouched.
 #   - The push is a fast-forward only. If the tagged commit is not a
 #     descendant of the current `stable`, the push fails — `stable` is
-#     never rewound or force-overwritten. Belt-and-braces with Ruleset B
-#     on the repo, which also refuses force-pushes at the platform layer
-#     regardless of actor.
+#     never rewound or force-overwritten. Belt-and-braces with the
+#     `stable: no force push` repo ruleset, which refuses force-pushes at
+#     the platform layer for any actor (including `ip-releaser`, since
+#     that ruleset has no bypass actors) — see
+#     holacracy-claude-plugin#21.
 
 on:
   push:

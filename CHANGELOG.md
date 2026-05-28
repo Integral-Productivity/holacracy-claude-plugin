@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.3.1...v0.3.2) (2026-05-28)
+
+
+### Bug Fixes
+
+* **docs:** name the no-force-push ruleset in promote-stable.yml comment ([#26](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/26)) ([c6bdca6](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/c6bdca65d29d6c1576d5e65af41f515450a0b40d)), closes [#21](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/21)
+
 ## [0.3.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.3.0...v0.3.1) (2026-05-28)
 
 

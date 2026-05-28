@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.3.2...v0.3.3) (2026-05-28)
+
+
+### Bug Fixes
+
+* **security:** mask PEM line-by-line in inlined workflow copies ([#28](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/28)) ([deddfac](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/deddface310b9edffa11eed65b85f7621fd19f20)), closes [#21](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/21)
+
 ## [0.3.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.3.1...v0.3.2) (2026-05-28)
 
 

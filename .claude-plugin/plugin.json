@@ -1,6 +1,6 @@
 {
   "name": "holacracy",
-  "description": "Engage with Holacracy from inside Claude — actor- and role-aware AI co-pilots for the four Core Roles (Facilitator, Secretary, Lead Link, Rep Link), a governance-aware operating frame, proactive cross-role tension capture (subagent + slash commands for capture, inbox review, and end-of-session supersession sweep) built on the durable role-backlog filing primitive, and a conditional SessionStart briefing for scheduled role routines. Pairs with the GlassFrog MCP connector.",
+  "description": "Engage with Holacracy from inside Claude \u2014 actor- and role-aware AI co-pilots for the four Core Roles (Facilitator, Secretary, Lead Link, Rep Link), a governance-aware operating frame, proactive cross-role tension capture (subagent + slash commands for capture, inbox review, and end-of-session supersession sweep) built on the durable role-backlog filing primitive, and a conditional SessionStart briefing for scheduled role routines. Pairs with the GlassFrog MCP connector.",
   "version": "0.3.3",
   "author": {
     "name": "Kraig Parkinson",
@@ -19,5 +19,6 @@
     "policy",
     "tension-capture",
     "tension-inbox"
-  ]
+  ],
+  "repository": {}
 }

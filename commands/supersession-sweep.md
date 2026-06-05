@@ -1,6 +1,6 @@
 ---
 description: Sweep recent or session-filed tensions for supersession (S.5.5.1d). For each pair where one tension subsumes another, offer to archive the subsumed one or merge specifics into the surviving body.
-argument-hint: [scope: "session" | "recent" | circle name, optional; default "session"]
+argument-hint: ['scope: "session" | "recent" | circle name, optional; default "session"']
 ---
 
 # /holacracy:supersession-sweep

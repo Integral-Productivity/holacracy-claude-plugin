@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.3.3...v0.4.0) (2026-06-08)
+
+
+### Features
+
+* add /holacracy:governance command ([#32](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/32)) ([fec406a](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/fec406a630d4f58bb7793e1b510f081f0f718bba)), closes [#7](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/7)
+
 ## [0.3.3](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.3.2...v0.3.3) (2026-05-28)
 
 

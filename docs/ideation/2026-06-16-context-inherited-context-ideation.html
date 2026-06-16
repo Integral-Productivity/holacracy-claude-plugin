@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: Inherited context in /holacracy:context</title>
+<style>
+  :root{
+    --bg:#fbfaf7; --surface:#ffffff; --ink:#1c1a17; --muted:#5f5a52;
+    --line:#e6e1d8; --accent:#7a5b2e; --accent-soft:#f3ecde; --accent-text:#6a4d24;
+    --info-soft:#e7eef4; --info-text:#33546b;
+    --warn-soft:#f6ead9; --warn-text:#8a5a1d;
+    --good-soft:#e6efe4; --good-text:#3f6238;
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#17150f; --surface:#201d16; --ink:#ece7dc; --muted:#a39c8d;
+      --line:#332e24; --accent:#d8b275; --accent-soft:#2c2618; --accent-text:#e3c187;
+      --info-soft:#1d2730; --info-text:#9cc0db;
+      --warn-soft:#2e2415; --warn-text:#e0b072;
+      --good-soft:#1d2a1c; --good-text:#9fc596;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.6 ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px; margin-inline:auto; padding:48px 22px 80px}
+  header.doc{border-bottom:2px solid var(--line); padding-bottom:20px; margin-bottom:8px}
+  .eyebrow{font:600 12px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-text); margin-bottom:10px}
+  h1{font-size:30px; line-height:1.18; margin:.1em 0 .5em; font-weight:700}
+  h2{font-size:21px; margin:2.4em 0 .7em; padding-top:.3em; border-top:1px solid var(--line); font-weight:700}
+  h2:first-of-type{border-top:none}
+  h3{font-size:17px; margin:0 0 .2em; font-weight:700}
+  p{margin:.5em 0; max-width:72ch}
+  .meta{display:flex; flex-wrap:wrap; gap:8px; font:500 13px/1 ui-sans-serif,system-ui,sans-serif}
+  .meta .pill{background:var(--accent-soft); color:var(--accent-text); border:1px solid var(--line); border-radius:999px; padding:6px 11px}
+  .lead{color:var(--muted); font-size:16.5px}
+  code{font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--accent-soft); color:var(--accent-text); padding:1px 5px; border-radius:5px}
+  a{color:var(--accent-text)}
+  section{margin-top:6px}
+  .grounding{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px}
+  .grounding ul{margin:.4em 0; padding-left:1.2em}
+  .grounding li{margin:.3em 0; max-width:74ch}
+  .axes{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); margin-top:10px}
+  .axis{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px}
+  .axis .k{font:700 12px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.06em; color:var(--accent-text); text-transform:uppercase}
+  .axis p{margin:.35em 0 0; font-size:14px; color:var(--muted); max-width:none}
+  .jump{margin:14px 0 6px; padding:0; list-style:none; display:flex; flex-direction:column; gap:4px; font:500 14px/1.45 ui-sans-serif,system-ui,sans-serif}
+  .jump a{text-decoration:none}
+  .jump .rank{display:inline-block; min-width:1.4em; color:var(--muted)}
+  article.idea{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:20px 22px; margin:16px 0}
+  .idea-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+  .idchip{font:700 12px/1 ui-sans-serif,system-ui,sans-serif; background:var(--accent); color:#fff; border-radius:6px; padding:5px 8px}
+  @media (prefers-color-scheme: dark){ .idchip{color:#17150f} }
+  .chips{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px; font:600 12px/1 ui-sans-serif,system-ui,sans-serif}
+  .chip{border:1px solid var(--line); border-radius:999px; padding:5px 10px}
+  .chip.axis-c{background:var(--accent-soft); color:var(--accent-text)}
+  .chip.conf{background:var(--info-soft); color:var(--info-text)}
+  .chip.cx{background:var(--warn-soft); color:var(--warn-text)}
+  .idea dl{display:grid; grid-template-columns:max-content 1fr; gap:4px 14px; margin:14px 0 0; font-size:15px}
+  .idea dt{font:700 11.5px/1.5 ui-sans-serif,system-ui,sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding-top:3px}
+  .idea dd{margin:0; max-width:70ch}
+  .basis{font-size:14.5px}
+  .basis .tag{font:700 12px/1 ui-monospace,monospace; color:var(--accent-text)}
+  .callout{background:var(--info-soft); color:var(--info-text); border:1px solid var(--line); border-radius:var(--radius); padding:12px 16px; margin:16px 0; font-size:14.5px}
+  .callout .lbl{font:700 11.5px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.08em; text-transform:uppercase; display:block; margin-bottom:5px}
+  figure{margin:18px 0 6px}
+  figcaption{font-size:13px; color:var(--muted); margin-top:6px; font-family:ui-sans-serif,system-ui,sans-serif}
+  table{border-collapse:collapse; width:100%; margin:10px 0; font-size:14.5px}
+  th,td{border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top}
+  th{background:var(--accent-soft); color:var(--accent-text); font:700 12.5px/1.3 ui-sans-serif,system-ui,sans-serif}
+  footer.composition-signal{margin-top:48px; padding-top:16px; border-top:1px solid var(--line); font:13px/1.5 ui-sans-serif,system-ui,sans-serif; color:var(--muted)}
+  svg{max-width:100%; height:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="eyebrow">Compound Engineering · Ideation</div>
+  <h1>Should <code>/holacracy:context</code> load inherited context from enclosing circles?</h1>
+  <p class="lead">Six ranked directions for closing the gap between the command's positional resolution today and the inherited Holacratic context (purpose, strategy, policies, domains) it never loads.</p>
+  <div class="meta">
+    <span class="pill">2026-06-16</span>
+    <span class="pill">topic: context-inherited-context</span>
+    <span class="pill">mode: repo-grounded</span>
+    <span class="pill">focus: inherited-context loading in /holacracy:context</span>
+  </div>
+</header>
+
+<section>
+  <h2>Grounding Context</h2>
+  <div class="grounding">
+    <p style="margin-top:0"><strong>What the command does today.</strong> <code>/holacracy:context</code> resolves <em>positional</em> context only: actor identity (<code>glassfrog_get_me</code>), a flat role roster grouped by immediate circle (<code>glassfrog_list_my_roles</code>), and registered scheduled routines. It does no hierarchy traversal and never loads purpose, strategy, policies, or domains. The full resolution procedure is delegated to <code>skills/shared/actor-and-role-resolution.md</code> at an explicit "at most two tool calls" budget.</p>
+    <ul>
+      <li><strong>Recorded "keep it cheap" stance.</strong> <a href="https://github.com/Integral-Productivity/holacracy-claude-plugin/blob/main/docs/adr/0003-glassfrog-tension-api-adoption.md">ADR-0003</a> deliberately defers surfacing more in the command "to keep <code>/holacracy:context</code> cheap," filing the expansion as <a href="https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/17">issue #17</a> (OPEN). Any default full-hierarchy load runs against this.</li>
+      <li><strong>Feasibility contradiction (unresolved).</strong> The repo's <code>glassfrog-api-constraints.md</code> claims policies aren't readable via the API and there's no dedicated hierarchy endpoint. But the live GlassFrog MCP server connected to this session exposes <code>glassfrog_get_role_context</code>, <code>glassfrog_list_role_policies</code>, <code>glassfrog_get_org_tree</code>, and <code>glassfrog_get_role_tree</code> — and GlassFrog API v5 (May 2026) shipped a single-call <em>role context</em> bundle (identity, purpose, accountabilities, domains, policies, and "surrounding governance"), explicitly for AI agents. The repo's constraints doc appears stale relative to the live tool surface.</li>
+      <li><strong>Existing load logic lives in skills.</strong> <code>holacratic-ai-governance</code> Pattern 1 already specifies "fetch the parent circle: strategy, policies, sister roles." Lead Link and Rep Link skills each load enclosing-circle content via <code>glassfrog_get_circle</code> independently. Convention: commands resolve/prime cheaply; skills load deep governance content.</li>
+      <li><strong>Constitution v5 framing.</strong> Inherited context is an <em>interpretive</em> obligation (Art 4.2 — interpret governance in the context of the enclosing Circle and any Super-Circle) plus a <em>prioritization</em> duty (Art 2.3.3 — super-circle Strategies are mandatory inputs) up to the Anchor Circle. Purpose/Domains/Accountabilities do not structurally cascade — the cascade is interpretive context, not duplication.</li>
+      <li><strong>Terminology mismatch.</strong> <code>actor-and-role-resolution.md:73</code> narrates "Strategy on file says…", implying inherited strategy is loaded — but the command never loads it.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>Topic Axes</h2>
+  <div class="axes">
+    <div class="axis"><span class="k">A · Payload</span><p>Which inherited elements to surface, bounded by what is actually readable.</p></div>
+    <div class="axis"><span class="k">B · Traversal &amp; depth</span><p>Walking the enclosing chain to the Anchor Circle; single-call bundle vs per-level walk.</p></div>
+    <div class="axis"><span class="k">C · Trigger &amp; disclosure</span><p>Opt-in vs default, argument-gated, lazy/progressive; the "keep it cheap" stance and issue #17.</p></div>
+    <div class="axis"><span class="k">D · Placement &amp; architecture</span><p>Command vs role skills vs shared reference; reuse of Pattern 1.</p></div>
+    <div class="axis"><span class="k">E · Cost, caching &amp; freshness</span><p>Call/token budget, session caching, staleness, disconnect parity with <code>tactical.md</code>.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Ranked Ideas</h2>
+  <ul class="jump">
+    <li><span class="rank">1.</span> <a href="#i1">Ground-truth <code>get_role_context</code> first — the gating probe</a></li>
+    <li><span class="rank">2.</span> <a href="#i2">Argument-gate the deep load (<code>--inherited</code>); default stays cheap</a></li>
+    <li><span class="rank">3.</span> <a href="#i3">Surface binding constraints, not a governance dump (subsidiarity payload)</a></li>
+    <li><span class="rank">4.</span> <a href="#i4">Move the load into a shared reference; the command only primes</a></li>
+    <li><span class="rank">5.</span> <a href="#i5">Make loaded context reusable across skills (declaration block → ledger)</a></li>
+    <li><span class="rank">6.</span> <a href="#i6">User-asserted inheritance when GlassFrog is absent</a></li>
+  </ul>
+
+  <figure>
+    <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Decision gate: a single live get_role_context call decides between a one-call bundle architecture and an N-call hierarchy walk.">
+      <style>
+        .bx{fill:var(--surface); stroke:var(--line); stroke-width:1.5}
+        .dia{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.5}
+        .good{fill:var(--good-soft); stroke:var(--good-text); stroke-width:1.5}
+        .warn{fill:var(--warn-soft); stroke:var(--warn-text); stroke-width:1.5}
+        .t{font:600 13px ui-sans-serif,system-ui,sans-serif; fill:var(--ink)}
+        .ts{font:500 11.5px ui-sans-serif,system-ui,sans-serif; fill:var(--muted)}
+        .tl{font:700 11px ui-sans-serif,system-ui,sans-serif; fill:var(--accent-text)}
+        .ar{stroke:var(--muted); stroke-width:1.6; fill:none; marker-end:url(#ah)}
+      </style>
+      <defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--muted)"/></marker></defs>
+      <rect class="bx" x="20" y="118" width="170" height="64" rx="8"/>
+      <text class="t" x="105" y="143" text-anchor="middle">One live call:</text>
+      <text class="t" x="105" y="161" text-anchor="middle">get_role_context</text>
+      <path class="ar" d="M190,150 L250,150"/>
+      <polygon class="dia" points="370,150 300,110 230,150 300,190"/>
+      <text class="ts" x="300" y="146" text-anchor="middle">Returns</text>
+      <text class="ts" x="300" y="160" text-anchor="middle">surrounding gov?</text>
+      <path class="ar" d="M340,127 L470,80"/>
+      <text class="tl" x="395" y="96">YES</text>
+      <path class="ar" d="M340,173 L470,222"/>
+      <text class="tl" x="395" y="214">NO</text>
+      <rect class="good" x="470" y="48" width="390" height="70" rx="8"/>
+      <text class="t" x="490" y="74">One-call bundle architecture</text>
+      <text class="ts" x="490" y="93">Cheap AND complete — the opposition dissolves.</text>
+      <text class="ts" x="490" y="108">Pair with #3 (filter payload) + #5 (cache once).</text>
+      <rect class="warn" x="470" y="190" width="390" height="70" rx="8"/>
+      <text class="t" x="490" y="216">N-call hierarchy walk</text>
+      <text class="ts" x="490" y="235">Per-level get_circle up the chain; bound the depth.</text>
+      <text class="ts" x="490" y="250">Lean on #2 (opt-in gate) + #5 (cache) + #6 (fallback).</text>
+    </svg>
+    <figcaption>Why idea&nbsp;1 gates the set: a single live call decides whether the whole problem is "filter one rich payload" or "walk and cache a chain."</figcaption>
+  </figure>
+
+  <article class="idea" id="i1">
+    <div class="idea-head"><span class="idchip">1</span><h3>Ground-truth <code>get_role_context</code> first — the gating probe</h3></div>
+    <div class="chips"><span class="chip axis-c">Axis B · Traversal</span><span class="chip conf">Confidence 90%</span><span class="chip cx">Complexity Low</span></div>
+    <dl>
+      <dt>Description</dt><dd>Before any design work, make one live <code>glassfrog_get_role_context</code> call against a real role and inspect the payload: does it return inherited "surrounding governance" (enclosing strategy + policies) in a single round-trip today? The answer partitions the entire design space — a working bundle makes "cheap" and "complete" the same thing; a thin bundle forces a per-level walk. Fold the traversal-mechanism question (does <code>get_role_tree</code> return ancestors or only descendants?) into the same probe.</dd>
+      <dt>Basis</dt><dd class="basis"><span class="tag">direct:</span> The repo's <code>glassfrog-api-constraints.md</code> states policies aren't exposed and there's no hierarchy endpoint, yet the live MCP server in this session lists <code>glassfrog_get_role_context</code>, <code>glassfrog_list_role_policies</code>, <code>glassfrog_get_org_tree</code>, and <code>glassfrog_get_role_tree</code> in its tool registry. <span class="tag">external:</span> GlassFrog v5 (May 2026) announced a single-call role-context bundle including "surrounding governance," explicitly for AI agents.</dd>
+      <dt>Rationale</dt><dd>Every other idea's cost calculus depends on this one fact. The verifier could not confirm these tools from repo files precisely because the repo's documentation predates them — that staleness <em>is</em> the gap. One probe replaces a stale doc with ground truth and chooses the architecture.</dd>
+      <dt>Downsides</dt><dd>Requires a live GlassFrog session with a populated org to be conclusive; a solo-operator org with a flat hierarchy may not exercise the "surrounding governance" field meaningfully.</dd>
+    </dl>
+    <div class="callout"><span class="lbl">Sequencing</span>Do this before committing to any of ideas 2–6. It is the cheapest high-leverage move in the set and it also lets you correct <code>glassfrog-api-constraints.md</code> as a side effect.</div>
+  </article>
+
+  <article class="idea" id="i2">
+    <div class="idea-head"><span class="idchip">2</span><h3>Argument-gate the deep load (<code>--inherited</code>); default stays cheap</h3></div>
+    <div class="chips"><span class="chip axis-c">Axis C · Trigger</span><span class="chip conf">Confidence 85%</span><span class="chip cx">Complexity Medium</span></div>
+    <dl>
+      <dt>Description</dt><dd>Add an explicit opt-in flag (<code>/holacracy:context --inherited</code>, optionally with a depth) that triggers enclosing-circle loading; absent the flag, the command holds its current two-call budget. Ship an ADR-0004 alongside that consciously names the cheap-default / opt-in-deep decision rather than silently eroding ADR-0003. The lightest viable default-payload variant — load only the immediate enclosing circle's Strategy (the one element Art 2.3.3 makes mandatory) — can live behind this flag rather than changing the default.</dd>
+      <dt>Basis</dt><dd class="basis"><span class="tag">direct:</span> <a href="https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/17">Issue #17</a> (OPEN) explicitly proposes "Make it opt-in via an argument (<code>/holacracy:context --with-tensions</code>)"; ADR-0003 defers expansion "to keep <code>/holacracy:context</code> cheap." The flag pattern is already half-designed in the repo's own backlog.</dd>
+      <dt>Rationale</dt><dd>Honors the recorded constraint as a <em>default</em> while giving facilitators and Rep Links a deliberate escalation for governance prep. The matching ADR converts an informal deferral into an auditable decision — and becomes the repo's first compounded design record.</dd>
+      <dt>Downsides</dt><dd>Discoverability: an opt-in users don't know about delivers no value. Needs documentation in the command's <code>argument-hint</code> and README. Slight risk of flag proliferation if every command grows its own.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i3">
+    <div class="idea-head"><span class="idchip">3</span><h3>Surface binding constraints, not a governance dump (subsidiarity payload)</h3></div>
+    <div class="chips"><span class="chip axis-c">Axis A · Payload</span><span class="chip conf">Confidence 75%</span><span class="chip cx">Complexity Medium</span></div>
+    <dl>
+      <dt>Description</dt><dd>Define the inherited payload as only what <em>binds</em> the leaf role: super-circle Strategies it must prioritize toward (Art 2.3.3), enclosing policies whose domain overlaps the role, and interpretation rulings touching its accountabilities (Art 4.2). Everything else above the role is loaded-but-suppressed. This is the CSS "computed value" move — resolve the cascade to what actually applies, don't reprint the whole ancestor ruleset.</dd>
+      <dt>Basis</dt><dd class="basis"><span class="tag">external:</span> Constitution v5 Art 4.2 (interpret in context of enclosing + Super-Circle) and Art 2.3.3 (super-circle Strategies mandatory), confirmed by independent web research; subsidiarity in federalism and CSS computed-style resolution as the structural analogies. <span class="tag">reasoned:</span> Token-cost research shows eager governance loads run 10k–60k tokens; a binding-only digest is a strict, much smaller subset that still satisfies the constitutional obligation.</dd>
+      <dt>Rationale</dt><dd>Gives a principled selection rule — "show what the Constitution makes binding on this role" — instead of "load everything up the chain." It is the difference between an output a Lead Link can act on and a wall of ancestor governance, and it answers the payload and cost axes with one rule.</dd>
+      <dt>Downsides</dt><dd>Requires judging domain overlap and ruling relevance — harder than a raw dump, and a wrong filter can hide a constraint that actually binds. Best paired with idea 1 confirming which elements are even readable.</dd>
+    </dl>
+  </article>
+
+  <figure>
+    <svg viewBox="0 0 880 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The command primes and announces; a shared reference performs the enclosing-circle load once; all five role skills read the cached result instead of re-fetching.">
+      <style>
+        .b{fill:var(--surface); stroke:var(--line); stroke-width:1.5}
+        .acc{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.5}
+        .inf{fill:var(--info-soft); stroke:var(--info-text); stroke-width:1.5}
+        .h{font:700 13px ui-sans-serif,system-ui,sans-serif; fill:var(--ink)}
+        .s{font:500 11px ui-sans-serif,system-ui,sans-serif; fill:var(--muted)}
+        .a{stroke:var(--accent); stroke-width:1.6; fill:none; marker-end:url(#ah2)}
+        .lab{font:700 10.5px ui-sans-serif,system-ui,sans-serif; fill:var(--accent-text)}
+      </style>
+      <defs><marker id="ah2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)"/></marker></defs>
+      <rect class="b" x="20" y="95" width="150" height="60" rx="8"/>
+      <text class="h" x="95" y="120" text-anchor="middle">/holacracy:context</text>
+      <text class="s" x="95" y="138" text-anchor="middle">primes &amp; announces</text>
+      <path class="a" d="M170,125 L210,125"/>
+      <text class="lab" x="172" y="116">calls</text>
+      <rect class="acc" x="210" y="85" width="200" height="80" rx="8"/>
+      <text class="h" x="310" y="112" text-anchor="middle">shared reference</text>
+      <text class="s" x="310" y="131" text-anchor="middle">inherited-context</text>
+      <text class="s" x="310" y="146" text-anchor="middle">load, once → session cache</text>
+      <path class="a" d="M410,125 L470,125"/>
+      <text class="lab" x="425" y="116">writes</text>
+      <rect class="inf" x="470" y="40" width="200" height="36" rx="7"/><text class="s" x="570" y="63" text-anchor="middle">Facilitator</text>
+      <rect class="inf" x="470" y="84" width="200" height="36" rx="7"/><text class="s" x="570" y="107" text-anchor="middle">Secretary · Lead Link</text>
+      <rect class="inf" x="470" y="128" width="200" height="36" rx="7"/><text class="s" x="570" y="151" text-anchor="middle">Rep Link</text>
+      <rect class="inf" x="470" y="172" width="200" height="36" rx="7"/><text class="s" x="570" y="195" text-anchor="middle">holacratic-ai-governance</text>
+      <text class="lab" x="700" y="120">read,</text>
+      <text class="lab" x="700" y="134">don't re-fetch</text>
+    </svg>
+    <figcaption>How ideas 4 and 5 compose: one load behind the shared reference, every skill reads the result — the structural arrangement the "don't re-fetch" convention already asks for but has no mechanism for.</figcaption>
+  </figure>
+
+  <article class="idea" id="i4">
+    <div class="idea-head"><span class="idchip">4</span><h3>Move the load into a shared reference; the command only primes</h3></div>
+    <div class="chips"><span class="chip axis-c">Axis D · Placement</span><span class="chip conf">Confidence 85%</span><span class="chip cx">Complexity Medium</span></div>
+    <dl>
+      <dt>Description</dt><dd>Put the enclosing-chain load procedure where the repo already puts shared resolution logic — a new section in <code>actor-and-role-resolution.md</code> (or a sibling <code>inherited-context-procedure.md</code>) embedded by every role skill and reused by Pattern 1 — rather than re-implementing traversal in the command body. The command stays a thin pointer that primes and announces. This is also the cleanest fix for the line-73 mismatch: make "Strategy on file says…" true by giving the shared resolver an inherited-strategy step, so the narration matches behavior across all five skills at once.</dd>
+      <dt>Basis</dt><dd class="basis"><span class="tag">direct:</span> <code>actor-and-role-resolution.md</code> and <code>authority-boundaries.md</code> are already shared cross-skill via relative paths; <code>commands/context.md:27</code> delegates its full procedure to the shared reference; Pattern 1 step 5 ("fetch the parent circle: strategy, policies, sister roles") is currently restated per skill. <span class="tag">external:</span> React context providers / DI scope resolution — one resolver, many callers.</dd>
+      <dt>Rationale</dt><dd>Single source of truth. Future v0.4 skills (policy-steward, circle-member) inherit the procedure for free, and the command-vs-skill convention the repo already follows is preserved rather than duplicated. Fixing the mismatch at the shared layer beats five per-skill patches.</dd>
+      <dt>Downsides</dt><dd>The shared reference grows in scope; needs care that the "command stays cheap" promise isn't quietly violated by skills that auto-run the deep load. Pairs with idea 2 to keep the trigger explicit.</dd>
+    </dl>
+    <div class="callout"><span class="lbl">Quick win inside this idea</span>The narrowest standalone fix — rewrite <code>actor-and-role-resolution.md:73</code> so the "Strategy on file says…" example is conditional ("if strategy was loaded: cite it; else: name the gap") — can ship immediately as a docs patch even before the larger relocation.</div>
+  </article>
+
+  <article class="idea" id="i5">
+    <div class="idea-head"><span class="idchip">5</span><h3>Make loaded context reusable across skills (declaration block → ledger)</h3></div>
+    <div class="chips"><span class="chip axis-c">Axis E · Cost &amp; caching</span><span class="chip conf">Confidence 70%</span><span class="chip cx">Complexity Medium</span></div>
+    <dl>
+      <dt>Description</dt><dd>Give the "don't re-fetch" convention an actual mechanism, on a spectrum: <em>light</em> — append a structured, visible block to the command output declaring what governance was loaded vs not, so skills read it from the transcript and skip duplicate fetches; <em>heavy</em> — write a session-scoped ledger (the materialized-view pattern) with a short TTL or event-based (governance-change) refresh that every skill reads. Pick the lightest version that removes the duplication for the common session.</dd>
+      <dt>Basis</dt><dd class="basis"><span class="tag">direct:</span> Rep Link's SKILL.md already instructs "it has already loaded governance context. Use what it loaded — don't re-fetch" — a convention with no mechanism; <code>actor-and-role-resolution.md:32</code> notes the plugin does not persist resolved identity across sessions, so the transcript is the only cross-tier channel. <span class="tag">external:</span> database materialized views (pay the join once, accept bounded staleness); issue #17's own "cache … short TTL in a local ledger file."</dd>
+      <dt>Rationale</dt><dd>Reframes "keep cheap" from a reason-to-defer into a reason-to-cache: the cost concern in ADR-0003 is per-<em>invocation</em>; loading once and sharing makes the second-through-Nth use free across a multi-skill session.</dd>
+      <dt>Downsides</dt><dd>A ledger introduces staleness risk and a refresh-trigger to get right; the declaration-block variant is safe but only helps within one conversation. Governance-change detection needs a cheap signal.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i6">
+    <div class="idea-head"><span class="idchip">6</span><h3>User-asserted inheritance when GlassFrog is absent</h3></div>
+    <div class="chips"><span class="chip axis-c">Axis C · Trigger</span><span class="chip conf">Confidence 70%</span><span class="chip cx">Complexity Low</span></div>
+    <dl>
+      <dt>Description</dt><dd>Extend the existing disconnect fallback so the actor can <em>declare</em> inherited constraints — "my enclosing circle's strategy is X; these super-circle policies bind me" — and have those persist for the session alongside the asserted role. This is the robustness layer: it works when GlassFrog is disconnected and when the API simply can't return a piece (e.g., a policy the constraints doc says is unreadable).</dd>
+      <dt>Basis</dt><dd class="basis"><span class="tag">direct:</span> <code>commands/context.md:20</code> already asks the user to declare role context when GlassFrog is off; <code>glassfrog-api-constraints.md</code> instructs "ask the user for policy context directly" when policies aren't available. <span class="tag">reasoned:</span> Whatever idea 1's probe finds, some inherited context (especially policy text) may always have to come from the user, so a declare-path is a required complement regardless of the API verdict.</dd>
+      <dt>Rationale</dt><dd>Belt-and-suspenders for inheritance: GlassFrog is the belt, user-assertion is the suspenders, and it makes the plugin usable for orgs running Holacracy without GlassFrog at all. It also keeps disconnect parity with how <code>tactical.md</code> already degrades.</dd>
+      <dt>Downsides</dt><dd>User-declared governance can be wrong or stale, and there's no audit trail back to GlassFrog; should be clearly marked as asserted-not-verified in any downstream use.</dd>
+    </dl>
+  </article>
+</section>
+
+<section>
+  <h2>Rejection Summary</h2>
+  <table>
+    <thead><tr><th>Idea considered</th><th>Reason cut</th></tr></thead>
+    <tbody>
+      <tr><td>Intent-triggered loading (classify each turn as governance-interpretive vs operational, load only when binding)</td><td>Duplicates the "load only when needed" logic already covered by the opt-in gate (#2) and the binding-payload filter (#3); reliable turn classification is unproven and adds a failure mode.</td></tr>
+      <tr><td>Enclosing-circle staleness gate (flag when super-circle governance changed since last load)</td><td>Gated by #1 and below the meeting-test floor until inherited loading exists at all; revisit as a follow-up once a load path ships. Ties naturally to the existing supersession-sweep command then.</td></tr>
+      <tr><td>Strategy-only <em>default</em> extension (always add one <code>get_circle</code> strategy read)</td><td>Changes the default and so contradicts ADR-0003's recorded "keep cheap" stance; folded into #2 as the opt-in default-payload variant rather than a standalone default change.</td></tr>
+      <tr><td>Standalone traversal mechanism (<code>get_role_tree</code> / depth-2 walk) as its own direction</td><td>Folded into #1 — the live probe is what determines whether traversal is a one-call bundle or an N-call walk, and whether <code>get_role_tree</code> even returns ancestors.</td></tr>
+      <tr><td>Capture the cheap-vs-complete tradeoff as the repo's first <code>docs/solutions/</code> learning</td><td>A post-session housekeeping/compounding action, not a design direction. Recommended regardless of which idea is built — surface it at landing, not here.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer class="composition-signal">Composed 2026-06-16 by ce-ideate from the in-session investigation of <code>/holacracy:context</code> inherited-context loading. 40 raw candidates across 5 ideation agents → 6 survivors over 5 axes; 5 cut. Bases verified by a fresh-context adversarial pass.</footer>
+
+</div>
+</body>
+</html>

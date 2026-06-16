@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.4.0...v0.5.0) (2026-06-16)
+
+
+### Features
+
+* opt-in inherited-context load for /holacracy:context (--inherited) ([#37](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/37)) ([9b9aa97](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/9b9aa97deee977ae26b27d0340dbea8ce2a3c6a4))
+
 ## [0.4.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.3.3...v0.4.0) (2026-06-08)
 
 

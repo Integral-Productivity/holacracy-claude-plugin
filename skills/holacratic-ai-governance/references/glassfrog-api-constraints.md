@@ -18,17 +18,29 @@ This reference documents the complete capabilities and limitations of the GlassF
 
 ## Available Tool Inventory
 
-A standard GlassFrog MCP server exposes tools across these categories:
+A standard GlassFrog MCP server exposes tools across these categories.
 
-### Read-Only Structure (6 tools)
+> **API version note (verified 2026-06-16).** The connected server tracks GlassFrog **API v5**: IDs are prefixed (`role_<32hex>`, `per_…`, `org_…`, `pol_…`, `dom_…`) and roles relate by `parent_role_id` (the older `parent_circle_id` / `sub_circle_id` / `is_circle` language below is v3-era). v5 adds the inherited-context read tools listed in the second table; prefer them over walking the hierarchy by hand.
+
+### Read-Only Structure (v3-era tools)
 | Tool | Input | Returns |
 |---|---|---|
 | `list_circles` | (none) | All circles with IDs, names, strategies, role_ids, people_ids |
 | `get_circle` | circle_id | Full circle detail: strategy, all roles with purpose/accountabilities/domains, all people |
 | `list_roles` | circle_id (optional), person_id (optional) | Role summaries: id, name, purpose, is_circle, is_core_role |
-| `get_role` | role_id | Full role detail: purpose, accountabilities, domains, people, parent_circle_id, sub_circle_id |
+| `get_role` | role_id | Full role detail; v5 supports `include` of `parent_role`, `policies`, `sub_roles`, `assignments`, `notes`, `skills` |
 | `list_people` | circle_id (optional), role (optional: lead_link\|rep_link\|facilitator\|secretary) | All people: id, name, email |
 | `get_person` | person_id | Single person: id, name, email, external_id |
+
+### Read-Only Inherited Context (v5 tools — verified live 2026-06-16)
+| Tool | Input | Returns |
+|---|---|---|
+| `glassfrog_get_role_context` | role_id | Role + `governance`: `ancestor_roles` chain to the Anchor Circle, `parent_role` with policy excerpts, `sibling_roles`, `org_rules` (Constitution). The inherited-context bundle; lighter than `get_role` with all includes |
+| `glassfrog_get_role_strategy` | role_id | Strategy body with `inherited` + `inherited_from_role_id` (cascade pre-resolved) |
+| `glassfrog_list_role_policies` | role_id | Policies attached to the role: full title, body, domain_id |
+| `glassfrog_list_subrole_policies` | role_id | Recursive policy view across descendants |
+| `glassfrog_get_role_tree` | role_id | The role's **descendant** tree |
+| `glassfrog_get_org_tree` | (none) | Whole org from the Anchor role **down** |
 
 ### Read-Only Operations (3 tools)
 | Tool | Input | Returns |
@@ -97,6 +109,9 @@ See **Write Capabilities → Tensions, Role Projects, and Actions** below for cu
 - Circle strategies
 - Core role identification (Lead Link, Rep Link, Facilitator, Secretary)
 - Whether a role is itself a circle (sub-circles)
+- **Inherited context for a role in one call**: `glassfrog_get_role_context(role_id)` returns the role plus a `governance` block with the full `ancestor_roles` chain up to the Anchor Circle (name + purpose per level), the `parent_role` with its policies (excerpts), `sibling_roles`, and the org's Constitution sections (`org_rules`). Verified against live v5 payloads on 2026-06-16.
+- **Policies** (full text): `glassfrog_list_role_policies(role_id)` returns each policy's title, body, and domain; `glassfrog_list_subrole_policies` gives the recursive view.
+- **Inherited strategy, pre-resolved**: `glassfrog_get_role_strategy(role_id)` returns the strategy body with `inherited: true` and `inherited_from_role_id` when it cascades from an enclosing circle — the caller does not walk the chain.
 
 **Operational tracking:**
 - Checklist items: description, frequency, assigned role, parent circle
@@ -109,13 +124,13 @@ See **Write Capabilities → Tensions, Role Projects, and Actions** below for cu
 
 ### What Cannot Be Read
 
-- **Policies**: GlassFrog policies are not exposed through the standard API. This is a significant gap -- policies constrain how roles operate, and without them, the AI's governance understanding is incomplete. When relevant, ask the user for policy context directly.
+- **Policy *writes***: policies can be *read* in full (see "What Can Be Read" above), but cannot be created, modified, or deleted via the API. When governance must change a policy, that happens in a Governance Meeting, not via MCP.
 - **Meeting history**: Past governance and tactical meeting records are not available via API.
 - **Tension history (reliably)**: `glassfrog_list_role_tensions` exists, but in live use it has shown propagation or scoping behavior that makes same-session reads unreliable -- a tension just created via `glassfrog_create_tension` may not be returned by an immediate list-back. Treat the creation response ID as the only reliable same-session confirmation. Meeting-queued tensions (entered via the GlassFrog meeting UI's triage panel) are not exposed via MCP at all.
 - **Checklist completion records**: Whether a checklist item was marked done/not-done in a particular meeting.
 - **Metric reported values**: The actual numbers reported for metrics. Only the metric definition (what to track, how often) is available.
 - **Governance change history**: When a role was created or modified, by whom, or what changed.
-- **Cross-link relationships**: Super-circle/sub-circle relationships can be inferred from role data (via `is_circle` and `sub_circle_id`), but the API does not provide a dedicated hierarchy endpoint.
+- **Cross-link relationships**: the upward (enclosing) chain to the Anchor Circle is returned directly by `glassfrog_get_role_context` as `ancestor_roles`; the downward view comes from `glassfrog_get_role_tree` (one role's descendants) or `glassfrog_get_org_tree` (whole org from the anchor down). Roles relate by `parent_role_id`. (There is no single endpoint that returns an arbitrary cross-link between two unrelated roles, but hierarchy traversal both ways is supported.)
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 description: Resolve and display the actor's current Holacracy context (identity + roles across circles), optionally focusing on one circle, optionally loading inherited governance
-argument-hint: [circle name to focus on, optional] [--inherited]
+argument-hint: "[circle name to focus on, optional] [--inherited]"
 ---
 
 # /holacracy:context

@@ -53,7 +53,7 @@ The five canonical triage roles map identity to existing repo labels (`needs-tri
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. `CONCEPTS.md` at the root holds shared domain vocabulary (entities, named processes, status concepts) — relevant when orienting to the codebase or discussing domain concepts. See `docs/agents/domain.md`.
 
 ### Documented solutions
 

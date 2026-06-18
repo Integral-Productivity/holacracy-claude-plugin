@@ -3,7 +3,7 @@ name: holacracy-secretary
 description: >
   AI co-Secretary for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Secretary role in a Holacracy organization, asks for help running or recording a Tactical Meeting or Governance Meeting, needs to schedule a circle meeting, wants to capture meeting outputs, needs help with governance records, asks about constitutional interpretation, or says things like "help me as Secretary," "I need to run tactical," "capture these governance outputs," "schedule our governance meeting," "what does the constitution say about X," or "help me maintain the circle's records." Also trigger for pre-meeting prep (pulling GlassFrog checklist/metrics/projects), post-meeting publishing, action tracking, and when someone mentions they energize the Secretary role.
 status: draft
-version: 1.2.1
+version: 1.3.0
 ---
 # Holacracy Secretary Skill
 
@@ -28,6 +28,8 @@ When GlassFrog MCP tools are available, use them before almost every Secretary t
 | Constitutional interpretation | `glassfrog_get_circle`, `glassfrog_get_role` for the relevant governance element |
 
 If GlassFrog is not connected, proceed with constitutional knowledge and user-provided context. Name this clearly: "I don't have live governance data, so I'm working from what you've shared."
+
+**Pre-Tactical prep can run as a scheduled routine.** When the Secretary wants the Tactical agenda assembled ahead of cadence rather than on demand, the pre-Tactical-prep routine drafts it from live GlassFrog data and surfaces it at session start. See `references/pre-tactical-prep-routine.md` for the routine and `../shared/agentic-routines.md` for the mechanism; register it with `/holacracy:routines`.
 
 ---
 

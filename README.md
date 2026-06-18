@@ -41,15 +41,16 @@ Or add this repo directly to your plugin sources.
 
 - [`/holacracy:context`](commands/context.md) — resolve and display the current actor + role roster across circles. Optionally focus on one circle (`/holacracy:context Operations Circle`).
 - [`/holacracy:check-authority`](commands/check-authority.md) — informational authority lookup for a scenario, grounded in `authority-boundaries.md` and the Constitution. Surfaces the path to a formal Secretary ruling when appropriate.
-- [`/holacracy:tactical`](commands/tactical.md) — prime Secretary scope for an in-meeting Tactical capture session. Operates MCP-first (durable role-backlog capture, not the ephemeral GlassFrog meeting UI queue) and surfaces a pre-tactical-prep packet if a v0.3 routine has produced one. Accepts an optional circle-name argument (`/holacracy:tactical Operations Circle`).
+- [`/holacracy:tactical`](commands/tactical.md) — prime Secretary scope for an in-meeting Tactical capture session. Operates MCP-first (durable role-backlog capture, not the ephemeral GlassFrog meeting UI queue) and reads the routine ledger for a pre-tactical-prep packet — the same store the session-start hook reads — pull-building one on demand if none is on file. Accepts an optional circle-name argument (`/holacracy:tactical Operations Circle`).
 - [`/holacracy:governance`](commands/governance.md) — prime **both** the Facilitator and Secretary skills together for a Governance Meeting (IDM facilitation + governance capture). Resolves the actor's standing in the target circle into three cases — Core Role holder, Circle Member (a real IDM participant, oriented to their touchpoints), or no-role (Observer/Advisor) — and surfaces a pre-governance-prep packet if a routine has produced one. A supplied transcript is processed inline with a context-window-risk warning until the `holacracy-coach` subagent lands. Accepts an optional circle-name argument (`/holacracy:governance Operations Circle`).
 - [`/holacracy:capture-tension`](commands/capture-tension.md) — capture a tension to a role's GlassFrog backlog outside the in-meeting context, via a draft-and-confirm flow. Optional `$ARGUMENTS` for inline tension text. Files exactly one tension per invocation; the constitutional safeguard requires explicit human confirmation before any write. The cross-role, cross-session companion to `/holacracy:tactical`'s in-meeting capture.
 - [`/holacracy:process-inbox`](commands/process-inbox.md) — walk through unprocessed tensions on the actor's roles and decide what to do with each (archive false positives, mark catch-up processed, edit body, or defer). Per-tension decisions; surfaces supersession candidates inline. A user-facing surface for clearing role-backlog debt between meetings.
 - [`/holacracy:supersession-sweep`](commands/supersession-sweep.md) — sweep tensions filed in the current session for supersession (S.5.5.1d). Offers archive or merge for subsumed tensions. Also offered implicitly by `holacratic-ai-governance` on session-close signals. Useful because in-flow capture can produce overlapping tensions that benefit from a single review pass.
+- [`/holacracy:routines`](commands/routines.md) — register the Secretary pre-tactical-prep routine for a circle, or list active routines. The minimal v1 surface for the agentic-routines mechanism; draft-only, with no proactive fire unless the `scheduled-tasks` MCP is present.
 
 **Session hook**
 
-- [`hooks/session-start`](hooks/hooks.json) — silent by default. When the agentic-routines mechanism (v0.3+) has registered routines for this actor and either there are fires today or there are anomalies, this hook surfaces a brief briefing at session start. Fail-silent on any error.
+- [`hooks/session-start`](hooks/hooks.json) — silent by default. When the agentic-routines mechanism has registered routines for this actor and a routine packet is within its surfacing window or a last fire failed, this hook surfaces a brief briefing (the packet summary, its freshness, and a full-draft pointer) at session start. Fail-silent on any error.
 
 ## GlassFrog connector
 
@@ -100,14 +101,17 @@ The plugin is being expanded across releases. v0.2.0 shipped the foundation (act
 
 The next two releases continue building from that base:
 
-**Planned for v0.4.0 — Agentic Core Roles + tension capabilities maturing**
-- Shared `skills/shared/agentic-routines.md` reference defining the routine-catalog mechanism, the prompt preamble for scheduled work, and constitutional safeguards.
-- Per-role routine catalogs for Facilitator, Secretary, Lead Link, Rep Link (e.g., pre-tactical prep, post-tactical anti-pattern audit, quarterly strategy review, pre-enclosing-circle prep, weekly self-audit).
+**Agentic routines — now landing**
+- Shared [`skills/shared/agentic-routines.md`](skills/shared/agentic-routines.md) defines the routine-catalog mechanism: the substrate bridge (the `scheduled-tasks` MCP fires a routine, the routine writes the `routines.jsonl` ledger, the session-start hook surfaces it), the prompt preamble for scheduled work, and the draft-only safeguard. See [`docs/adr/0006-routine-substrate-scheduler-fires-ledger-surfaces.md`](docs/adr/0006-routine-substrate-scheduler-fires-ledger-surfaces.md).
+- The first routine: **Secretary pre-tactical-prep** ([`skills/holacracy-secretary/references/pre-tactical-prep-routine.md`](skills/holacracy-secretary/references/pre-tactical-prep-routine.md)), registered via [`/holacracy:routines`](commands/routines.md).
 - Routines never auto-file proposals, auto-issue rulings, or auto-assign roles. They draft for human review.
+
+**Still planned**
+- Per-role routine catalogs for Facilitator, Lead Link, Rep Link, and more Secretary routines (post-tactical anti-pattern audit, quarterly strategy review, pre-enclosing-circle prep, weekly self-audit).
+- Connector-gated packet elements once GlassFrog exposes the reads: "projects lacking recent updates" and "overdue/next actions".
 - Tension-capture graduations (each gated on its own ADR):
   - **Option D** — auto-file from explicit human tension statements ("file this as a tension: ...") without the per-tension confirmation block.
   - **AI-agent self-filing** — scheduled routines that fire as AI-agent role-fillers gain the ability to file tensions on their own role.
-- Slash commands: `/holacracy:tactical`, `/holacracy:governance`, `/holacracy:propose`, `/holacracy:routines:list`.
 
 **Planned for v0.5.0 — Policy work + new skills + heavier subagent**
 - New `holacracy-policy-steward` skill: cross-circle policy inventory, conflict/gap audit, single-circle proposal drafting, **cascading multi-circle proposal drafting** (filing N proposals across N circles with rollup tracking, two-stage review).

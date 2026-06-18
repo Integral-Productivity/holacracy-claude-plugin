@@ -29,6 +29,8 @@ When GlassFrog MCP tools are available, use them before almost every Secretary t
 
 If GlassFrog is not connected, proceed with constitutional knowledge and user-provided context. Name this clearly: "I don't have live governance data, so I'm working from what you've shared."
 
+**Pre-Tactical prep can run as a scheduled routine.** When the Secretary wants the Tactical agenda assembled ahead of cadence rather than on demand, the pre-Tactical-prep routine drafts it from live GlassFrog data and surfaces it at session start. See `references/pre-tactical-prep-routine.md` for the routine and `../shared/agentic-routines.md` for the mechanism; register it with `/holacracy:routines`.
+
 ---
 
 ## Actor and Role Context (Run First)

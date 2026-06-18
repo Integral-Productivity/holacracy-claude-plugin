@@ -64,7 +64,15 @@ import sys
 ledger_path = sys.argv[1]
 today = dt.date.today()
 
-fires_today = []
+
+def _date(s):
+    try:
+        return dt.datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+    except Exception:
+        return None
+
+
+due = []
 anomalies = []
 
 try:
@@ -88,32 +96,59 @@ try:
                     f"- {title}: last fire FAILED ({entry.get('last_fire', 'unknown time')})"
                 )
 
-            # Today check
-            nxt = entry.get("next_fire")
-            if nxt:
-                try:
-                    nxt_dt = dt.datetime.fromisoformat(nxt.replace("Z", "+00:00"))
-                    if nxt_dt.date() == today:
-                        fires_today.append(f"- {title} (fires {nxt_dt.strftime('%H:%M %Z').strip()})")
-                except ValueError:
-                    pass
+            # Surfacing window. Prefer surface_from/surface_until; fall back to
+            # next_fire's day for legacy entries that carry no window. A window
+            # match (not exact day) is correct because a routine may fire late
+            # -- on next app launch -- so the packet should show across the
+            # prep-to-meeting window.
+            sf = _date(entry["surface_from"]) if entry.get("surface_from") else None
+            su = _date(entry["surface_until"]) if entry.get("surface_until") else None
+            if sf or su:
+                in_window = (sf or today) <= today <= (su or today)
+            else:
+                nxt = _date(entry["next_fire"]) if entry.get("next_fire") else None
+                in_window = (nxt == today)
+
+            if not in_window:
+                continue
+
+            summary = entry.get("packet_summary")
+            if summary:
+                # New-style entry with a built packet: surface the sanitized
+                # summary, the freshness marker, and a pointer to the full draft.
+                item = f"- {title}\n  {summary}\n  (as of {entry.get('built_at', 'unknown')}"
+                if entry.get("packet_path"):
+                    item += f"; full draft: {entry['packet_path']}"
+                item += ")"
+                due.append(item)
+            else:
+                # Legacy / metadata-only entry: render exactly as before.
+                nxt = entry.get("next_fire")
+                when = ""
+                if nxt:
+                    nd = entry.get("next_fire")
+                    try:
+                        when = dt.datetime.fromisoformat(nd.replace("Z", "+00:00")).strftime("%H:%M %Z").strip()
+                    except ValueError:
+                        when = ""
+                due.append(f"- {title}" + (f" (fires {when})" if when else ""))
 except Exception:
     # Fail-silent.
     sys.exit(0)
 
-if not fires_today and not anomalies:
+if not due and not anomalies:
     sys.exit(0)
 
 lines = ["**Holacracy plugin: routine briefing**", ""]
-if fires_today:
-    lines.append("Routines firing today:")
-    lines.extend(fires_today)
+if due:
+    lines.append("Routines ready / firing today:")
+    lines.extend(due)
     lines.append("")
 if anomalies:
     lines.append("Anomalies (review needed):")
     lines.extend(anomalies)
     lines.append("")
-lines.append("Run `/holacracy:routines:list` for full inventory (v0.3+).")
+lines.append("Run `/holacracy:routines` for full inventory.")
 
 print("\n".join(lines))
 PY
@@ -126,11 +161,14 @@ fi
 
 # Emit the SessionStart envelope.
 #
-# Use python to JSON-encode the briefing so newlines and quotes don't break
-# the envelope. Again, fail-silent.
-python3 - <<PY 2>/dev/null
+# Pass the briefing as an argv argument (not interpolated into the Python
+# source) so arbitrary packet-summary text -- including triple-quotes or a
+# trailing backslash from GlassFrog data -- cannot break the heredoc and
+# silently drop the envelope. The quoted heredoc delimiter prevents shell
+# expansion inside the script. Fail-silent.
+python3 - "$briefing" <<'PY' 2>/dev/null
 import json, sys
-briefing = """$briefing"""
+briefing = sys.argv[1]
 print(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "SessionStart",

@@ -126,9 +126,8 @@ try:
                 nxt = entry.get("next_fire")
                 when = ""
                 if nxt:
-                    nd = entry.get("next_fire")
                     try:
-                        when = dt.datetime.fromisoformat(nd.replace("Z", "+00:00")).strftime("%H:%M %Z").strip()
+                        when = dt.datetime.fromisoformat(nxt.replace("Z", "+00:00")).strftime("%H:%M %Z").strip()
                     except ValueError:
                         when = ""
                 due.append(f"- {title}" + (f" (fires {when})" if when else ""))

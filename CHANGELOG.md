@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.5.0...v0.6.0) (2026-06-18)
+
+
+### Features
+
+* Secretary pre-tactical-prep routine + agentic-routines mechanism ([#45](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/45)) ([a9874b9](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/a9874b9da8ea7471e2673044e0f31701f14e2244))
+
 ## [0.5.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.4.0...v0.5.0) (2026-06-16)
 
 

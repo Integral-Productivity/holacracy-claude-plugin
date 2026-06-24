@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.6.0...v0.7.0) (2026-06-24)
+
+
+### Features
+
+* **governance:** adopt devops-excellence standard ([#53](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/53)) ([a780264](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/a780264c89204752bc388309d372ea5e8b80e477))
+
+
+### Bug Fixes
+
+* **ci:** repoint workflow callers to the public reusable-workflows host ([#58](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/58)) ([13d8631](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/13d8631b769cb154e2856fac72923077d02c5cb3))
+
 ## [0.6.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.5.0...v0.6.0) (2026-06-18)
 
 

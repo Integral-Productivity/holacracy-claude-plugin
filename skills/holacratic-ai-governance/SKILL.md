@@ -3,7 +3,7 @@ name: holacratic-ai-governance
 description: >
   Governance-aware AI operating skill for organizations using Holacracy and GlassFrog. Use this skill whenever the user mentions GlassFrog, Holacracy, circles, roles (in a Holacratic context), accountabilities, domains, governance meetings, tactical meetings, tensions, lead link, rep link, facilitator, secretary, or any organizational governance topic. Also trigger when the user asks for help with work and GlassFrog MCP tools are connected -- this skill teaches how to ground AI responses in actual governance structure rather than operating generically. Trigger even for adjacent requests like "help me think about my role," "what should I focus on," "draft a governance proposal," or "what tensions exist in my organization." This skill is essential for any AI interaction where organizational context from GlassFrog would improve the quality, authority-awareness, or developmental sophistication of the response.
 status: draft
-version: 1.1.1
+version: 1.2.0
 ---
 # Holacratic AI Governance
 
@@ -192,6 +192,23 @@ When a request falls outside the accountabilities of the active role, name that 
 
 **Why this matters**: Even experienced Holacracy practitioners bypass role boundaries under time pressure. The AI maintaining this boundary reinforces the governance structure's integrity without being rigid -- it offers paths forward.
 
+### Artifact Routing (where outputs land)
+
+Response calibration decides *whether* to do the work; **routing** decides *where its output belongs*. Without this, artifacts silently default to the engineering substrate (GitHub, ADRs, memory) even when a product decision belongs in Productboard or a governance record belongs in GlassFrog -- the routing drift this plugin fights.
+
+Route by **live governance, not assumption**: a role's **domains** already name its system of record. When about to produce or file a substantive artifact whose home is a system of record (a product decision, a strategy note, a governance record, a financial entry, a CRM update), resolve where it lands from the owning role's live domains.
+
+**Quick procedure** (full spec in `../shared/artifact-routing.md`):
+1. Confirm the **owning role** for the artifact (usually the resolved actor's role; if a different role's accountability authorizes it, route by that role and name the shift).
+2. Read its domains live via `glassfrog_list_role_domains` (and `glassfrog_list_role_policies` to corroborate). Live-then-session-cache: read at first need, cache for the session, re-read on a major pivot.
+3. Recognize each domain's system of record -- inline URL host, then the named system in the text, then the semantic governance fallback (governance-records → GlassFrog). The domain names its own system; extract it.
+4. If one substrate is named, route there; if several are held and one clearly fits the artifact, prefer it and say why; if two plausibly fit, **surface the ambiguity and ask** -- never silently pick.
+5. **Announce the routing**, tied to the governance evidence: "Routing this to Productboard -- Product Architecture's system of record for features (domain read live from GlassFrog)."
+
+If GlassFrog is not connected, **name the limit and ask** -- do not silently default to the engineering substrate. This is the same honest-by-construction discipline as role resolution: reason only from domains actually read this session; a vague domain that can't say where its work lands is a governance tension worth surfacing, not a guess to paper over.
+
+Decisions behind this: [ADR-0007](../../docs/adr/0007-route-artifacts-by-live-glassfrog-domains-not-a-hardcoded-table.md) (route by live domains, not a table) and [ADR-0009](../../docs/adr/0009-artifact-routing-resolver-layered-domain-recognizer.md) (the layered recognizer and multi-domain precedence).
+
 ---
 
 ## Developmental Perspective Layer
@@ -229,6 +246,7 @@ The first step is operational. The second is developmental. Together they create
 - Load governance context before responding to organizational questions -- even simple ones
 - Name which role perspective is active in the response
 - Distinguish between what governance *authorizes* and what might be *useful*
+- Route substantive artifacts to the system of record named by the owning role's live domains -- do not default outputs to the engineering substrate; when disconnected or ambiguous, name the limit and ask (`../shared/artifact-routing.md`)
 - Treat governance as mutable -- suggest governance proposals when structure does not fit need
 - Use specific language from the loaded governance (role names, accountability descriptions, circle strategies)
 - Describe what the AI is doing in plain language. Say "I'm checking which role owns this work" or "I'm cross-referencing governance data to spot potential gaps" -- not "Running Pattern 3" or "Invoking Role Context Injection." The internal names of engagement patterns, modes, and layers are for the skill's architecture, not for conversation with users.
@@ -255,6 +273,7 @@ Load these based on the depth required:
 | File | When to Load |
 |---|---|
 | `../shared/actor-and-role-resolution.md` | The actor-and-role-context resolution procedure (full spec): how to identify the acting person/agent, load the role roster, resolve to a single role + circle, announce the resolution, and re-validate on pivots. Foundational -- every other pattern in this skill assumes resolved context. |
+| `../shared/artifact-routing.md` | The artifact-routing resolver: given the owning role, read its live domains/policies through the governance-data seam and resolve which system of record a downstream artifact belongs in (layered domain recognizer, multi-domain precedence, live-then-session-cache freshness, name-the-limit-and-ask on disconnect). Load when about to produce or file a substantive artifact whose home is a system of record. |
 | `../shared/tension-triage.md` | Canonical role-vs-person triage gate, meeting-type routing (governance vs tactical), supersession check, and role-attribution policy. Loaded by Pattern 3, Pattern 5, and the `tension-capture` subagent. |
 | `../shared/tension-capture-flow.md` | The canonical draft-and-confirm capture flow (Steps 1–8) used by the `tension-capture` subagent and by all `/holacracy:*` tension commands. |
 | `references/engagement-patterns.md` | Detailed implementation guidance for all five core patterns (including Pattern 5: Proactive Tension Sensing), step-by-step tool call sequences, edge cases, and worked examples |

@@ -50,7 +50,10 @@ Or add this repo directly to your plugin sources.
 
 **Session hook**
 
-- [`hooks/session-start`](hooks/hooks.json) — silent by default. When the agentic-routines mechanism has registered routines for this actor and a routine packet is within its surfacing window or a last fire failed, this hook surfaces a brief briefing (the packet summary, its freshness, and a full-draft pointer) at session start. Fail-silent on any error.
+- [`hooks/session-start`](hooks/hooks.json) emits up to two things at session start, fail-silent on any error:
+  - **A role-grounding directive** (on by default). It *demands* that the session resolve and announce its active Holacratic role/circle — per [`skills/shared/actor-and-role-resolution.md`](skills/shared/actor-and-role-resolution.md) — before its first substantive action, and flag any cross-role remit boundary. It is **honest by construction**: the hook has no GlassFrog access at fire time, so the directive requests the grounding and explicitly never claims it happened. Gate it with env vars: `HOLACRACY_GROUNDING_DIRECTIVE=off` disables it; `HOLACRACY_GROUNDING_REQUIRE_GLASSFROG=on` injects only when a GlassFrog connector is declared; `HOLACRACY_GROUNDING_REQUIRE_PATH=<regex>` injects only when `$PWD` matches. (Track A PDCA-1, [#62](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/62).)
+  - **A routine briefing** (silent unless due). When the agentic-routines mechanism has registered routines for this actor and a routine packet is within its surfacing window or a last fire failed, this surfaces a brief briefing (the packet summary, its freshness, and a full-draft pointer).
+- [`scripts/grounding-readout.sh`](scripts/grounding-readout.sh) — a lightweight, honest-by-construction readout of the grounding experiment: greps session transcripts for the three signals (resolve+announce, remit-crossing flag, chapter-mark) and prints counts and rates against the 0-baseline. `scripts/grounding-readout.sh --since YYYY-MM-DD`.
 
 ## GlassFrog connector
 

@@ -1,5 +1,5 @@
 {
-  "description": "Holacracy plugin SessionStart hook. Surfaces today's scheduled-task routines (tagged holacracy/*) and any anomalies. Silent when there's nothing to report. Fail-silent on error so a broken hook never blocks a session.",
+  "description": "Holacracy plugin SessionStart hook. Injects a role-grounding directive (on by default; env-gateable) that demands the session resolve + announce its active Holacratic role/circle before its first action, honest by construction (it requests the load, never claims it happened). Also surfaces today's scheduled-task routines (tagged holacracy/*) and any anomalies. Silent when there's nothing to report. Fail-silent on error so a broken hook never blocks a session.",
   "hooks": {
     "SessionStart": [
       {

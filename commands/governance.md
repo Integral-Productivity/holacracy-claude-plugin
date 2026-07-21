@@ -20,14 +20,15 @@ Open this session in **Governance Meeting** mode for a specific circle. A Govern
 3. **Check for a pre-governance-prep routine.** Call `mcp__scheduled-tasks__list_scheduled_tasks` and filter to titles matching `holacracy/secretary/pre-governance-prep/<resolved-circle>`. If a matching routine exists and has produced recent output, surface a one-paragraph summary of that output -- this *is* the "prep packet"; there is no separate file format. If no matching routine exists, say so once -- "No pre-governance-prep routine on file for this circle (v0.3 feature)" -- and continue.
 4. **Hand off to the skills for the meeting itself.** `holacracy-facilitator` carries the IDM process -- agenda building, the six IDM phases, objection testing, and integration (`references/governance-meeting.md`). `holacracy-secretary` carries governance capture -- the "Governance Meetings" capture process and the Governance Meeting output template (`references/meeting-templates.md`). Do not duplicate that content here -- hand off, as `tactical.md` does.
 
-## Transcript at invocation (the inline fallback)
+## Transcript at invocation (dispatch to the holacracy-coach subagent)
 
-If the user supplies a meeting transcript when invoking the command, the design intent is to delegate processing to a `holacracy-coach` subagent that runs the Secretary capture function in an isolated context. **That subagent does not exist yet (issue #2, deferred), so the live v0.3 behaviour is the inline fallback:**
+If the user supplies a meeting transcript when invoking the command, delegate processing to the `holacracy-coach` subagent (`subagent_type: holacracy-coach`) so the capture runs in an isolated context instead of consuming the main session's context window:
 
-- Process the transcript inline as the Secretary capture function, producing the Governance Meeting output per `holacracy-secretary`'s template.
-- Emit an explicit warning first: **"Processing this transcript inline consumes main-session context; on a long transcript this risks a context-window blowout. When the `holacracy-coach` subagent lands (issue #2), this will move to an isolated context."**
+- Dispatch the coach with: task type `governance-transcript`, the transcript text, the resolved circle + actor context from the resolution step above, and a draft destination. Instruct it to run the Secretary governance-capture function and draft the Governance Meeting output (per `holacracy-secretary`'s `references/meeting-templates.md`) to a file.
+- The coach is **read-only on GlassFrog**: it returns a structured summary plus the draft file path, and never files anything. Present the draft to the user for review. Anything it flags under "Needs a write" — filing adopted proposals or tensions — happens back here in the main session under explicit human confirmation. This preserves the two-stage review pattern.
+- Do not build runtime "is the coach available?" detection — it is a bundled plugin subagent; dispatch directly. If GlassFrog isn't connected, the coach reports that itself and works from the supplied transcript.
 
-This is the single localized hand-off point. Wiring the coach in later is a small change here -- swap the inline call for a subagent dispatch -- not a rewrite. Do not build runtime "is the coach available?" detection; inline-with-warning is simply the v0.3 behaviour.
+This is the single localized hand-off point for transcript processing.
 
 ## Behaviour
 

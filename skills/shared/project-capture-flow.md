@@ -81,18 +81,18 @@ If Family A passes clean, say so and go straight to Step 6 -- do not manufacture
 
 Assemble two strings:
 
-- **Project description** -- outcome-framed, the user's words preserved, ≤2000 characters (API constraint), with an optional trailing `DoD:` line.
-- **First next-action** -- one concrete physical step, ≤2000 characters.
+- **Project description** -- outcome-framed, the user's words preserved, ≤2000 characters (per the live `create_role_project` schema, verified 2026-07-20), with an optional trailing `DoD:` line.
+- **First next-action** -- one concrete physical step, ≤2000 characters (per the live `create_action` schema).
 
 ### Step 6 -- Present the per-project confirmation
 
 Show the user a single, compact confirmation block:
 
 ```
-Owner role:       [Role name] of [Circle name]    (role_id: role_xxx...)
-Project:          [outcome-framed description, with DoD: line if used]
-First next-action:[the concrete next step]
-Notes:            [any Family-A teaching applied, e.g. "reframed from activity to outcome"]
+Owner role:        [Role name] of [Circle name]    (role_id: role_xxx...)
+Project:           [outcome-framed description, with DoD: line if used]
+First next-action: [the concrete next step]
+Notes:             [any Family-A teaching applied, e.g. "reframed from activity to outcome"]
 
 File this? [y] yes  [e] edit  [n] no
 ```

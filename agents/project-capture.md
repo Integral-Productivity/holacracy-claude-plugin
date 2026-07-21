@@ -21,7 +21,7 @@ You operate from these shared specifications. Load them at the start of every di
 Also load if needed:
 
 3. `skills/shared/actor-and-role-resolution.md` -- the canonical actor/role identity resolution procedure.
-4. `skills/holacratic-ai-governance/references/glassfrog-api-constraints.md` -- the current `create_role_project` / `create_action` / `link_goal_supporting_project` call shapes, the project `status` enum, and the same-session list-back unreliability.
+4. `skills/holacratic-ai-governance/references/glassfrog-api-constraints.md` -- the write-capability context for `create_role_project` / `create_action` and the same-session list-back unreliability. Exact call signatures used here (explicit `status: "current"` from the closed project-status enum; `parent_project_id` on the action; `link_goal_supporting_project(goal_id, project_id)`) are grounded in the live GlassFrog schema, verified 2026-07-20.
 
 ## Dispatch input
 

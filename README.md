@@ -126,10 +126,10 @@ The next two releases continue building from that base:
   - **Option D** — auto-file from explicit human tension statements ("file this as a tension: ...") without the per-tension confirmation block.
   - **AI-agent self-filing** — scheduled routines that fire as AI-agent role-fillers gain the ability to file tensions on their own role.
 
-**Planned for v0.5.0 — Policy work + new skills**
+**Planned — Policy work + new skills**
 - New `holacracy-policy-steward` skill: cross-circle policy inventory, conflict/gap audit, single-circle proposal drafting, **cascading multi-circle proposal drafting** (filing N proposals across N circles with rollup tracking, two-stage review).
 - New skills: `holacracy-circle-member`, `holacracy-tension-coach`, `holacracy-role-onboarding`, `holacracy-cross-circle-coordination`.
-- Slash commands: `/holacracy:policy:audit`, `/holacracy:policy:cascade` — dispatching org-wide audits and cascade drafting to the `holacracy-coach` subagent (which shipped in v0.10.0 for governance-transcript capture).
+- Slash commands: `/holacracy:policy:audit`, `/holacracy:policy:cascade` — dispatching org-wide audits and cascade drafting to the now-shipped `holacracy-coach` subagent (added in v0.10.0 for governance-transcript capture).
 
 Tracked as issues on this repo as the work is broken out.
 

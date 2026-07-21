@@ -29,6 +29,8 @@ holacracy-claude-plugin/
 
 `skills/shared/authority-boundaries.md` is loaded by the four role skills via the relative path `../shared/authority-boundaries.md`. If a role skill's `references/` file needs to load it, the path is `../../shared/authority-boundaries.md`. Keep these paths intact when editing.
 
+`skills/shared/project-well-formedness.md` (the project-quality rubric) and `skills/shared/project-review-critics.md` (the five critic lenses + finding schema) are loaded by the `/holacracy:review-project` command and the `project-critic` subagent, and will be loaded by the planned capture-guardrail and stalled-sweep surfaces. The rubric is the single source of truth for "well-formed enough"; keep it and the critic spec in sync.
+
 ## GlassFrog MCP
 
 Wired in via `.mcp.json` at the repo root. Server is `https://ipllc-glassfrog-mcp-server.vercel.app/mcp`, hosted on Vercel by Integral Productivity LLC, OAuth-protected so each user brings their own GlassFrog API key. If that URL ever moves (e.g., to a canonical `mcp.glassfrog.*` once an official server lands), update `.mcp.json` and bump the plugin version.

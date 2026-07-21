@@ -32,10 +32,13 @@ Or add this repo directly to your plugin sources.
 - [`shared/actor-and-role-resolution.md`](skills/shared/actor-and-role-resolution.md) — actor identity + role/circle resolution procedure. Every role skill loads this to figure out who's acting and from which circle/role before producing any output. Defines the prompt preamble for scheduled routines.
 - [`shared/tension-triage.md`](skills/shared/tension-triage.md) — canonical role-vs-person triage gate, suggested-meeting-venue annotation (governance vs tactical, for the user's mental model — not an API field), supersession check (S.5.5.1d), and role-attribution policy. Loaded by Pattern 3, Pattern 5 (proactive sensing), the `tension-capture` subagent, and the three new `/holacracy:*` tension commands.
 - [`shared/tension-capture-flow.md`](skills/shared/tension-capture-flow.md) — the draft-and-confirm B-flow used to file tensions to a role's GlassFrog backlog via `glassfrog_create_tension(role_id, body)`. Per-tension confirmation; no auto-file; constitutional safeguard preserved.
+- [`shared/project-well-formedness.md`](skills/shared/project-well-formedness.md) — the rubric for judging whether a GlassFrog project is well-formed (outcome / next-action / owner / DoD) and well-placed (goal / authority / assignment). State vocabulary, DoD-as-body-convention, and the live status enum. Loaded by `/holacracy:review-project`.
+- [`shared/project-review-critics.md`](skills/shared/project-review-critics.md) — the five critic lenses, the finding schema, and the severity/floor/cap/dedupe rules for `/holacracy:review-project`. Seeds both the inline backlog walk and the deep-review subagents.
 
 **Subagents**
 
 - [`agents/tension-capture.md`](agents/tension-capture.md) — handles the multi-step tension capture flow (resolve sensing role → triage → draft body → per-tension confirm → `glassfrog_create_tension(role_id, body)`). Dispatched by `/holacracy:capture-tension` and by ambient tension-language detection in `holacratic-ai-governance`. The Secretary-scoped `/holacracy:tactical` flow has its own in-meeting capture path documented in `skills/holacracy-secretary/SKILL.md` — this subagent is the cross-role, out-of-meeting surface.
+- [`agents/project-critic.md`](agents/project-critic.md) — read-only single-lens critic for the deep-review path of `/holacracy:review-project`. The command fans out five in parallel (one per lens) against a single named project for genuine adversarial independence; each returns findings in the canonical schema and never writes.
 
 **Slash commands**
 
@@ -47,6 +50,7 @@ Or add this repo directly to your plugin sources.
 - [`/holacracy:process-inbox`](commands/process-inbox.md) — walk through unprocessed tensions on the actor's roles and decide what to do with each (archive false positives, mark catch-up processed, edit body, or defer). Per-tension decisions; surfaces supersession candidates inline. A user-facing surface for clearing role-backlog debt between meetings.
 - [`/holacracy:supersession-sweep`](commands/supersession-sweep.md) — sweep tensions filed in the current session for supersession (S.5.5.1d). Offers archive or merge for subsumed tensions. Also offered implicitly by `holacratic-ai-governance` on session-close signals. Useful because in-flow capture can produce overlapping tensions that benefit from a single review pass.
 - [`/holacracy:routines`](commands/routines.md) — register the Secretary pre-tactical-prep routine for a circle, or list active routines. The minimal v1 surface for the agentic-routines mechanism; draft-only, with no proactive fire unless the `scheduled-tasks` MCP is present.
+- [`/holacracy:review-project`](commands/review-project.md) — adversarial review of GlassFrog **projects** against the well-formedness rubric. Runs five critic lenses (actionability, goal-alignment, scope-authority, assignment-fit, red-team) over one project or a backlog; surfaces findings with drafted fixes; applies additive fixes (`create_action`, `link_goal_supporting_project`) with a per-item confirmation, leaves reframes/archives as advisory drafts, and routes scope/assignment gaps to the tension flow. No argument or a circle name walks the backlog inline; a named project gets a deep review via independent critic subagents. Never auto-writes.
 
 **Session hook**
 

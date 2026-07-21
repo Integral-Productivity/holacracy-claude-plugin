@@ -16,4 +16,4 @@ jobs:
     name: Auto-Merge
     uses: Integral-Productivity/reusable-workflows/.github/workflows/reusable-auto-merge.yml@main
     secrets:
-      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+      OP_AUTOMERGE_PUBLIC_TOKEN: ${{ secrets.OP_AUTOMERGE_PUBLIC_TOKEN }}

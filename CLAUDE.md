@@ -29,7 +29,9 @@ holacracy-claude-plugin/
 
 `skills/shared/authority-boundaries.md` is loaded by the four role skills via the relative path `../shared/authority-boundaries.md`. If a role skill's `references/` file needs to load it, the path is `../../shared/authority-boundaries.md`. Keep these paths intact when editing.
 
-`skills/shared/project-well-formedness.md` (the project-quality rubric) and `skills/shared/project-review-critics.md` (the five critic lenses + finding schema) are loaded by the `/holacracy:review-project` command and the `project-critic` subagent, and will be loaded by the planned capture-guardrail and stalled-sweep surfaces. The rubric is the single source of truth for "well-formed enough"; keep it and the critic spec in sync.
+`skills/shared/project-well-formedness.md` (the project-quality rubric) and `skills/shared/project-review-critics.md` (the five critic lenses + finding schema) are loaded by the `/holacracy:review-project` command and the `project-critic` subagent. The rubric is also loaded (Family A only) by the `/holacracy:capture-project` command and the `project-capture` subagent, and will be loaded by the planned stalled-sweep surface. The rubric is the single source of truth for "well-formed enough"; keep it and the critic spec in sync.
+
+`skills/shared/project-capture-flow.md` (the draft-and-confirm P-flow for filing a well-formed project at intake) is loaded by the `/holacracy:capture-project` command and the `project-capture` subagent. It is the create-flow twin of `skills/shared/tension-capture-flow.md`; keep the two flows' constitutional-safeguard and confirmation-block conventions aligned.
 
 ## GlassFrog MCP
 

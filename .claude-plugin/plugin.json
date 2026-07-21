@@ -1,7 +1,7 @@
 {
   "name": "holacracy",
   "description": "Engage with Holacracy from inside Claude — actor- and role-aware AI co-pilots for the four Core Roles (Facilitator, Secretary, Lead Link, Rep Link), a governance-aware operating frame, proactive cross-role tension capture (subagent + slash commands for capture, inbox review, and end-of-session supersession sweep) built on the durable role-backlog filing primitive, an adversarial project-review panel that triages GlassFrog projects against a well-formedness rubric, a capture-time project guardrail that soft-gates new projects into well-formed outcomes with a first next-action at intake, a back-of-loop stalled-project sweep that re-energizes or archives un-moving projects, a SessionStart role-grounding directive that demands each session resolve and announce its active role/circle, a conditional SessionStart briefing for scheduled role routines, and a context-isolated holacracy-coach subagent that captures Governance Meeting transcripts off the main context window (read-only on GlassFrog; drafts for two-stage human review). Pairs with the GlassFrog MCP connector.",
-  "version": "0.10.0",
+  "version": "0.7.0",
   "author": {
     "name": "Kraig Parkinson",
     "organization": "Integral Productivity LLC"

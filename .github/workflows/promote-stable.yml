@@ -154,7 +154,7 @@ jobs:
           private-key: ${{ steps.pem.outputs.private-key }}
 
       - name: Checkout tagged commit (as ip-releaser)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Fetch full history so the fast-forward push can resolve the
           # relationship between the tagged commit and any existing

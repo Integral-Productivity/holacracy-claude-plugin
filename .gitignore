@@ -9,3 +9,8 @@ node_modules/
 
 # Compound Engineering local config (per-machine, not committed)
 .compound-engineering/*.local.yaml
+
+# holacracy-coach draft output — governance/personnel content, never committed
+# (the coach defaults to a temp path outside the tree; this is the backstop)
+docs/drafts/
+*.draft.md

@@ -19,4 +19,4 @@ permissions:
 
 jobs:
   validate:
-    uses: Integral-Productivity/reusable-workflows/.github/workflows/validate-plugin-manifest.yml@main
+    uses: Integral-Productivity/reusable-workflows/.github/workflows/validate-plugin-manifest.yml@v1

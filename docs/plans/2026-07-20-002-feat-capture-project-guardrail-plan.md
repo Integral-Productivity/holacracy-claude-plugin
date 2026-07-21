@@ -331,3 +331,5 @@ The four units above.
 ## Next step
 
 `ce-work` to build the four units in dependency order (U1 → U2 → U3 → U4), then open a PR that `Closes #75`.
+
+<!-- automerge-verify: throwaway PR to confirm OP_AUTOMERGE_PUBLIC_TOKEN scoping (#92); safe to delete -->

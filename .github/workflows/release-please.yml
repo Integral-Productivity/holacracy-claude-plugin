@@ -92,7 +92,7 @@ jobs:
 
       - name: Install 1Password CLI
         if: steps.app_id_check.outputs.ready == 'true'
-        uses: 1password/install-cli-action@8d006a0d0a4fd505af7f7ce589e7f768385ff5e4 # v3.0.0
+        uses: 1password/install-cli-action@a5215d3a7f75c1629216c465ea9ab3ab399c4b71 # v4.0.0
 
       - name: Read ip-releaser App PEM from 1Password
         id: pem

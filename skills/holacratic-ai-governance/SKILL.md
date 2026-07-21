@@ -3,7 +3,7 @@ name: holacratic-ai-governance
 description: >
   Governance-aware AI operating skill for organizations using Holacracy and GlassFrog. Use this skill whenever the user mentions GlassFrog, Holacracy, circles, roles (in a Holacratic context), accountabilities, domains, governance meetings, tactical meetings, tensions, lead link, rep link, facilitator, secretary, or any organizational governance topic. Also trigger when the user asks for help with work and GlassFrog MCP tools are connected -- this skill teaches how to ground AI responses in actual governance structure rather than operating generically. Trigger even for adjacent requests like "help me think about my role," "what should I focus on," "draft a governance proposal," or "what tensions exist in my organization." This skill is essential for any AI interaction where organizational context from GlassFrog would improve the quality, authority-awareness, or developmental sophistication of the response.
 status: draft
-version: 1.2.0
+version: 1.2.1
 ---
 # Holacratic AI Governance
 

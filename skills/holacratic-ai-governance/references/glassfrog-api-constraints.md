@@ -47,14 +47,14 @@ A standard GlassFrog MCP server exposes tools across these categories.
 |---|---|---|
 | `list_checklist_items` | circle_id (optional), global (optional boolean) | Items: id, description, frequency, global, role_id, circle_id |
 | `list_metrics` | circle_id (optional), global (optional boolean) | Metrics: id, description, frequency, global, role_id, circle_id |
-| `list_projects` | circle_id (optional) | Projects: id, description, status, value, effort, roi, private, created_at, role_id, circle_id, person_id |
+| `list_projects` | circle_id (optional) | Projects: id, description, status (closed enum -- see Write Capabilities → Important Distinctions), value, effort, roi, private, created_at, role_id, circle_id, person_id |
 
 ### Definition Update Operations (4 tools)
 | Tool | Input | Modifies |
 |---|---|---|
 | `update_checklist_item` | item_id, description?, frequency? | Checklist item definition (not completion status) |
 | `update_metric` | metric_id, description?, frequency? | Metric definition (not reported values) |
-| `update_project` | project_id, description?, status?, value?, effort?, roi?, private? | Project metadata |
+| `update_project` | project_id, description?, status?, value?, effort?, roi?, private? | Project metadata (`status` is a closed enum -- see Important Distinctions) |
 | `update_person` | person_id, name?, email?, external_id? | Person name, email, or external ID |
 
 ### Item Creation Operations (3 tools)
@@ -155,14 +155,14 @@ See **Write Capabilities → Tensions, Role Projects, and Actions** below for cu
   - **Front-load the topic in the first sentence of the body.** Because there is no `label` field, the body is the only place a reader can scan to understand what the tension is about. Example: start with `"Checklist frequency drift on Operations Circle metrics -- ..."` rather than burying the topic mid-paragraph.
   - **Same-session verification caveat:** `glassfrog_list_role_tensions` may return empty immediately after creation. Use the ID returned by `glassfrog_create_tension` as the only reliable same-session confirmation -- do not try to list-back to verify.
 - `glassfrog_create_role_project(role_id, ...)` -- creates a project tied to a role. No current constraints; the Secretary uses this at triage time during tactical meetings to make project commitments durable immediately rather than batching at meeting close.
-- `glassfrog_create_action(...)` -- creates a next-action. No current constraints; same triage-time pattern as role projects.
+- `glassfrog_create_action(role_id, description, ...)` -- creates a next-action. `role_id` (`role_<32hex>`) and `description` are required. To attach the action to a project, pass the optional `parent_project_id` (`proj_<32hex>`) alongside `role_id`; its optional `status` accepts the same seven-value enum as projects. Same triage-time pattern as role projects.
 
 ### Important Distinctions
 
 - **Updating a checklist description** != **completing a checklist item**. The former changes what the item says; the latter records whether it was done in a given tactical meeting. Only the former is possible via API.
 - **Updating a metric description** != **reporting a metric value**. The former changes what the metric tracks; the latter records the actual number. Only the former is possible via API.
-- **Updating a project status** is a metadata annotation, not a formal workflow transition. GlassFrog projects do not have a formal status machine -- the status field is freeform text.
-- **Deleting items is permanent**. There is no soft-delete or trash. For projects, prefer setting status to "Archived" unless the intent is true removal.
+- **Updating a project status** sets a **closed-enum** field, not free text. Project `status` is exactly one of seven values (live v5, verified 2026-07-20): `archived | cancelled | completed | current | scheduled | someday | waiting`. The same enum governs `create_role_project`, `create_action`, `update_project`, and the `status` filter on `list_role_projects`. There is no enforced transition machine (any value can be set directly), but the field is *not* freeform -- do not invent status strings; only these seven are valid. `archived` is the soft-collapse (see next bullet); `waiting` is the signal the planned stalled-sweep ([#76](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/76)) reads for its `blocked` state. This matches `skills/shared/project-well-formedness.md`, which encodes the same enum.
+- **Deleting items is permanent**. There is no soft-delete or trash. For projects, prefer setting `status: "archived"` (the archive-over-delete soft-collapse) unless the intent is true removal.
 
 ---
 

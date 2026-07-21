@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: A GlassFrog project triage command</title>
+<style>
+  :root{
+    --bg:#fbfaf7; --surface:#ffffff; --ink:#1c1a17; --muted:#5f5a52;
+    --line:#e6e1d8; --accent:#7a5b2e; --accent-soft:#f3ecde; --accent-text:#6a4d24;
+    --info-soft:#e7eef4; --info-text:#33546b;
+    --warn-soft:#f6ead9; --warn-text:#8a5a1d;
+    --good-soft:#e6efe4; --good-text:#3f6238;
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#17150f; --surface:#201d16; --ink:#ece7dc; --muted:#a39c8d;
+      --line:#332e24; --accent:#d8b275; --accent-text:#e3c187; --accent-soft:#2c2618;
+      --info-soft:#1d2730; --info-text:#9cc0db;
+      --warn-soft:#2e2415; --warn-text:#e0b072;
+      --good-soft:#1d2a1c; --good-text:#9fc596;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.6 ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px; margin-inline:auto; padding:48px 22px 80px}
+  header.doc{border-bottom:2px solid var(--line); padding-bottom:20px; margin-bottom:8px}
+  .eyebrow{font:600 12px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-text); margin-bottom:10px}
+  h1{font-size:30px; line-height:1.18; margin:.1em 0 .5em; font-weight:700}
+  h2{font-size:21px; margin:2.4em 0 .7em; padding-top:.3em; border-top:1px solid var(--line); font-weight:700}
+  h2:first-of-type{border-top:none}
+  h3{font-size:17px; margin:0 0 .2em; font-weight:700}
+  p{margin:.5em 0; max-width:72ch}
+  .meta{display:flex; flex-wrap:wrap; gap:8px; font:500 13px/1 ui-sans-serif,system-ui,sans-serif}
+  .meta .pill{background:var(--accent-soft); color:var(--accent-text); border:1px solid var(--line); border-radius:999px; padding:6px 11px}
+  .lead{color:var(--muted); font-size:16.5px}
+  code{font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--accent-soft); color:var(--accent-text); padding:1px 5px; border-radius:5px}
+  a{color:var(--accent-text)}
+  section{margin-top:6px}
+  .grounding{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px}
+  .grounding ul{margin:.4em 0; padding-left:1.2em}
+  .grounding li{margin:.3em 0; max-width:74ch}
+  .axes{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); margin-top:10px}
+  .axis{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px}
+  .axis .k{font:700 12px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.06em; color:var(--accent-text); text-transform:uppercase}
+  .axis p{margin:.35em 0 0; font-size:14px; color:var(--muted); max-width:none}
+  .jump{margin:14px 0 6px; padding:0; list-style:none; display:flex; flex-direction:column; gap:4px; font:500 14px/1.45 ui-sans-serif,system-ui,sans-serif}
+  .jump a{text-decoration:none}
+  .jump .rank{display:inline-block; min-width:1.4em; color:var(--muted)}
+  article.idea{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:20px 22px; margin:16px 0}
+  .idea-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+  .idchip{font:700 12px/1 ui-sans-serif,system-ui,sans-serif; background:var(--accent); color:#fff; border-radius:6px; padding:5px 8px}
+  @media (prefers-color-scheme: dark){ .idchip{color:#17150f} }
+  .chips{display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px; font:600 12px/1 ui-sans-serif,system-ui,sans-serif}
+  .chip{border:1px solid var(--line); border-radius:999px; padding:5px 10px}
+  .chip.axis-c{background:var(--accent-soft); color:var(--accent-text)}
+  .chip.conf{background:var(--info-soft); color:var(--info-text)}
+  .chip.cx{background:var(--warn-soft); color:var(--warn-text)}
+  .idea dl{display:grid; grid-template-columns:max-content 1fr; gap:4px 14px; margin:14px 0 0; font-size:15px}
+  .idea dt{font:700 11.5px/1.5 ui-sans-serif,system-ui,sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding-top:3px}
+  .idea dd{margin:0; max-width:70ch}
+  .basis{font-size:14.5px}
+  .basis .tag{font:700 12px/1 ui-monospace,monospace; color:var(--accent-text)}
+  .callout{background:var(--info-soft); color:var(--info-text); border:1px solid var(--line); border-radius:var(--radius); padding:12px 16px; margin:16px 0; font-size:14.5px}
+  .callout .lbl{font:700 11.5px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.08em; text-transform:uppercase; display:block; margin-bottom:5px}
+  .callout.good{background:var(--good-soft); color:var(--good-text)}
+  .callout.warn{background:var(--warn-soft); color:var(--warn-text)}
+  figure{margin:18px 0 6px}
+  figcaption{font-size:13px; color:var(--muted); margin-top:6px; font-family:ui-sans-serif,system-ui,sans-serif}
+  table{border-collapse:collapse; width:100%; margin:10px 0; font-size:14.5px}
+  th,td{border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top}
+  th{background:var(--accent-soft); color:var(--accent-text); font:700 12.5px/1.3 ui-sans-serif,system-ui,sans-serif}
+  .rej{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:6px 20px 14px; margin-top:10px}
+  .rej dt{font-weight:700; margin-top:12px}
+  .rej dd{margin:.2em 0 0; color:var(--muted); font-size:14.5px}
+  footer.composition-signal{margin-top:48px; padding-top:16px; border-top:1px solid var(--line); font:13px/1.5 ui-sans-serif,system-ui,sans-serif; color:var(--muted)}
+  svg{max-width:100%; height:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="eyebrow">Compound Engineering · Ideation</div>
+  <h1>A command to triage GlassFrog <em>projects</em> — six directions</h1>
+  <p class="lead">Projects get captured well enough, but thin: no clear outcome, no definition of done, no next action. Modeled on the mattpocock triage, adapted to the fact that a Holacratic project is an <em>outcome</em> that needs a next-action and an owner — none of which GlassFrog requires. Six ranked directions, distinct in center of gravity, that compose into one layered system.</p>
+  <div class="meta">
+    <span class="pill">2026-07-20</span>
+    <span class="pill">topic: glassfrog-project-triage</span>
+    <span class="pill">mode: repo-grounded</span>
+    <span class="pill">focus: a project triage command</span>
+  </div>
+</header>
+
+<section>
+  <h2>Grounding Context</h2>
+  <div class="grounding">
+    <p style="margin-top:0"><strong>The problem, precisely.</strong> GlassFrog captures projects with real ease — but the captured record is often under-specified: the description reads as an activity rather than an outcome, there's no stated definition of done, and no next physical action. The felt gap is that a project inbox fills with items nobody can act on without re-thinking them first.</p>
+    <ul>
+      <li><strong>There is already a triage twin for tensions.</strong> <code>/holacracy:process-inbox</code> walks unprocessed <em>tensions</em> per-role, presents a per-item triage block (<code>[a]</code> archive / <code>[p]</code> processed / <code>[e]</code> edit / <code>[d]</code> defer / <code>[q]</code> quit), and writes only on a per-item keystroke. A project triage command is the parallel surface for the <em>project</em> backlog — most of the architecture is already proven in <code>commands/process-inbox.md</code>.</li>
+      <li><strong>The GlassFrog project write surface exists.</strong> The live MCP exposes <code>glassfrog_list_role_projects</code> / <code>glassfrog_list_sub_projects</code> / <code>glassfrog_get_project</code>, <code>glassfrog_list_project_actions</code>, and the writes <code>glassfrog_update_project</code> (description, status, value, effort, roi, private), <code>glassfrog_create_action</code>, <code>glassfrog_create_role_project</code>. A project can carry attached <em>actions</em> — so "next action" is a real, writable object, not a note.</li>
+      <li><strong>But GlassFrog stores none of "well-formed" as a required field.</strong> Per <code>glassfrog-api-constraints.md</code>: project <em>status is freeform text</em> (no status machine); there is no definition-of-done field at all; and same-session list-back can be unreliable (treat creation-response IDs as the confirmation). Any notion of "done enough" has to be a <em>rubric the command applies</em>, plus a <em>body/note convention</em> for DoD — mirroring how tensions front-load their topic and use <code>[GOVERNANCE]</code>/<code>[TACTICAL]</code> body prefixes because there is no label field.</li>
+      <li><strong>mattpocock triage, faithfully mapped.</strong> <code>docs/agents/triage-labels.md</code> already maps the mattpocock 5-state vocabulary (<code>needs-triage</code>, <code>needs-info</code>, <code>ready-for-agent</code>, <code>ready-for-human</code>, <code>wontfix</code>) to this repo. The transferable core is: <em>assess each item, assign a state, and detect what's missing</em> (<code>needs-info</code>). The Holacracy twist is that "needs-info" for a project is nearly always the same three gaps — outcome framing, next-action, owner — so the command can be far more specific than a generic tracker triage.</li>
+      <li><strong>Strategy sets the rails.</strong> <code>STRATEGY.md</code>: "Develop, don't replace" — every interaction is scaffolding that builds practitioner competence; the AI drafts for human review and <em>never</em> auto-writes. And the key metric "tension capture→processing ratio" has an exact project analog: <strong>project capture→movement ratio</strong> — the share of captured projects that actually advance. A triage command is the operational lever on that metric.</li>
+      <li><strong>Constitutional definition, load-bearing.</strong> A Project is "a specific outcome the role will work toward" (a desired end-state), distinct from the Next-Actions that move it. So the well-formedness test is constitutional, not stylistic: outcome-framed description + at least one concrete next-action + a clear owner role.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>Topic Axes</h2>
+  <div class="axes">
+    <div class="axis"><span class="k">A · Triage vocabulary</span><p>What states a project sorts into — well-formed, needs-outcome, needs-next-action, needs-owner, stale, blocked — and how faithfully it echoes the mattpocock 5-state set.</p></div>
+    <div class="axis"><span class="k">B · Well-formedness rubric</span><p>The diagnostic heart: what "done enough" means for a Holacratic project (outcome framing, next-action, owner, implicit DoD).</p></div>
+    <div class="axis"><span class="k">C · Route vs enrich</span><p>Does the command only label the gap, or draft the fix (reframed outcome, a next-action, a DoD line) for human confirmation?</p></div>
+    <div class="axis"><span class="k">D · Scope, selection &amp; loop</span><p>Which projects (my roles / a circle / stale) and the walk shape — per-item, never-batched, quit-anytime, like process-inbox.</p></div>
+    <div class="axis"><span class="k">E · Write safety &amp; API shape</span><p>update_project / create_action, draft-and-confirm, freeform-status &amp; DoD-as-convention, same-session read caveat.</p></div>
+    <div class="axis"><span class="k">F · Alignment &amp; authority</span><p><em>(added in follow-up)</em> Well-<em>placed</em>, not just well-formed: does the project serve a goal, sit within the owner role's authority, and rest on the best-fit role/filler?</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>The Six Survivors</h2>
+  <ul class="jump">
+    <li><span class="rank">1.</span> <a href="#i1">Enrichment triage walker — thicken thin projects, draft-and-confirm</a></li>
+    <li><span class="rank">2.</span> <a href="#i2">Well-formedness rubric as a shared primitive</a></li>
+    <li><span class="rank">3.</span> <a href="#i3">Capture-time guardrail — stop thin projects at the source</a></li>
+    <li><span class="rank">4.</span> <a href="#i4">Next-action gate — the single highest-leverage check</a></li>
+    <li><span class="rank">5.</span> <a href="#i5">Faithful state-labeler — the minimal mattpocock clone</a></li>
+    <li><span class="rank">6.</span> <a href="#i6">Stalled-project sweep — guard the capture→movement ratio</a></li>
+  </ul>
+
+  <div class="callout good">
+    <span class="lbl">These are layers, not either/or</span>
+    In your belt-and-suspenders-and-lifestyle-changes frame: <strong>#1 is the belt</strong> (fix the backlog in the moment), <strong>#6 is the suspenders</strong> (catch what silently stalls anyway), and <strong>#3 is the lifestyle change</strong> (stop under-specified projects being filed at all). #2 and #4 are the shared organs both depend on. The strongest scoping decision for <code>ce-brainstorm</code> may be "which layer ships first," not "which idea wins."
+  </div>
+
+  <article class="idea" id="i1">
+    <div class="idea-head"><span class="idchip">IDEA 1</span><h3>Enrichment triage walker — thicken thin projects, draft-and-confirm</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: B·C·D·E</span>
+      <span class="chip conf">confidence: high</span>
+      <span class="chip cx">complexity: medium-high</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>A <code>/holacracy:triage-projects [circle]</code> command that walks the actor's role projects and, for each, applies the well-formedness rubric, names the specific gap, and <em>drafts the fix</em>: a reframed outcome-shaped description, a proposed first next-action, and a DoD line. Per-project confirmation block offers <code>[e]</code> apply reframe (<code>update_project</code>), <code>[a]</code> add drafted next-action (<code>create_action</code>), <code>[d]</code> defer, <code>[s]</code> stale→archive, <code>[q]</code> quit. Nothing writes without a keystroke.</dd>
+      <dt>Why it fits</dt>
+      <dd>This is the only direction that touches the <em>actual</em> stated pain — "limited info, no DoD, no next action" — rather than just labeling it. It also lands squarely on the strategy: modeling good project form in the moment <em>is</em> the developmental scaffolding, and it moves the capture→movement ratio directly.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">repo:</span> <code>commands/process-inbox.md</code> (walk + per-item keystroke shape to clone) · <code>skills/shared/tension-capture-flow.md</code> (draft-and-confirm B-flow, never-batched, honest-error) · <span class="tag">api:</span> <code>update_project</code> + <code>create_action</code> exist · <span class="tag">strategy:</span> "Develop, don't replace" / capture→processing ratio.</dd>
+      <dt>Build sketch</dt>
+      <dd>New command + a shared <code>skills/shared/project-well-formedness.md</code> (Idea 2) it loads. Reuse the confirmation-block idiom verbatim. DoD lives as a <code>DoD:</code> convention in the description body (there's no field) — Idea 2 fixes the convention.</dd>
+      <dt>Risk / watch</dt>
+      <dd>Enrichment edges toward the AI <em>manufacturing</em> project meaning — the same line the constraints doc draws for AI-detected tensions. Mitigation: draft from the user's own words, confirm per-item, and treat the reframe as a proposal the human owns. Keep it a co-pilot, not an author.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i2">
+    <div class="idea-head"><span class="idchip">IDEA 2</span><h3>Well-formedness rubric as a shared primitive</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: A·B·E</span>
+      <span class="chip conf">confidence: high</span>
+      <span class="chip cx">complexity: low</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>A single canonical reference — <code>skills/shared/project-well-formedness.md</code> — that defines the verdict every project surface uses: <strong>outcome-framed?</strong> (end-state, not activity) · <strong>has a defined next-action?</strong> · <strong>clear owner role?</strong> · <strong>implicit DoD legible?</strong> Plus the state vocabulary (well-formed / needs-outcome / needs-next-action / needs-owner / stale / blocked) and the DoD-as-body-convention decision.</dd>
+      <dt>Why it fits</dt>
+      <dd>Every other idea here needs this exact judgment. Extracting it once — the way <code>tension-triage.md</code> is loaded by five surfaces — means the command, the capture guardrail, and the sweep all agree on what "done enough" means. It's the cheapest, most reused thing you could ship, and it de-risks all the others.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">repo:</span> <code>skills/shared/tension-triage.md</code> (the shared-reference pattern, loaded by many surfaces) · <span class="tag">constitution:</span> project = outcome + next-actions · <span class="tag">api:</span> freeform status &amp; no DoD field ⇒ rubric must live in the plugin, not GlassFrog.</dd>
+      <dt>Build sketch</dt>
+      <dd>Author the reference; give it a substitution-style test per gap ("if this were handed to another role-filler cold, could they act?"). Ship it as the foundation under Idea 1/3/4.</dd>
+      <dt>Risk / watch</dt>
+      <dd>Alone it changes nothing operationally — it's an enabling primitive, not a user-facing win. Rank it first to <em>build</em>, but it only pays off paired with a surface.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i3">
+    <div class="idea-head"><span class="idchip">IDEA 3</span><h3>Capture-time guardrail — stop thin projects at the source</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: B·C·E</span>
+      <span class="chip conf">confidence: medium-high</span>
+      <span class="chip cx">complexity: medium</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>A <code>/holacracy:capture-project</code> create flow (twin of <code>/holacracy:capture-tension</code>) that won't file a project until it passes the rubric: it prompts for an outcome-shaped description and a first next-action, then fires <code>create_role_project</code> + <code>create_action</code> on confirmation. Under-specification is refused <em>gently</em>, with a one-line teaching of the missing element.</dd>
+      <dt>Why it fits</dt>
+      <dd>The root-cause / "lifestyle change" layer: triage debt exists because thin projects get filed in the first place. Fix the intake and the backlog stops filling with un-actionable items — the systemic move you'd pair with the in-the-moment fix.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">repo:</span> <code>commands/capture-tension.md</code> + <code>skills/shared/tension-capture-flow.md</code> (the exact create-flow template) · <span class="tag">api:</span> <code>create_role_project</code>, <code>create_action</code> · <span class="tag">strategy:</span> in-flow co-piloting at the point of work.</dd>
+      <dt>Build sketch</dt>
+      <dd>Mirror the capture-tension B-flow: resolve owner role → draft → per-item confirm → write. Loads Idea 2's rubric as the gate.</dd>
+      <dt>Risk / watch</dt>
+      <dd>Only governs projects created <em>through the plugin</em> — projects filed in the GlassFrog UI bypass it. So it needs #1 or #6 as the catch for everything born elsewhere. Also: don't let the gate become friction that pushes users back to the UI.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i4">
+    <div class="idea-head"><span class="idchip">IDEA 4</span><h3>Next-action gate — the single highest-leverage check</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: B·C·D</span>
+      <span class="chip conf">confidence: medium-high</span>
+      <span class="chip cx">complexity: low</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>A deliberately narrow command that checks one thing: does each project have a defined next physical action (via <code>glassfrog_list_project_actions</code>)? For every project with none, surface it and offer to draft + file one next-action. Nothing else — no outcome reframe, no status debate.</dd>
+      <dt>Why it fits</dt>
+      <dd>In GTD-and-Holacracy orthodoxy a project without a next-action is stalled <em>by definition</em>. This is the cheapest slice that produces real movement, maps cleanly to the tactical-meeting "Projects" round, and is a natural MVP that Idea 1 can later subsume.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">api:</span> <code>list_project_actions</code> + <code>create_action</code> make the gap directly detectable and fixable · <span class="tag">repo:</span> Secretary/tactical surfaces already reason about projects-and-actions · <span class="tag">strategy:</span> capture→movement ratio.</dd>
+      <dt>Build sketch</dt>
+      <dd>List projects → for each, list actions → if empty, draft one → per-item confirm → <code>create_action</code>. Smallest viable command; ships in a fraction of Idea 1's surface area.</dd>
+      <dt>Risk / watch</dt>
+      <dd>A project can have a next-action and still be badly framed (activity-as-outcome). This catches stalls, not mis-framing — so it's a partial fix that leaves the "no DoD / no clear outcome" half of the pain on the table.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i5">
+    <div class="idea-head"><span class="idchip">IDEA 5</span><h3>Faithful state-labeler — the minimal mattpocock clone</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: A·D</span>
+      <span class="chip conf">confidence: high</span>
+      <span class="chip cx">complexity: low</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>The most literal reading of "much like the mattpocock triage": walk the project backlog, assign each a state from a fixed vocabulary, and record it as a <code>status:</code> convention (freeform field) or a body prefix — <code>[NEEDS-OUTCOME]</code>, <code>[NEEDS-ACTION]</code>, <code>[BLOCKED]</code>, <code>[READY]</code>, <code>[STALE]</code>. No drafting of fixes; pure sorting so the backlog becomes scannable.</dd>
+      <dt>Why it fits</dt>
+      <dd>Closest to the reference you pointed at, lowest build cost, and it makes the backlog <em>legible</em> even before anyone fixes anything. A good staging post if you want the labeling discipline in place before investing in enrichment.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">repo:</span> <code>docs/agents/triage-labels.md</code> (the mattpocock 5-state map already lives here) · <code>process-inbox.md</code> (edit-body-to-prefix convention, exactly like tension <code>[GOVERNANCE]</code>/<code>[TACTICAL]</code>) · <span class="tag">api:</span> freeform status.</dd>
+      <dt>Build sketch</dt>
+      <dd>Walk + classify + write state to status/body via <code>update_project</code>. No <code>create_action</code> surface at all.</dd>
+      <dt>Risk / watch</dt>
+      <dd>Labeling without enrichment risks becoming a vanity ritual — a tidy backlog of items still nobody can act on. It sorts the pain; it doesn't resolve it. Ranked below the directions that actually move projects.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i6">
+    <div class="idea-head"><span class="idchip">IDEA 6</span><h3>Stalled-project sweep — guard the capture→movement ratio</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: A·D·E</span>
+      <span class="chip conf">confidence: medium</span>
+      <span class="chip cx">complexity: medium</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>A back-of-loop sweep (twin of <code>/holacracy:supersession-sweep</code>) that surfaces projects showing no movement — old <code>created_at</code>, no recent action, stuck status — and offers to re-energize (draft a next-action) or archive (<code>status: "Archived"</code>, the soft-collapse the constraints doc recommends over deletion). Optionally schedulable as an agentic routine.</dd>
+      <dt>Why it fits</dt>
+      <dd>It is the direct instrument on the strategy's project-movement metric and the "proactive practice-holding" track — it catches the tail that intake guardrails and in-the-moment triage both miss, and it keeps the backlog honest under stress.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">repo:</span> <code>commands/supersession-sweep.md</code> (sweep shape + session/recent scope) · <code>skills/shared/agentic-routines.md</code> (scheduling) · <span class="tag">api:</span> <code>update_project(status)</code>, <code>created_at</code> available; archive-over-delete guidance.</dd>
+      <dt>Build sketch</dt>
+      <dd>List projects → heuristic for "stalled" (age + no actions + status) → per-item re-energize / archive / defer → write on keystroke.</dd>
+      <dt>Risk / watch</dt>
+      <dd>"Stalled" is a heuristic, and GlassFrog exposes no last-touched timestamp for the project itself — you infer staleness from <code>created_at</code> + action absence, which can false-positive on legitimately slow long-horizon projects. Confirm per-item; never auto-archive.</dd>
+    </dl>
+  </article>
+</section>
+
+<section>
+  <h2>How they compose</h2>
+  <figure>
+    <svg viewBox="0 0 900 220" role="img" aria-label="Project lifecycle with the six ideas placed as layers across capture, backlog, and tail">
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="currentColor"/></marker>
+      </defs>
+      <g font-family="ui-sans-serif,system-ui,sans-serif" font-size="13">
+        <!-- flow spine -->
+        <line x1="60" y1="45" x2="840" y2="45" stroke="currentColor" stroke-opacity=".3" marker-end="url(#ar)"/>
+        <text x="60" y="30" font-weight="700">Capture</text>
+        <text x="400" y="30" font-weight="700" text-anchor="middle">Backlog (thin &amp; thick)</text>
+        <text x="840" y="30" font-weight="700" text-anchor="end">Movement · or stall</text>
+
+        <!-- Idea 3 at capture -->
+        <rect x="40" y="70" width="180" height="52" rx="8" fill="var(--good-soft)" stroke="var(--line)"/>
+        <text x="130" y="92" text-anchor="middle" font-weight="700">Idea 3 · guardrail</text>
+        <text x="130" y="110" text-anchor="middle" fill="var(--muted)">lifestyle change</text>
+
+        <!-- Idea 2/4/5/1 across backlog -->
+        <rect x="255" y="70" width="150" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--line)"/>
+        <text x="330" y="92" text-anchor="middle" font-weight="700">Idea 2 · rubric</text>
+        <text x="330" y="110" text-anchor="middle" fill="var(--muted)">shared organ</text>
+
+        <rect x="255" y="138" width="150" height="52" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+        <text x="330" y="160" text-anchor="middle" font-weight="700">Idea 5 · label</text>
+        <text x="330" y="178" text-anchor="middle" fill="var(--muted)">legible</text>
+
+        <rect x="430" y="70" width="170" height="52" rx="8" fill="var(--info-soft)" stroke="var(--line)"/>
+        <text x="515" y="92" text-anchor="middle" font-weight="700">Idea 1 · enrich (belt)</text>
+        <text x="515" y="110" text-anchor="middle" fill="var(--muted)">thicken in the moment</text>
+
+        <rect x="430" y="138" width="170" height="52" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+        <text x="515" y="160" text-anchor="middle" font-weight="700">Idea 4 · next-action</text>
+        <text x="515" y="178" text-anchor="middle" fill="var(--muted)">narrow, cheapest</text>
+
+        <!-- Idea 6 tail -->
+        <rect x="650" y="104" width="190" height="52" rx="8" fill="var(--warn-soft)" stroke="var(--line)"/>
+        <text x="745" y="126" text-anchor="middle" font-weight="700">Idea 6 · sweep</text>
+        <text x="745" y="144" text-anchor="middle" fill="var(--muted)">suspenders</text>
+      </g>
+    </svg>
+    <figcaption>Front of loop (3) → shared rubric (2) feeding the in-backlog surfaces (1, 4, 5) → back of loop (6). Distinct centers of gravity, one system.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>Expansion — well-<em>placed</em>, not just well-formed</h2>
+  <p class="lead">Follow-up round (2026-07-20). The original six ask <em>"is this project a good statement of actionable work?"</em> These four ask <em>"is it the right project, on the right role, serving the right ends, within authority?"</em> — a second quality family (axis F). The GlassFrog MCP already exposes the primitives each needs, so all four are feasible.</p>
+
+  <ul class="jump">
+    <li><span class="rank">7.</span> <a href="#i7">Goal &amp; target alignment — is this project serving any goal?</a></li>
+    <li><span class="rank">8.</span> <a href="#i8">Scope–authority validation — is this within the role's authority?</a></li>
+    <li><span class="rank">9.</span> <a href="#i9">Assignment fit — is this on the best-fit role/filler?</a></li>
+    <li><span class="rank">10.</span> <a href="#i10">Adversarial project-review panel — the synthesis that composes the lenses</a></li>
+  </ul>
+
+  <div class="callout">
+    <span class="lbl">Two families, one orchestration</span>
+    Ideas 1–6 are the <strong>well-formed</strong> family (actionable). Ideas 7–9 are the <strong>well-placed</strong> family (purposeful, authorized, well-owned). Idea 10 is the join: an adversarial review that runs each family's checks as an independent critic lens against a project and surfaces the holes. Whether 7–9 ship as standalone commands or as critics <em>inside</em> 10 is the central structural choice this expansion raises.
+  </div>
+
+  <article class="idea" id="i7">
+    <div class="idea-head"><span class="idchip">IDEA 7</span><h3>Goal &amp; target alignment — is this project serving any goal?</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: F·C·E</span>
+      <span class="chip conf">confidence: high</span>
+      <span class="chip cx">complexity: low-medium</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>A check that, per project, asks whether it supports a goal or target the role/circle holds. Surfaces <em>orphan projects</em> (serving no stated goal) and, reciprocally, <em>unbacked goals</em> (goals with no supporting project). Offers to link a project to the goal it serves via <code>glassfrog_link_goal_supporting_project</code>.</dd>
+      <dt>Why it fits</dt>
+      <dd>Extends triage from "actionable" to "purposeful." A project that is perfectly well-formed but serves nothing the role is trying to achieve is still triage-worthy. And the reciprocal view (goals with no backing) is a strategy-health signal the plugin's governance-champion persona would want.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">api:</span> <code>list_role_goals</code>, <code>list_goal_targets</code>, <code>list_goal_supporting_projects</code>, and the direct write <code>link_goal_supporting_project</code> / <code>unlink_goal_supporting_project</code> all exist — this is the most directly-supported of the four · <span class="tag">strategy:</span> alignment to role/circle strategy.</dd>
+      <dt>Risk / watch</dt>
+      <dd>Not every legitimate project maps to a formal goal — some work is maintenance or tension-driven. Flag orphans as <em>questions</em>, not defects; don't imply every project must link to a goal.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i8">
+    <div class="idea-head"><span class="idchip">IDEA 8</span><h3>Scope–authority validation — is this within the role's authority?</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: F·B</span>
+      <span class="chip conf">confidence: medium-high</span>
+      <span class="chip cx">complexity: medium</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>Checks a project's stated scope against the owning role's accountabilities and domains: is the role actually authorized to pursue this outcome? Flags projects that <em>overreach</em> the role (need a different role, a domain grant, or a governance change) or that <em>reach into another role's domain</em>.</dd>
+      <dt>Why it fits</dt>
+      <dd>Constitutionally, a project must fall within the role's purpose / accountabilities / domains — otherwise it's a governance question wearing a project's clothes. This is the check that turns a misfiled project into a sensed tension. It has a natural home next to your existing <code>/holacracy:check-authority</code>.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">repo:</span> <code>commands/check-authority.md</code> already reasons about role authority · <span class="tag">api:</span> <code>get_role</code> / <code>glassfrog_get_role_context</code> / <code>list_role_domains</code> return accountabilities + domains · <span class="tag">constitution:</span> project ⊆ role authority.</dd>
+      <dt>Risk / watch</dt>
+      <dd>"Within authority" is interpretive — accountabilities are prose. Advisory only: surface the concern and the governance route, never block or re-file. A false "overreach" flag on legitimate initiative-taking would be corrosive to trust.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i9">
+    <div class="idea-head"><span class="idchip">IDEA 9</span><h3>Assignment fit — is this on the best-fit role/filler?</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: F</span>
+      <span class="chip conf">confidence: medium</span>
+      <span class="chip cx">complexity: medium</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>Asks whether the project sits on the best-fit owner, in two distinct readings it should keep separate: <strong>role-fit</strong> — given the scope, is <em>this role</em> the right one, or should another role own it? (governance-adjacent) — and <strong>person-fit</strong> — is the role's current filler resourced for it? (a Lead Link question). Surfaces the mismatch and the right forum; never reassigns.</dd>
+      <dt>Why it fits</dt>
+      <dd>Catches the "right work, wrong owner" failure the other checks miss. The person-fit reading connects directly to the Lead Link co-pilot's assignment work.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">api:</span> <code>list_role_assignments</code>, <code>list_people</code>, <code>list_skills</code>, role purposes available · <span class="tag">repo:</span> Lead Link skill reasons about role assignment · <span class="tag">strategy:</span> AI drafts / never auto-assigns.</dd>
+      <dt>Risk / watch</dt>
+      <dd>"Best fit" is the most judgment-heavy and the most politically sensitive of the four — highest risk of the AI manufacturing an opinion about people. Strictly advisory, and lean on person-fit only when the user asks; default to the structural role-fit reading.</dd>
+    </dl>
+  </article>
+
+  <article class="idea" id="i10">
+    <div class="idea-head"><span class="idchip">IDEA 10</span><h3>Adversarial project-review panel — the synthesis</h3></div>
+    <div class="chips">
+      <span class="chip axis-c">axes: A·B·C·F</span>
+      <span class="chip conf">confidence: high</span>
+      <span class="chip cx">complexity: high</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>A <code>/holacracy:review-project</code> that runs a panel of independent adversarial critics against one project (or a backlog). Each critic gets a distinct lens — <em>actionability</em> (the rubric), <em>goal-alignment</em>, <em>scope-authority</em>, <em>assignment-fit</em>, and a <em>red-team</em> "what's missing / what could go wrong" critic whose only job is to poke holes. Findings are deduped, severity-ranked, and surfaced per-project for human confirmation; the human decides what to fix, and only then does anything write.</dd>
+      <dt>Why it fits</dt>
+      <dd>This is the direction you were reaching for — validate-scope and check-assignment "as critics in an agentic adversarial review," plus a dedicated hole-poker. It composes Ideas 2/7/8/9 as lenses rather than scattering them across commands, it matches the compound-engineering adversarial-verify pattern (independent critics beat one pass), and it is deeply developmental: showing a role-filler <em>why</em> their project is weak, from several angles, is exactly the "model good practice in the moment" mandate.</dd>
+      <dt>Basis</dt>
+      <dd class="basis"><span class="tag">pattern:</span> compound-engineering adversarial panel / judge-panel (independent lenses, dedup, severity filter) · <span class="tag">repo:</span> draft-and-confirm safeguard, develop-don't-replace · <span class="tag">api:</span> each critic reads its own MCP surface; writes gated per-finding.</dd>
+      <dt>Build sketch</dt>
+      <dd>Orchestrator dispatches one subagent per lens (parallel), each returns structured findings against the shared rubric (Idea 2); orchestrator dedups + ranks + presents; human confirms fixes that route to <code>update_project</code> / <code>create_action</code> / <code>link_goal_supporting_project</code> / a sensed tension. The narrow checks 7–9 can double as the standalone entry points <em>and</em> the panel's critics.</dd>
+      <dt>Risk / watch</dt>
+      <dd>Heaviest to build and the priciest to run (multi-agent). Over-critique is the real failure mode — a wall of nitpicks trains users to dismiss it. Needs a hard severity floor and a cap on findings per project. Keep every finding a question the human answers, never a verdict the AI enforces.</dd>
+    </dl>
+  </article>
+</section>
+
+<section>
+  <h2>Critiqued &amp; cut</h2>
+  <p class="lead">The quality mechanism is explicit rejection, not optimistic ranking. What didn't survive, and why:</p>
+  <dl class="rej">
+    <dt>AFK / "ready-for-agent" split</dt>
+    <dd>Faithful to mattpocock's <code>ready-for-agent</code> vs <code>ready-for-human</code>, but it doesn't map: Holacratic projects aren't executed by AFK coding agents the way GitHub issues are. The valuable kernel — "is this well-formed?" — is already Idea 2. Cut as a distinct direction.</dd>
+    <dt>DoD-as-dedicated-field</dt>
+    <dd>Tempting, but GlassFrog has no definition-of-done field and no API to add one. Folded into Idea 2 as the "DoD-as-body-convention" decision rather than pursued as its own idea.</dd>
+    <dt>Developmental "teach-the-form" mode</dt>
+    <dd>Every triage verdict carrying a one-line teaching of <em>why</em> (activity vs outcome, etc.) is real value — but it's a cross-cutting quality layer, not a standalone command. Folded into Ideas 1, 3, and 5 as a property, per the strategy's develop-don't-replace mandate.</dd>
+    <dt>Tactical-meeting project-review prep</dt>
+    <dd>Genuinely useful, but it's an <em>application</em> of Ideas 2 + 4 into the existing Secretary / agentic-routines surface rather than a new triage direction. Noted as an adjacent packaging of Idea 4/6, not ranked separately.</dd>
+  </dl>
+</section>
+
+<footer class="composition-signal">
+  Generated by <code>ce-ideate</code> (repo-grounded). Grounding read directly: <code>commands/process-inbox.md</code>, <code>commands/capture-tension.md</code>, <code>skills/shared/tension-triage.md</code>, <code>skills/shared/tension-capture-flow.md</code>, <code>skills/holacratic-ai-governance/references/glassfrog-api-constraints.md</code>, <code>docs/agents/triage-labels.md</code>, <code>STRATEGY.md</code>. Next step is <code>ce-brainstorm</code> on one chosen direction — it turns the pick into a requirements-only unified plan. This artifact identifies directions; it is not a plan or a spec.
+</footer>
+
+</div>
+</body>
+</html>

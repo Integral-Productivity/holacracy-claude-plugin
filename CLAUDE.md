@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## What this repo is
 
-A public Claude Code plugin for engaging with [Holacracy](https://www.holacracy.org/) from inside Claude. The plugin bundles five skills (four Core Role co-pilots plus a governance-aware operating frame) and wires up the GlassFrog MCP as a connector.
+A public Claude Code plugin for engaging with [Holacracy](https://www.holacracy.org/) from inside Claude. The plugin bundles six skills (four Core Role co-pilots, a governance-aware operating frame, and a checklist & metric portfolio audit) and wires up the GlassFrog MCP as a connector.
 
 ## Layout
 
@@ -21,6 +21,7 @@ holacracy-claude-plugin/
     ├── holacracy-lead-link/
     ├── holacracy-rep-link/
     ├── holacratic-ai-governance/
+    ├── checklist-metric-audit/
     └── shared/
         └── authority-boundaries.md
 ```
@@ -33,13 +34,15 @@ holacracy-claude-plugin/
 
 `skills/shared/project-capture-flow.md` (the draft-and-confirm P-flow for filing a well-formed project at intake) is loaded by the `/holacracy:capture-project` command and the `project-capture` subagent. It is the create-flow twin of `skills/shared/tension-capture-flow.md`; keep the two flows' constitutional-safeguard and confirmation-block conventions aligned.
 
+`skills/checklist-metric-audit/` audits a circle's checklist items and metrics against its purpose, accountabilities, and domains, then remediates directly through the GlassFrog MCP. It leans on the constitutional distinction that checklist items and metrics are **operational, not governance** (Art. 3.2), so — unlike governance edits — it applies changes without a proposal. Its companion command is `/holacracy:audit-portfolio`. When an audit finding actually needs a new accountability or domain, it hands off to `/holacracy:capture-tension` rather than papering over the gap.
+
 ## GlassFrog MCP
 
 Wired in via `.mcp.json` at the repo root. Server is `https://ipllc-glassfrog-mcp-server.vercel.app/mcp`, hosted on Vercel by Integral Productivity LLC, OAuth-protected so each user brings their own GlassFrog API key. If that URL ever moves (e.g., to a canonical `mcp.glassfrog.*` once an official server lands), update `.mcp.json` and bump the plugin version.
 
 ## Editing skills
 
-The five skills here are the canonical source of truth — they were extracted from the [Integral-Productivity/skills](https://github.com/Integral-Productivity/skills) monorepo. Updates land here first.
+The skills here are the canonical source of truth. The original five were extracted from the [Integral-Productivity/skills](https://github.com/Integral-Productivity/skills) monorepo; newer skills such as `checklist-metric-audit` originate here. Updates land here first.
 
 ## Versioning
 

@@ -26,6 +26,24 @@ name: Version authority
 # `main`. `main` carries no ruleset today and `gh pr merge --auto` waits only
 # on required checks, so until that ruleset exists the guard can be outrun by
 # auto-merge on a claude/* branch — the exact path that produced #99.
+#
+# Two complementary jobs
+# ----------------------
+#   no-hand-edits  a DIFF check: did this PR touch a field release-please owns?
+#                  Needs base.sha/head.sha, so it is pull_request-only.
+#   invariant      a STATE check: do the three files agree right now?
+#                  Reads the checked-out tree, so it runs on any event — which
+#                  is what lets it also cover `push: main`.
+#
+# The `push: main` leg is the backstop for a DIRECT push to main. That is
+# possible today (main carries no ruleset), and a pull_request-scoped check
+# structurally cannot see it. It also re-verifies main after every merge,
+# including release-please's own release commit.
+#
+# Deliberately NOT asserted: that the version equals the latest vX.Y.Z tag.
+# That would race release-please's tag creation on the release commit.
+# promote-stable.yml already enforces it at promotion time (verified on the
+# v0.10.1 run: "Tag: v0.10.1 / Tag version: 0.10.1 / Manifest ver.: 0.10.1").
 
 on:
   pull_request:
@@ -34,6 +52,8 @@ on:
     # and without these event types adding the label does not re-run the check,
     # leaving a permanently red required status.
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -56,6 +76,7 @@ jobs:
         # that avoids the ${{ }} -> run: script-injection class (devops-excellence
         # ADR-045 threat model). Do NOT inline-expand them in a run: step.
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.head_ref }}
@@ -69,6 +90,16 @@ jobs:
           # configured as required blocks the PR forever ("Expected — waiting for
           # status") — which would wedge precisely the release PR this guard has
           # to let through.
+
+          # This is a diff check: it compares the PR's base against its head, so
+          # it is meaningful only on pull_request. The workflow also listens to
+          # `push: main` for the invariant job below; on that event there is no
+          # base/head pair to diff, so this job stands down. It is NOT asserting
+          # main is clean — the invariant job is what covers the push leg.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "::notice::Not applicable on '$EVENT_NAME' — this job diffs a PR's base against its head. The 'Version files agree' job covers this event."
+            exit 0
+          fi
 
           # Prefix match, not exact: release-please derives the branch name from
           # config (branch + package-name), so it changes if
@@ -147,6 +178,122 @@ jobs:
             echo
             echo "GENUINELY NEED TO HAND-EDIT? (repairing drift, re-baselining the manifest)"
             echo "  Add the 'version-override' label to this PR and say why in the PR body."
+            echo
+            echo "CONVENTION: CLAUDE.md section Versioning"
+            echo "  docs/adr/0010-release-please-is-the-sole-writer-of-the-plugin-version.md"
+          } >&2
+          exit 1
+
+  invariant:
+    name: Version files agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # No fetch-depth: this is a state check on the checked-out tree, not a
+        # diff against a merge base. On pull_request that tree is the merge
+        # commit (base + head), which is the state that would land on main.
+
+      - name: Assert manifest == version.txt == plugin.json $.version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_OVERRIDE: ${{ contains(github.event.pull_request.labels.*.name, 'version-override') }}
+        run: |
+          set -euo pipefail
+
+          # As in the job above, the exemption is evaluated INSIDE the step. A
+          # job-level `if:` yields a SKIPPED check, and a skipped check that is
+          # configured as required blocks the PR forever.
+          #
+          # Note there is deliberately NO release-please exemption here. This
+          # job is precisely the check that would have caught the pending 0.7.0
+          # downgrade in #100, and that downgrade would have arrived ON a
+          # release-please PR. Exempting release-please would re-open the hole.
+          # A correct release PR passes on its own merits: release-please writes
+          # all three files to the same version in one commit.
+          #
+          # On `push: main` there is no PR to label, so HAS_OVERRIDE is false —
+          # which is the intended behaviour: main must always hold the invariant.
+
+          for f in .release-please-manifest.json version.txt .claude-plugin/plugin.json; do
+            if [ ! -f "$f" ]; then
+              echo "::error title=Version-authority file missing::$f is absent. release-please requires all three files to exist." >&2
+              exit 1
+            fi
+          done
+
+          manifest_v="$(jq -r '.["."] // empty' .release-please-manifest.json)"
+          plugin_v="$(jq -r '.version // empty' .claude-plugin/plugin.json)"
+          # version.txt is a bare version string; strip the trailing newline and
+          # any stray whitespace so formatting alone never fails the build.
+          version_txt="$(tr -d '[:space:]' < version.txt)"
+
+          empty=""
+          [ -n "$manifest_v" ]  || empty="${empty}  - .release-please-manifest.json has no \".\" key"$'\n'
+          [ -n "$plugin_v" ]    || empty="${empty}  - .claude-plugin/plugin.json has no \$.version"$'\n'
+          [ -n "$version_txt" ] || empty="${empty}  - version.txt is empty"$'\n'
+
+          if [ -n "$empty" ]; then
+            echo "::error title=Version-authority value missing::A version-carrying field is absent or empty. See the job log." >&2
+            { echo; echo "Detected:"; printf '%s' "$empty"; } >&2
+            exit 1
+          fi
+
+          if [ "$manifest_v" = "$version_txt" ] && [ "$manifest_v" = "$plugin_v" ]; then
+            echo "Three-files-agree invariant holds at ${manifest_v} (event: ${EVENT_NAME})."
+            echo "  .release-please-manifest.json[\".\"]     = ${manifest_v}"
+            echo "  version.txt                            = ${version_txt}"
+            echo "  .claude-plugin/plugin.json \$.version    = ${plugin_v}"
+            echo
+            echo "Not checked here: agreement with the latest vX.Y.Z tag. That would race"
+            echo "release-please's tag creation; promote-stable.yml asserts it at promotion."
+            exit 0
+          fi
+
+          if [ "$HAS_OVERRIDE" = "true" ]; then
+            echo "::warning title=Version-authority invariant overridden::The three version files disagree, but the 'version-override' label is present, so this is allowed. Use it only to repair drift or re-baseline the manifest, and put the reason in the PR body."
+            {
+              echo "  .release-please-manifest.json[\".\"]     = ${manifest_v}"
+              echo "  version.txt                            = ${version_txt}"
+              echo "  .claude-plugin/plugin.json \$.version    = ${plugin_v}"
+            } >&2
+            exit 0
+          fi
+
+          echo "::error title=Version-authority invariant broken::The three version-carrying files disagree. See the job log for how to repair." >&2
+          {
+            echo
+            echo "Detected — these three must all carry the SAME version:"
+            echo "  .release-please-manifest.json[\".\"]     = ${manifest_v}"
+            echo "  version.txt                            = ${version_txt}"
+            echo "  .claude-plugin/plugin.json \$.version    = ${plugin_v}"
+            echo
+            echo "WHY THIS MATTERS"
+            echo "  release-please reads .release-please-manifest.json to learn the CURRENT"
+            echo "  released version, then computes the next one from the Conventional"
+            echo "  Commits since that baseline. version.txt and .claude-plugin/plugin.json"
+            echo "  are outputs it rewrites to match."
+            echo
+            echo "  So when plugin.json runs AHEAD of the manifest, the next release does not"
+            echo "  bump the user-visible version -- it DOWNGRADES it, back to manifest+1."
+            echo "  That is not hypothetical: plugin.json reached 0.10.0 while the manifest"
+            echo "  sat at 0.6.0, and the pending release would have shipped 0.7.0 to users"
+            echo "  (issue #100). This job is the check that would have caught it."
+            echo
+            echo "HOW TO REPAIR"
+            echo "  Decide which value is the truth. It is almost always the latest git tag"
+            echo "  (\`git tag --list 'v*' --sort=-v:refname | head -1\`), because the tag is"
+            echo "  what promote-stable.yml published to the 'stable' branch that the public"
+            echo "  marketplace tracks."
+            echo
+            echo "  1. Set all three files to that value in a single commit."
+            echo "  2. Add the 'version-override' label to the PR -- the no-hand-edits job"
+            echo "     will otherwise (correctly) reject you for touching these files, and"
+            echo "     this job will otherwise reject any intermediate disagreement."
+            echo "  3. Say in the PR body which value you chose and why."
+            echo
+            echo "IF YOU DID NOT MEAN TO TOUCH THESE FILES"
+            echo "  Revert them and describe your change in a Conventional Commit instead."
+            echo "  release-please does all three writes for you when the release PR merges."
             echo
             echo "CONVENTION: CLAUDE.md section Versioning"
             echo "  docs/adr/0010-release-please-is-the-sole-writer-of-the-plugin-version.md"

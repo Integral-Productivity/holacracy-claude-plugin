@@ -120,7 +120,40 @@ jobs:
             exit 0
           fi
 
+          # Both SHAs must actually RESOLVE before anything diffs them. git
+          # signals an unresolvable object by failing, and both readers below
+          # used to launder that failure into evidence of a hand-edit:
+          # plugin_version_at's `2>/dev/null ... || true` turned "bad object"
+          # into "<absent>", and `if ! git diff --quiet` read git's error status
+          # as "changed". Run 30314716956 fabricated all three violations that
+          # way, on a PR whose only change was to this very file (issue #116).
+          #
+          # It happened because `unlabeled` fired ~72s AFTER the PR merged and
+          # ip-automerge deleted the branch, so head was unreachable. Live
+          # pre-merge exposure is narrower but real: a force-push race between
+          # event dispatch and checkout, or a fork deleted while its PR is open.
+          #
+          # Standing down (exit 0) rather than failing is deliberate. An
+          # unresolvable head means the PR is already merged, closed, or has
+          # moved to a different head — there is no merge left for this diff to
+          # gate, and a force-push emits `synchronize`, which re-runs this job
+          # against the new head. Exit 0 also keeps the check GREEN rather than
+          # skipped, which is what #111 needs: a skipped required check wedges
+          # the PR forever. The `invariant` job is unaffected either way — it
+          # reads refs/pull/N/merge, which survives branch deletion, and it
+          # passed on that same broken run.
+          for sha in "$BASE_SHA" "$HEAD_SHA"; do
+            if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+              echo "::notice::Cannot resolve '${sha}' as a commit — the ref was most likely deleted after the PR merged (see issue #116). Nothing to diff; standing down rather than reporting a violation this job cannot substantiate."
+              exit 0
+            fi
+          done
+
           plugin_version_at() {
+            # The pre-flight above already proved "$1" resolves, so a failure
+            # here means the FILE is absent at that commit — a real, reportable
+            # "<absent>" (e.g. a base predating plugin.json), not a broken ref.
+            # Keeping those two cases distinguishable is the point of #116.
             git show "$1:.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty' || true
           }
 
@@ -133,10 +166,25 @@ jobs:
           fi
 
           # release-please owns these two files wholesale — any change is a violation.
+          #
+          # Branch on the EXACT status, not on "non-zero". `git diff --quiet`
+          # overloads its exit code three ways: 0 = identical, 1 = differs,
+          # 128 = git failed. The old `if ! git diff --quiet` collapsed 1 and
+          # 128 into the same arm, so a git error became a fabricated violation
+          # (#116). The pre-flight above rules out the unresolvable-SHA cause;
+          # this keeps any OTHER git failure loud and distinct instead of
+          # laundering it into an accusation of tampering.
           for f in version.txt .release-please-manifest.json; do
-            if ! git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- "$f"; then
-              violations="${violations}  - ${f} changed (release-please owns this file wholesale)"$'\n'
-            fi
+            diff_status=0
+            git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- "$f" || diff_status=$?
+            case "$diff_status" in
+              0) ;;
+              1) violations="${violations}  - ${f} changed (release-please owns this file wholesale)"$'\n' ;;
+              *)
+                echo "::error title=Version-authority check errored::git diff exited ${diff_status} comparing '${BASE_SHA}'..'${HEAD_SHA}' for '${f}'. That is a git failure, NOT a version-authority violation — this job is failing on the error rather than guessing. See the git diagnostic above." >&2
+                exit 1
+                ;;
+            esac
           done
 
           if [ -z "$violations" ]; then

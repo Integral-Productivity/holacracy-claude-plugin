@@ -35,7 +35,7 @@ holacracy-claude-plugin/
 
 ## GlassFrog MCP
 
-Wired in via `.mcp.json` at the repo root. Server is `https://ipllc-glassfrog-mcp-server.vercel.app/mcp`, hosted on Vercel by Integral Productivity LLC, OAuth-protected so each user brings their own GlassFrog API key. If that URL ever moves (e.g., to a canonical `mcp.glassfrog.*` once an official server lands), update `.mcp.json` and bump the plugin version.
+Wired in via `.mcp.json` at the repo root. Server is `https://ipllc-glassfrog-mcp-server.vercel.app/mcp`, hosted on Vercel by Integral Productivity LLC, OAuth-protected so each user brings their own GlassFrog API key. If that URL ever moves (e.g., to a canonical `mcp.glassfrog.*` once an official server lands), update `.mcp.json` and land it as a `feat:` commit — release-please computes the version bump. Do not hand-edit the version; see § Versioning.
 
 ## Editing skills
 
@@ -43,7 +43,35 @@ The five skills here are the canonical source of truth — they were extracted f
 
 ## Versioning
 
-Plugin uses SemVer in `.claude-plugin/plugin.json`. Skills carry their own `version:` in frontmatter. Bump skill versions when content changes meaningfully; bump plugin version when the bundle shape changes (skills added/removed, MCP repointed, commands/agents added).
+**release-please is the sole writer of the plugin version. Never hand-edit it.**
+
+Three files carry the plugin version, and `release-please-config.json` (`release-type: simple`) owns all three end to end:
+
+| File | Role |
+| --- | --- |
+| `.release-please-manifest.json` | the released-version baseline release-please reads |
+| `version.txt` | required by `release-type: simple` |
+| `.claude-plugin/plugin.json` `$.version` | the user-visible version, rewritten as an `extra-files` target |
+
+Do not edit any of them — not in a feature PR, not "to keep them in sync," not because a version looks stale. They are written only by the `chore(main): release X.Y.Z` PR that `release-please.yml` opens. Five feature PRs hand-bumped `plugin.json` to 0.10.0 while the manifest sat at 0.6.0, and the next release would have *downgraded* the visible version to 0.7.0 (issue #100). `.github/workflows/version-authority.yml` now fails any PR that tries.
+
+**What you do instead: write a Conventional Commit.** The type drives the bump — `fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE:` → major (this repo sets `bump-minor-pre-major: false`, so a breaking change takes 0.x straight to 1.0.0). A bundle-shape change — skill, command, or agent added; MCP repointed — is expressed by using `feat:`, not by editing a number.
+
+**Merging the release PR is the release act.** It writes all three files, updates `CHANGELOG.md`, tags `vX.Y.Z`, and `promote-stable.yml` fast-forwards the `stable` branch the public marketplace tracks. Don't let the release PR sit — an unmerged release PR freezes the shipped version, which is what makes hand-bumping feel necessary in the first place.
+
+**To force a specific version** (rare), add a one-shot footer as the final line of the commit message *and* the PR body, and let release-please do the writing:
+
+```
+Release-As: 1.2.3
+```
+
+Do not use the `release-as` key in `release-please-config.json` — it is sticky and pins every subsequent release until someone removes it.
+
+**Everything else in `plugin.json` is hand-maintained** — `description`, `keywords`, `author`. Edit those freely; only `$.version` is off-limits.
+
+**Skill versions stay manual.** Each skill carries its own `version:` in frontmatter, unrelated to the plugin version and untouched by release-please. Bump a skill's version when its content changes meaningfully.
+
+Convention of record: [`docs/adr/0010-release-please-is-the-sole-writer-of-the-plugin-version.md`](docs/adr/0010-release-please-is-the-sole-writer-of-the-plugin-version.md), which amends ADR-0002's manual release steps and leaves its tag-driven `stable` promotion intact.
 
 ## Agent skills
 

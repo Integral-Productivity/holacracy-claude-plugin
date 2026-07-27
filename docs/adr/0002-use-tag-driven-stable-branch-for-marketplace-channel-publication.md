@@ -6,6 +6,12 @@ Date: 2026-05-23
 
 Accepted
 
+Amended by
+[ADR-0010](0010-release-please-is-the-sole-writer-of-the-plugin-version.md) —
+the release act is now *merging the release-please PR*; release-please writes
+`plugin.json`'s version and pushes the tag. The tag-driven `stable` promotion
+described below is unchanged.
+
 ## Context
 
 This plugin ships through the public
@@ -39,6 +45,11 @@ by a tag-driven GitHub Actions workflow.
   1. Bumping `version` in `.claude-plugin/plugin.json` and merging to
      `main`.
   2. Pushing a tag `vX.Y.Z` matching the new version.
+
+  (Superseded by
+  [ADR-0010](0010-release-please-is-the-sole-writer-of-the-plugin-version.md):
+  release-please performs both steps when its release PR is merged. Do not
+  hand-bump `plugin.json`.)
 - `.github/workflows/promote-stable.yml` listens for
   `v[0-9]+.[0-9]+.[0-9]+` tag pushes, verifies that `plugin.json`'s
   `version` matches the tag (minus the `v` prefix), and fast-forwards

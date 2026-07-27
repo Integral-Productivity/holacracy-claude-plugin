@@ -1,0 +1,154 @@
+name: Version authority
+
+# Repo-local guard for the plugin-version single source of truth.
+#
+# release-please is the SOLE writer of this plugin's version:
+#   .release-please-manifest.json         the released-version baseline it reads
+#   version.txt                           required by release-type: simple
+#   .claude-plugin/plugin.json $.version  the extra-files target it rewrites
+#
+# Five consecutive feature PRs (#70, #77, #87, #88, #99) hand-bumped
+# plugin.json 0.6.0 -> 0.10.0 while the manifest stayed at 0.6.0, so the
+# pending release would have DOWNGRADED the user-visible version to 0.7.0.
+# See issue #100 and
+# docs/adr/0010-release-please-is-the-sole-writer-of-the-plugin-version.md.
+#
+# Why this is a repo-local workflow rather than a thin caller
+# ----------------------------------------------------------
+# ci.yml and validate-plugin.yml are thin callers to
+# Integral-Productivity/reusable-workflows and have no room for repo-local
+# steps. auto-merge.yml is byte-identical to the tier3-claude-plugin template
+# by design and must not be touched. Promoting this guard into the public
+# reusable, so every *-claude-plugin repo inherits it instead of copying it,
+# is tracked as a follow-up.
+#
+# Note: this guard only blocks a merge once it is a REQUIRED status check on
+# `main`. `main` carries no ruleset today and `gh pr merge --auto` waits only
+# on required checks, so until that ruleset exists the guard can be outrun by
+# auto-merge on a claude/* branch — the exact path that produced #99.
+
+on:
+  pull_request:
+    branches: [main]
+    # `labeled` / `unlabeled` are load-bearing: the escape hatch is a PR label,
+    # and without these event types adding the label does not re-run the check,
+    # leaving a permanently red required status.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  no-hand-edits:
+    name: No hand-edits to version-authority files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # base.sha is the merge base recorded on the PR; the default shallow
+          # checkout of refs/pull/N/merge does not guarantee it is reachable.
+          fetch-depth: 0
+
+      - name: Detect hand-edits to release-please-owned version fields
+        # HEAD_REF and PR_ACTOR are attacker-influenceable strings (a fork can
+        # name its branch anything). They are routed through `env:` and
+        # referenced as "$HEAD_REF" / "$PR_ACTOR" — the env-var-mediated form
+        # that avoids the ${{ }} -> run: script-injection class (devops-excellence
+        # ADR-045 threat model). Do NOT inline-expand them in a run: step.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_ACTOR: ${{ github.event.pull_request.user.login }}
+          HAS_OVERRIDE: ${{ contains(github.event.pull_request.labels.*.name, 'version-override') }}
+        run: |
+          set -euo pipefail
+
+          # Exemptions are evaluated INSIDE the job, never as a job-level `if:`.
+          # A job-level `if:` yields a SKIPPED check, and a skipped check that is
+          # configured as required blocks the PR forever ("Expected — waiting for
+          # status") — which would wedge precisely the release PR this guard has
+          # to let through.
+
+          # Prefix match, not exact: release-please derives the branch name from
+          # config (branch + package-name), so it changes if
+          # release-please-config.json changes. Today it is
+          # release-please--branches--main--components--holacracy.
+          case "$HEAD_REF" in
+            release-please--*) rp_branch=true ;;
+            *)                 rp_branch=false ;;
+          esac
+
+          if [ "$rp_branch" = true ] || [ "$PR_ACTOR" = "ip-releaser[bot]" ]; then
+            echo "::notice::Exempt — release-please is the authorized writer of the version files (branch=$HEAD_REF actor=$PR_ACTOR)."
+            exit 0
+          fi
+
+          if [ "$HAS_OVERRIDE" = "true" ]; then
+            echo "::warning title=Version-authority guard overridden::The 'version-override' label is present, so hand-edits to the version files are allowed on this PR. Use it only to repair drift or re-baseline the manifest, and put the reason in the PR body."
+            exit 0
+          fi
+
+          plugin_version_at() {
+            git show "$1:.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty' || true
+          }
+
+          violations=""
+
+          base_v="$(plugin_version_at "$BASE_SHA")"
+          head_v="$(plugin_version_at "$HEAD_SHA")"
+          if [ "$base_v" != "$head_v" ]; then
+            violations="${violations}  - .claude-plugin/plugin.json \$.version changed: '${base_v:-<absent>}' -> '${head_v:-<absent>}'"$'\n'
+          fi
+
+          # release-please owns these two files wholesale — any change is a violation.
+          for f in version.txt .release-please-manifest.json; do
+            if ! git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- "$f"; then
+              violations="${violations}  - ${f} changed (release-please owns this file wholesale)"$'\n'
+            fi
+          done
+
+          if [ -z "$violations" ]; then
+            echo "Version authority intact: plugin.json \$.version unchanged (${head_v:-<absent>}); version.txt and .release-please-manifest.json untouched."
+            echo "Other plugin.json fields (description, keywords, author) are hand-maintained and were not checked."
+            exit 0
+          fi
+
+          echo "::error title=Version-authority violation::This PR hand-edits a field that release-please owns. See the job log for what to do instead."
+          {
+            echo
+            echo "Detected:"
+            printf '%s' "$violations"
+            echo
+            echo "WHY THIS FAILS"
+            echo "  release-please is the sole writer of this plugin's version. It owns"
+            echo "  .release-please-manifest.json and version.txt outright, and rewrites"
+            echo "  .claude-plugin/plugin.json \$.version as an extra-files target when a"
+            echo "  release lands. A hand-bump creates a second source of truth, and the"
+            echo "  next release silently overwrites it -- possibly DOWNGRADING the"
+            echo "  user-visible version. That already happened: plugin.json drifted to"
+            echo "  0.10.0 while the manifest stayed at 0.6.0 (issue #100)."
+            echo
+            echo "WHAT TO DO INSTEAD"
+            echo "  1. Revert your changes to these files. Do not set a version at all."
+            echo "  2. Describe the change in a Conventional Commit. The type drives the bump:"
+            echo "       fix: -> patch      feat: -> minor"
+            echo "       feat!: / BREAKING CHANGE: -> major (0.x -> 1.0.0; this repo sets"
+            echo "       bump-minor-pre-major: false, so breaking changes are NOT softened)"
+            echo "  3. Merge. release-please opens or updates a 'chore(main): release X.Y.Z' PR."
+            echo "     MERGING THAT PR is the release act: it writes all three files, tags"
+            echo "     vX.Y.Z, and promote-stable.yml fast-forwards 'stable'."
+            echo
+            echo "NEED A SPECIFIC VERSION? (rare)"
+            echo "  Add a one-shot footer as the LAST line of both the commit message and the"
+            echo "  PR body, and let release-please write the files:"
+            echo "      Release-As: 1.2.3"
+            echo "  Do not use the sticky 'release-as' key in release-please-config.json."
+            echo
+            echo "GENUINELY NEED TO HAND-EDIT? (repairing drift, re-baselining the manifest)"
+            echo "  Add the 'version-override' label to this PR and say why in the PR body."
+            echo
+            echo "CONVENTION: CLAUDE.md section Versioning"
+            echo "  docs/adr/0010-release-please-is-the-sole-writer-of-the-plugin-version.md"
+          } >&2
+          exit 1

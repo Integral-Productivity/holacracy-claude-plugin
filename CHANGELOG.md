@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.10.1...v0.10.2) (2026-07-27)
+
+
+### Bug Fixes
+
+* **ci:** stop no-hand-edits fabricating a violation on an unresolvable SHA ([#118](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/118)) ([6ce1ac6](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/6ce1ac6d24cb0ce71412e3ae8ebb0ad50fe18c6d))
+
 ## [0.10.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.10.0...v0.10.1) (2026-07-27)
 
 

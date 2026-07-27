@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.10.0...v0.10.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* **ci:** restore permissions: contents: write on promote-stable caller ([#109](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/109)) ([d9b3cf5](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/d9b3cf5d95b9556322fc2ff4ff7f4d4a36087318)), closes [#108](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/108)
+
 ## [0.10.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.6.0...v0.10.0) (2026-07-27)
 
 

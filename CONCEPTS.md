@@ -4,6 +4,18 @@ Shared domain vocabulary for this project — entities, named processes, and sta
 
 > Seeded from the agentic-routines area. The broader Holacracy domain (Circle, Role, Core Role, Tension, Tactical, Governance, and the Core Role names) is canonical Holacracy vocabulary defined within the skills themselves; a repo-wide concept map is a `ce-compound-refresh` bootstrap, not yet run here.
 
+## Release channel
+
+### Stable channel
+The published release channel installed users actually receive — a long-lived branch the plugin marketplace follows by ref rather than by pinned version, so whatever commit the channel points at *is* the current release. Distinct from the default branch, which carries in-flight work that has not been released.
+
+The channel only ever moves forward, and only onto a commit that has been tagged with a release version matching the plugin manifest's declared version; a mismatch aborts the move rather than publishing. Advancement is a fast-forward and is never forced, so a non-fast-forward attempt fails loudly instead of rewinding the channel. Because the channel is advanced by a separate automated step rather than by merging, the default branch can sit arbitrarily far ahead of it — a release can be tagged and announced while the channel, and therefore every installed user, stays on the previous version.
+
+### Promotion
+The act of advancing the Stable channel onto a tagged release commit. Promotion is what makes a release reach users; tagging alone does not. It is triggered by the release tag, not by the merge that produced it, and it verifies the version match before moving the channel.
+
+Pre-release versions deliberately do not trigger promotion, so a pre-release can be tagged without publishing to installed users. Because promotion is a distinct step from tagging, "the release shipped" and "users can get it" are separate claims — confirming a release means confirming the channel moved, not that the tag exists.
+
 ## Agentic routines
 
 ### Routine

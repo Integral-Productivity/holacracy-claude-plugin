@@ -1,0 +1,83 @@
+name: Scripts tests
+
+# Runs the repo-local bash test suites under scripts/ and lints the scripts.
+#
+# Why this exists
+# ---------------
+# scripts/grounding-readout.sh is the Check instrument for the PDCA-1 grounding
+# experiment (issue #60, docs/adr/0008-*). Its failure mode is producing a
+# plausible-looking number that is WRONG -- exactly the class of defect #123/#124
+# repaired. scripts/grounding-readout.test.sh is mutation-checked: disabling any
+# single defense in the readout (placeholder exclusion, announce anchoring,
+# assistant scoping, subagent exclusion, self exclusion, directive-echo guard,
+# marker derivation) fails the suite. Until this workflow existed, nothing ran
+# it -- a regression in the readout would have merged green. See issue #126.
+#
+# Why a new workflow rather than a step in ci.yml
+# -----------------------------------------------
+# ci.yml is the standard Tier 3 CI and its own header states the convention:
+# Tier 3 repos do not standardize a build/test step there; work-type-specific
+# CI lives in additional workflows. ci.yml is a thin caller to
+# Integral-Productivity/reusable-workflows with no room for repo-local steps,
+# and there is no org reusable workflow for "run a bash test script", so a
+# direct job is the right shape here.
+#
+# Why NO paths: filter
+# --------------------
+# A path-filtered workflow that does not match reports no conclusion at all,
+# which is indistinguishable from passing -- the same fail-silent shape this
+# suite exists to catch. It is also the trap version-authority.yml documents:
+# a skipped check configured as REQUIRED blocks a PR forever, waiting on a
+# status that never arrives. A `scripts/**`-only filter would additionally miss
+# a real failure mode, because test section 9 derives the directive marker from
+# the live hooks-handlers/session-start.sh -- a change to the hook alone can
+# break the suite. The run costs well under a second, so filtering buys nothing.
+#
+# The `push: main` leg is the backstop for a direct push to main, which is
+# possible today (main carries no ruleset) and which a pull_request-scoped
+# check structurally cannot see.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts-test:
+    name: Run scripts test suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show interpreter versions
+        # The suite needs bash, python3 (JSONL parsing in the readout) and git
+        # (test section 8 derives this repo's own project slug via
+        # `git rev-parse --git-common-dir` to prove self-exclusion). Printing
+        # them makes a runner-image change self-diagnosing instead of surfacing
+        # as an unexplained test failure.
+        run: |
+          set -euo pipefail
+          bash --version | head -1
+          python3 --version
+          git --version
+
+      - name: Shellcheck scripts/*.sh
+        # shellcheck ships on the ubuntu-latest image; install it if a future
+        # image drops it rather than failing with an opaque exit 127.
+        run: |
+          set -euo pipefail
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            echo "shellcheck not on the runner image; installing from apt"
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq shellcheck
+          fi
+          shellcheck --version | head -2
+          shellcheck scripts/*.sh
+
+      - name: grounding-readout regression suite
+        run: bash scripts/grounding-readout.test.sh

@@ -3,7 +3,7 @@ name: holacratic-ai-governance
 description: >
   Governance-aware AI operating skill for organizations using Holacracy and GlassFrog. Use this skill whenever the user mentions GlassFrog, Holacracy, circles, roles (in a Holacratic context), accountabilities, domains, governance meetings, tactical meetings, tensions, lead link, rep link, facilitator, secretary, or any organizational governance topic. Also trigger when the user asks for help with work and GlassFrog MCP tools are connected -- this skill teaches how to ground AI responses in actual governance structure rather than operating generically. Trigger even for adjacent requests like "help me think about my role," "what should I focus on," "draft a governance proposal," or "what tensions exist in my organization." This skill is essential for any AI interaction where organizational context from GlassFrog would improve the quality, authority-awareness, or developmental sophistication of the response.
 status: draft
-version: 1.2.1
+version: 1.3.0
 ---
 # Holacratic AI Governance
 
@@ -39,7 +39,7 @@ If GlassFrog tools are not connected, inform the user and offer to help them set
 ### Critical API Constraints
 
 - **Read-only governance**: Roles, circles, accountabilities, domains, and policies cannot be created, modified, or deleted via API. Governance changes happen only through the human governance meeting process.
-- **Tension *capture* is supported; tension *processing* is not.** The API allows creating, reading, archiving, and editing tensions on a role's backlog, but the plugin operates these only via the draft-and-confirm contract in `skills/shared/tension-capture-flow.md`. AI may draft and -- on explicit per-tension human confirmation -- file. Marking a tension `processed` is reserved for human governance and tactical meetings (with `/holacracy:process-inbox` available for meeting-day catch-up under explicit direction). The `create_tension` signature is `role_id` + `body` only — `label` and `meeting_type` are not part of the stable schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). The remaining genuine API gap is meeting-association ([glassfrog-mcp-server#60](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/60)); filed tensions go to a role's durable backlog, not to a specific meeting record.
+- **Tension *capture* is supported; tension *processing* is not.** The API allows creating, reading, archiving, and editing tensions on a role's backlog, but the plugin operates these only via the draft-and-confirm contract in `skills/shared/tension-capture-flow.md`. AI may draft and -- on explicit per-tension human confirmation -- write. Marking a tension `processed` is reserved for human governance and tactical meetings (with `/holacracy:tension-triage` available for meeting-day catch-up under explicit direction). The `create_tension` signature is `role_id` + `body` only, and `meeting_type` is rejected on `update_tension` with 422 ([glassfrog-mcp-server#123 (comment)](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/123#issuecomment-5149496749)) — it is settable in the GlassFrog UI only. The remaining genuine API gap is meeting-association ([glassfrog-mcp-server#60](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/60)); filed tensions go to a role's durable backlog, not to a specific meeting record.
 - **No checklist completion**: The API cannot mark checklist items as done/not-done. That happens in tactical meetings via the GlassFrog UI.
 - **No metric reporting**: The API cannot record metric values reported in tactical meetings. Only the metric definition (description, frequency) can be updated.
 - **Custom frequencies may be invisible**: `list_frequencies` may not return all configured frequencies. Custom frequencies configured in the GlassFrog admin UI (e.g., "Daily") will not appear until assigned to at least one item. If a user reports that a frequency exists but `list_frequencies` does not show it, trust the user and use the value directly in update or create calls.
@@ -171,7 +171,7 @@ When you observe these patterns:
 
 - It is not interrogation. One offer per detected tension. If declined, move on.
 - It is not auto-file. The subagent's confirmation step is mandatory.
-- It is not for person tensions. The triage gate in `skills/shared/tension-triage.md` Step 1 refuses to draft for person tensions and surfaces the IDR route instead.
+- It is not for person tensions. The gate in `skills/shared/triage-gates.md` Step 2 refuses to draft for person tensions and surfaces the IDR route instead.
 
 **Session closing -- offer the supersession sweep.**
 
@@ -274,7 +274,7 @@ Load these based on the depth required:
 |---|---|
 | `../shared/actor-and-role-resolution.md` | The actor-and-role-context resolution procedure (full spec): how to identify the acting person/agent, load the role roster, resolve to a single role + circle, announce the resolution, and re-validate on pivots. Foundational -- every other pattern in this skill assumes resolved context. |
 | `../shared/artifact-routing.md` | The artifact-routing resolver: given the owning role, read its live domains/policies through the governance-data seam and resolve which system of record a downstream artifact belongs in (layered domain recognizer, multi-domain precedence, live-then-session-cache freshness, name-the-limit-and-ask on disconnect). Load when about to produce or file a substantive artifact whose home is a system of record. |
-| `../shared/tension-triage.md` | Canonical role-vs-person triage gate, meeting-type routing (governance vs tactical), supersession check, and role-attribution policy. Loaded by Pattern 3, Pattern 5, and the `tension-capture` subagent. |
+| `../shared/triage-gates.md` | The five canonical gates: already-held authority, role-vs-person (with the blended-tension partition), meeting-venue routing (governance vs tactical), supersession check, and role-attribution policy. Loaded by Pattern 3, Pattern 5, and the `tension-capture` subagent. |
 | `../shared/tension-capture-flow.md` | The canonical draft-and-confirm capture flow (Steps 1–8) used by the `tension-capture` subagent and by all `/holacracy:*` tension commands. |
 | `references/engagement-patterns.md` | Detailed implementation guidance for all five core patterns (including Pattern 5: Proactive Tension Sensing), step-by-step tool call sequences, edge cases, and worked examples |
 | `references/governance-rooting.md` | Step-by-step procedure for determining which role and circle should own a project: accountability mapping, strategy alignment checks, scope expansion tension analysis. Load when the user asks where a project belongs, which role should own a new initiative, or whether a project's current governance placement is correct. |

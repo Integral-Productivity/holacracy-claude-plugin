@@ -38,13 +38,15 @@ Follow the procedure in `./actor-and-role-resolution.md`, **but with the target 
 4. Within that circle, identify the role(s) the actor fills that the tension's content most plausibly attaches to.
 5. If exactly one plausible sensing role -> use silently.
 6. If multiple -> ask: *"This could be filed on [Role A] or [Role B] -- which feels closer to the gap you're sensing?"*
-7. If zero (the actor fills no role in that circle) -> name the constraint per `./tension-triage.md` Step 4.
+7. If zero (the actor fills no role in that circle) -> name the constraint per `./triage-gates.md` Step 5.
 
-### Step 3 -- Run triage (Step 1 of `./tension-triage.md`)
+### Step 3 -- Run the gates (Steps 1–2 of `./triage-gates.md`)
 
-Apply the role-vs-person gate. If person tension, **refuse to draft `create_tension`** and surface the IDR / direct-conversation route. Do not proceed.
+**Step 1 — does the authority that would resolve this already exist?** If the sensing role already holds the domain or accountability the tension is about, say so before capturing anything: *"◎[Role] already holds [domain]. This may not need to be a tension at all — it may just need doing."* Capturing a tension the actor could simply act on is how a backlog fills with work waiting on permission nobody was withholding.
 
-This gate runs *before* drafting the body, because drafting a person tension and then refusing to file is wasted work and confuses the user about what the system is willing to do.
+**Step 2 — role tension, person tension, or both?** If person tension, **refuse to draft `create_tension`** and surface the IDR / direct-conversation route. Do not proceed. If genuinely blended, partition the body per the gate's worked example and carry only the structural half forward.
+
+Both gates run *before* drafting the body, because drafting a tension and then refusing to write it is wasted work and confuses the user about what the system is willing to do.
 
 ### Step 4 -- Draft the tension body
 
@@ -55,13 +57,13 @@ Four guidelines:
 - **Front-load the topic in the first sentence.** Because the API has no `label` field, the body is the only thing a backlog reader can scan. Start with the topic, then the detail. *"Vendor approval bottleneck on Operations Circle — IT Governance hasn't responded to our request in 3 weeks, blocking Tool X rollout"* beats *"We've been waiting weeks for IT Governance to respond to a vendor approval, which is blocking Tool X rollout — the issue is..."*
 - **Keep it concrete.** "The IT Governance role hasn't responded to our approval request in 3 weeks, blocking the rollout of Tool X" is better than "we have an IT problem."
 - **Name the gap, not the desired fix.** Tensions describe what *is* vs. what *could be*. Proposed solutions belong in the governance proposal that processes the tension, not in the tension body itself.
-- **Attribution-on-behalf-of.** If the tension is being carried for someone else (per `./tension-triage.md` Step 1, "Carrying tensions on behalf of others"), prepend the body with `Sensed by [name], carried as [role]:` *before* the front-loaded topic.
+- **Attribution-on-behalf-of.** If the tension is being carried for someone else (per `./triage-gates.md` Step 2, "Carrying tensions on behalf of others"), prepend the body with `Sensed by [name], carried as [role]:` *before* the front-loaded topic.
 
 The body must be 1–5000 characters (API constraint). Most tensions fit in 1–3 sentences.
 
 ### Step 5 -- Annotate suggested meeting venue (mental routing for the user)
 
-`glassfrog_create_tension` does **not** store a `meeting_type` on the tension — that field is not part of the stable API schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). Suggested venue is *for the user's mental model*, not the API. Per `./tension-triage.md` Step 2:
+`glassfrog_create_tension` does **not** store a `meeting_type` on the tension, and `update_tension` **rejects the field with 422** on every combination tried ([glassfrog-mcp-server#123 (comment)](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/123#issuecomment-5149496749), which corrects that issue's body). It is settable in the GlassFrog UI only. Suggested venue is *for the user's mental model*, not the API. Per `./triage-gates.md` Step 3:
 
 - **governance** if the tension implies a structural change.
 - **tactical** if the tension implies operational coordination or unblocking.
@@ -124,7 +126,7 @@ Then continue the original conversation. Do not interrogate the user about the n
 - **No auto-file.** Every tension passes through Step 6 confirmation, every time.
 - **No batched confirmation.** Even if Claude detects three tensions in one conversation, each gets its own confirmation.
 - **No AI-agent self-filing.** Scheduled routines that fire as AI agents collect candidate tensions for human review in the next session; they do not call `create_tension` themselves.
-- **No processing.** Claude does not mark tensions `processed` on the human's behalf. That happens when a human runs a governance or tactical meeting and processes the tension. (`update_tension(status: "processed")` is available to the human via `/holacracy:process-inbox` for meeting-day catch-up, but only under explicit instruction.)
+- **No processing.** Claude does not mark tensions `processed` on the human's behalf. That happens when a human runs a governance or tactical meeting and processes the tension. (`update_tension(status: "processed")` is available to the human via `/holacracy:tension-triage` for meeting-day catch-up, but only under explicit instruction.)
 - **No deletion.** `glassfrog_delete_tension` is permanent. Prefer `status: "archived"` for false positives or superseded tensions. Deletion is reserved for cases where the user explicitly chooses it.
 
 ---
@@ -136,6 +138,6 @@ Then continue the original conversation. Do not interrogate the user about the n
 | `/holacracy:capture-tension` | Entry at Step 1.1 (explicit command). Runs Steps 2–8 via the subagent. The cross-role, out-of-meeting companion to `/holacracy:tactical`. |
 | `/holacracy:tactical` (Secretary in-meeting) | Has its own in-meeting capture path documented in `skills/holacracy-secretary/SKILL.md` Backlog-first tension capture. Same `create_tension(role_id, body)` primitive, different conversational shape (live tactical triage with the proposer naming the body in real time). |
 | `holacratic-ai-governance` (ambient detection) | Entry at Step 1.2 (ambient). On user assent, dispatches the `tension-capture` subagent to run Steps 2–8. |
-| `/holacracy:process-inbox` | Skips Steps 1–6 (the tension is already filed). Operates on `glassfrog_list_role_tensions` results (older tensions, not same-session) and uses `glassfrog_update_tension` to archive, mark processed, edit body, or defer. There is no API-level meeting_type routing; suggested venue is a user-facing annotation only. |
-| `/holacracy:supersession-sweep` | Runs `./tension-triage.md` Step 3 (supersession). For `session` scope, reads the session-tension cache populated at Step 7. For `recent` or per-circle scope, reads via `glassfrog_list_role_tensions`. On confirmation, archives subsumed tensions via `glassfrog_update_tension(status: "archived")`. |
+| `/holacracy:tension-triage` | Skips Steps 1–6 (the tension already exists). Sweeps circle by circle via `glassfrog_list_subrole_tensions` (older tensions, not same-session) and uses `glassfrog_update_tension` to archive, edit body, mark processed, or defer. Assesses readiness only — disposition belongs to `/holacracy:process-tension`. There is no API-level meeting_type routing; suggested venue is a user-facing annotation only. |
+| `/holacracy:supersession-sweep` | Runs `./triage-gates.md` Step 4 (supersession). For `session` scope, reads the session-tension cache populated at Step 7. For `recent` or per-circle scope, reads via `glassfrog_list_role_tensions`. On confirmation, archives subsumed tensions via `glassfrog_update_tension(status: "archived")`. |
 | `holacratic-ai-governance` Pattern 3 (Tension Sensing) | Detects candidate tensions from data patterns. For each, can route into this flow at Step 1.3 (Pattern 3 follow-up). |

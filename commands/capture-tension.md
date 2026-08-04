@@ -14,9 +14,9 @@ This is the **cross-role, out-of-meeting** capture surface. For in-tactical-meet
 1. **Parse $ARGUMENTS.** If the user passed tension text inline, use it as the seed. If not, ask: *"What tension would you like to capture?"* and wait for input.
 2. **Dispatch the `tension-capture` subagent** with the tension text and the dispatch source (`explicit command`). Let the subagent handle Steps 2–8 of `skills/shared/tension-capture-flow.md`:
    - Resolve sensing role via `glassfrog_get_me` + `glassfrog_list_my_roles` (with circle narrowing per conversation context). The target is *any role the actor fills* in the relevant circle — not Core Four only.
-   - Apply the role-vs-person triage gate from `skills/shared/tension-triage.md` Step 1. Refuse to file person tensions; surface the IDR / direct-conversation route instead.
+   - Apply `skills/shared/triage-gates.md` Step 1 (does the sensing role already hold the authority to resolve this?) and Step 2 (role vs. person). Surface already-held authority before capturing; refuse to write person tensions and offer the IDR / direct-conversation route instead; partition a genuinely blended tension.
    - Draft the body, preserving the user's own words and front-loading the topic in the first sentence (no `label` field on the API, so the body is the only scannable surface).
-   - Annotate a suggested meeting venue (governance vs. tactical) per `skills/shared/tension-triage.md` Step 2. This is a user-facing annotation only — there is no `meeting_type` field on tensions in the API ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)).
+   - Annotate a suggested meeting venue (governance vs. tactical) per `skills/shared/triage-gates.md` Step 3. This is a user-facing annotation only — `meeting_type` is rejected on write with 422 ([glassfrog-mcp-server#123 (comment)](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/123#issuecomment-5149496749)) and settable in the GlassFrog UI only.
    - Present the per-tension confirmation block.
    - On approval, call `glassfrog_create_tension(role_id, body)` (single call, body-only signature).
    - Capture the response ID into the session-tension cache for end-of-session supersession sweep.
@@ -40,9 +40,9 @@ All three surfaces call the same `glassfrog_create_tension(role_id, body)` primi
 
 ## What this command does NOT do
 
-- It does not process tensions. Marking `status: "processed"` is for `/holacracy:process-inbox` (catch-up only, for tensions actually worked in real meetings).
+- It does not process tensions. Marking `status: "processed"` is for `/holacracy:tension-triage` (catch-up only, for tensions actually worked in real meetings).
 - It does not delete tensions.
 - It does not file proposals or make governance changes.
 - It does not batch multiple tensions into one confirmation.
 
-For inbox review of already-filed tensions, use `/holacracy:process-inbox`. For end-of-session deduplication, use `/holacracy:supersession-sweep`.
+For readiness assessment of the existing backlog, use `/holacracy:tension-triage`. For end-of-session deduplication, use `/holacracy:supersession-sweep`.

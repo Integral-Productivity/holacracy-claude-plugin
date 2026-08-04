@@ -21,7 +21,7 @@ This command is also offered implicitly by the `holacratic-ai-governance` skill 
    - For `session`: read the in-conversation session-tension cache. Each cache entry has `{ tension_id, role_id, role_name, circle_name, body, suggested_venue, filed_at }`.
    - For `recent` or a named circle: call `glassfrog_list_my_roles`, then `glassfrog_list_role_tensions(role_id, status: "unprocessed")` per role, and aggregate.
 
-3. **Apply the supersession test** (`skills/shared/tension-triage.md` Step 3) across all candidate pairs:
+3. **Apply the supersession test** (`skills/shared/triage-gates.md` Step 4) across all candidate pairs:
    - For each pair (A, B), ask: "Would Tension A still be a felt gap if Tension B were resolved?"
    - If no -> A is superseded by B. Flag the pair.
    - If yes for both directions -> both stand; do not flag.
@@ -65,6 +65,6 @@ If the user assents, this command runs with default scope (`session`). If they d
 ## What this command does NOT do
 
 - It does not delete tensions. Archive is the only collapse mechanism.
-- It does not process tensions (`status: "processed"`) — that's for `/holacracy:process-inbox` and only for catch-up of tensions actually worked in meetings.
+- It does not process tensions (`status: "processed"`) — that's for `/holacracy:tension-triage` and only for catch-up of tensions actually worked in meetings.
 - It does not file new tensions; if the sweep surfaces a *meta*-tension ("the inbox keeps getting these overlapping items because [structural reason]"), this command will note it but not file it — that's a job for `/holacracy:capture-tension` afterwards.
 - It does not run automatically. Implicit offer + explicit command, both opt-in.

@@ -1,6 +1,6 @@
 # Project Well-Formedness -- Shared Reference
 
-This is the canonical rubric for judging whether a GlassFrog **project** is well-formed and well-placed. It is the project-side analog of `tension-triage.md`. Loaded by:
+This is the canonical rubric for judging whether a GlassFrog **project** is well-formed and well-placed. It is the project-side analog of `triage-gates.md`. Loaded by:
 
 - `/holacracy:review-project` -- the adversarial project-review panel (via `project-review-critics.md`, which turns each dimension below into a critic lens).
 - *(Planned)* `/holacracy:capture-project` -- the capture-time guardrail ([#75](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/75)).

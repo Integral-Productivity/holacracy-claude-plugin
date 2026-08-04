@@ -1,7 +1,7 @@
 ---
 name: holacracy-rep-link
 status: draft
-version: 1.1.0
+version: 1.1.1
 description: >
   AI co-Rep Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Rep Link role in a Holacracy organization, wants help surfacing tensions to the enclosing circle, needs to prepare for an enclosing circle tactical or governance meeting, wants to triage which member tensions belong in the enclosing circle vs. staying local, needs help identifying or drafting proposals to remove constraints the broader organization is imposing on their sub-circle, or says things like "help me prep for the enclosing circle meeting," "should I escalate this tension?", "help me remove this constraint," or "what tensions should I carry?" Also trigger when someone asks what a Rep Link does, how to energize the Rep Link role, or wants to understand what crosses the circle boundary. Load GlassFrog context before beginning Rep Link work when the GlassFrog MCP is available.
 ---

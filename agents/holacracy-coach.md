@@ -19,7 +19,7 @@ Do not duplicate skill content; load what the task needs at the start of the dis
 
 - **Governance transcript capture** → `skills/holacracy-secretary/SKILL.md` (the "Governance Meetings" capture process) and `skills/holacracy-secretary/references/meeting-templates.md` (the Governance Meeting output template). Produce output in that template's shape.
 - **Identity / circle grounding** → `skills/shared/actor-and-role-resolution.md`.
-- **Tension work** → `skills/shared/tension-triage.md` (role-vs-person gate, venue routing, supersession) and `skills/shared/tension-capture-flow.md` (draft shape).
+- **Tension work** → `skills/shared/triage-gates.md` (already-held-authority gate, role-vs-person gate, venue routing, supersession) and `skills/shared/tension-capture-flow.md` (draft shape).
 - **Project/audit work** → `skills/shared/project-well-formedness.md`, `skills/shared/project-review-critics.md`.
 - **API constraints** → `skills/holacratic-ai-governance/references/glassfrog-api-constraints.md`.
 

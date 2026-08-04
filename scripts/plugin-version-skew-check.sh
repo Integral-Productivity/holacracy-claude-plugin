@@ -403,6 +403,8 @@ if [ "$skew_count" -eq 0 ]; then
   exit 0
 fi
 
+# shellcheck disable=SC2016  # the backticks are literal markdown code spans in
+# the issue body, inside single-quoted Python -- nothing here should expand.
 skew_rows="$(printf '%s' "$report" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)

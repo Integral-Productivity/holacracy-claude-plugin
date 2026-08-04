@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.10.3...v0.11.0) (2026-08-04)
+
+
+### Features
+
+* **skills:** add checklist-metric-audit skill + /holacracy:audit-portfolio ([#104](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/104)) ([13271b3](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/13271b365cc0ed5197f84e2aba2d3d1c751a9d17)), closes [#113](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/113)
+
 ## [0.10.3](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.10.2...v0.10.3) (2026-08-04)
 
 

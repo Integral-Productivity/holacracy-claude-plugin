@@ -30,7 +30,10 @@ name: Version authority
 # Two complementary jobs
 # ----------------------
 #   no-hand-edits  a DIFF check: did this PR touch a field release-please owns?
-#                  Needs base.sha/head.sha, so it is pull_request-only.
+#                  Diffs the branch's MERGE BASE against its head — base.sha is
+#                  the base branch tip, not the fork point, and diffing it
+#                  fabricates violations once main advances (#131). Needs a
+#                  base/head pair, so it is pull_request-only.
 #   invariant      a STATE check: do the three files agree right now?
 #                  Reads the checked-out tree, so it runs on any event — which
 #                  is what lets it also cover `push: main`.
@@ -65,8 +68,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # base.sha is the merge base recorded on the PR; the default shallow
-          # checkout of refs/pull/N/merge does not guarantee it is reachable.
+          # Full history: this job resolves the true fork point with
+          # `git merge-base "$BASE_SHA" "$HEAD_SHA"`, so BOTH commits and their
+          # common ancestry must be reachable. The default shallow checkout of
+          # refs/pull/N/merge guarantees none of that.
           fetch-depth: 0
 
       - name: Detect hand-edits to release-please-owned version fields
@@ -149,17 +154,48 @@ jobs:
             fi
           done
 
+          # Diff against the MERGE BASE, never against base.sha directly.
+          #
+          # base.sha is not the fork point. It is the base branch TIP as of the
+          # PR's last head-push, and it stays frozen there while main moves on.
+          # So once a release PR merges after your last push, base..head contains
+          # main's own newer release commit INVERTED, and a PR that never touched
+          # a version file reads as having downgraded it. #130 failed exactly
+          # that way — "0.10.3 -> 0.10.2" on a PR whose only change was adding
+          # scripts-test.yml — and the remedy the failure text recommends
+          # (revert your edits) is not the one that works (rebase). Issue #131.
+          #
+          # The merge base is where the branch actually diverged, so commits that
+          # landed on main afterwards are simply not in the comparison. The
+          # `invariant` job is what covers "does the merged result agree?"; this
+          # job answers only "did THIS branch touch a release-please-owned file?"
+          #
+          # Failing loudly rather than degrading to a pass is deliberate, and is
+          # the same discipline as the exact-status branching below: merge-base
+          # exits 1 for "no common ancestor" and 128 on error, and both mean this
+          # job cannot substantiate a verdict either way. The pre-flight above
+          # already proved both commits resolve, so reaching this error implies a
+          # genuinely broken checkout — surface it instead of silently passing.
+          merge_base_status=0
+          MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")" || merge_base_status=$?
+          if [ "$merge_base_status" -ne 0 ] || [ -z "$MERGE_BASE" ]; then
+            echo "::error title=Version-authority check errored::git merge-base exited ${merge_base_status} for '${BASE_SHA}'..'${HEAD_SHA}' (status 1 = no common ancestor, 128 = git failure). Both commits resolved in the pre-flight, so this is a broken checkout or unrelated histories — NOT a version-authority violation. This job is failing on the error rather than passing on an unverified comparison." >&2
+            exit 1
+          fi
+          echo "Comparing merge base ${MERGE_BASE} (fork point of ${BASE_SHA}..${HEAD_SHA}) against head ${HEAD_SHA}."
+
           plugin_version_at() {
-            # The pre-flight above already proved "$1" resolves, so a failure
-            # here means the FILE is absent at that commit — a real, reportable
-            # "<absent>" (e.g. a base predating plugin.json), not a broken ref.
-            # Keeping those two cases distinguishable is the point of #116.
+            # Both commits passed the pre-flight, and MERGE_BASE is git's own
+            # answer for a pair it just resolved — so a failure here means the
+            # FILE is absent at that commit: a real, reportable "<absent>" (e.g.
+            # a fork point predating plugin.json), not a broken ref. Keeping
+            # those two cases distinguishable is the point of #116.
             git show "$1:.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty' || true
           }
 
           violations=""
 
-          base_v="$(plugin_version_at "$BASE_SHA")"
+          base_v="$(plugin_version_at "$MERGE_BASE")"
           head_v="$(plugin_version_at "$HEAD_SHA")"
           if [ "$base_v" != "$head_v" ]; then
             violations="${violations}  - .claude-plugin/plugin.json \$.version changed: '${base_v:-<absent>}' -> '${head_v:-<absent>}'"$'\n'
@@ -176,12 +212,12 @@ jobs:
           # laundering it into an accusation of tampering.
           for f in version.txt .release-please-manifest.json; do
             diff_status=0
-            git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- "$f" || diff_status=$?
+            git diff --quiet "$MERGE_BASE" "$HEAD_SHA" -- "$f" || diff_status=$?
             case "$diff_status" in
               0) ;;
               1) violations="${violations}  - ${f} changed (release-please owns this file wholesale)"$'\n' ;;
               *)
-                echo "::error title=Version-authority check errored::git diff exited ${diff_status} comparing '${BASE_SHA}'..'${HEAD_SHA}' for '${f}'. That is a git failure, NOT a version-authority violation — this job is failing on the error rather than guessing. See the git diagnostic above." >&2
+                echo "::error title=Version-authority check errored::git diff exited ${diff_status} comparing '${MERGE_BASE}'..'${HEAD_SHA}' for '${f}'. That is a git failure, NOT a version-authority violation — this job is failing on the error rather than guessing. See the git diagnostic above." >&2
                 exit 1
                 ;;
             esac
@@ -189,6 +225,7 @@ jobs:
 
           if [ -z "$violations" ]; then
             echo "Version authority intact: plugin.json \$.version unchanged (${head_v:-<absent>}); version.txt and .release-please-manifest.json untouched."
+            echo "Compared against merge base ${MERGE_BASE}, not base.sha ${BASE_SHA} — commits that landed on main after this branch was cut are out of scope (issue #131)."
             echo "Other plugin.json fields (description, keywords, author) are hand-maintained and were not checked."
             exit 0
           fi
@@ -196,8 +233,12 @@ jobs:
           echo "::error title=Version-authority violation::This PR hand-edits a field that release-please owns. See the job log for what to do instead."
           {
             echo
-            echo "Detected:"
+            echo "Detected — comparing this branch's merge base ${MERGE_BASE} against head ${HEAD_SHA}:"
             printf '%s' "$violations"
+            echo
+            echo "  (These are changes THIS branch introduced. Commits that landed on main"
+            echo "   after the branch was cut are excluded by construction, so rebasing will"
+            echo "   not clear this — see issue #131 for the false positive that used to.)"
             echo
             echo "WHY THIS FAILS"
             echo "  release-please is the sole writer of this plugin's version. It owns"

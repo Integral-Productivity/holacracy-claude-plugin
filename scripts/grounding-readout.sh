@@ -12,7 +12,11 @@
 #   directive-fired  : the session-start hook actually injected the grounding
 #                      directive. Detected by a marker DERIVED AT RUNTIME from
 #                      hooks-handlers/session-start.sh (see MARKER below) --
-#                      never a hard-coded copy of the directive text.
+#                      never a hard-coded copy of the directive text -- and
+#                      counted ONLY from hook-output records. Reading the hook
+#                      source, or quoting the directive, is not receiving it
+#                      (issue #149); the bare text match this replaces is the
+#                      same mistake that produced the false 2.2% in #122.
 #   resolve+announce : the assistant ITSELF emitted an announcement naming a
 #                      real role and circle, in the bold form
 #                      "Operating as **<role> of <circle>**".
@@ -50,8 +54,16 @@
 # docs, and this script, and would score themselves -- including the weekly
 # `grounding-pdca1-readout` scheduled task, which writes every search pattern
 # into its own transcript on every run (issue #123 defect 3). This repo's own
-# project slugs, worktrees included, are excluded by default. Pass
-# --include-self to count them.
+# project slugs, worktrees included, are held out of every headline figure by
+# default. Pass --include-self to fold them into the main figures.
+#
+# They are NOT discarded. They are scanned and reported on their own line
+# (issue #149). Dropping them made this instrument blind exactly where the
+# treatment was observable: after the 2026-08-03 delivery fix every session
+# that received the directive was in this repo, so the readout reported 0
+# announcements where the transcripts showed 2 -- a silent zero, which is the
+# failure mode this instrument exists to end. Read that line as corroboration,
+# never as the experiment's result: those sessions work on the directive.
 #
 # HONEST BY CONSTRUCTION: this counts only what the model literally emitted in
 # transcripts. It infers nothing and claims no grounding beyond the text found.
@@ -155,6 +167,7 @@ fi
 # 2026-07-20 window they were 295 of 513 files, overstating the denominator
 # ~2.4x and deflating every rate (issue #123 defect 2).
 files=()
+self_files=()
 subagent_excluded=0
 self_excluded=0
 while IFS= read -r -d '' f; do
@@ -164,7 +177,14 @@ while IFS= read -r -d '' f; do
   if [[ -n "$self_slug" ]]; then
     parent="$(basename "$(dirname "$f")")"
     if [[ "$parent" == "$self_slug" || "$parent" == "$self_slug-"* ]]; then
-      self_excluded=$((self_excluded + 1)); continue
+      # Held back from the headline denominator, but KEPT and scanned so they
+      # can be reported on their own line (issue #149). Dropping them outright
+      # made the instrument blind exactly where the treatment was observable:
+      # after the 2026-08-03 delivery fix every session that received the
+      # directive was in this repo, so the readout reported 0 announcements
+      # where the transcripts showed 2. A silent zero is the failure mode this
+      # instrument exists to end -- it must not produce one itself.
+      self_excluded=$((self_excluded + 1)); self_files+=("$f"); continue
     fi
   fi
   files+=("$f")
@@ -175,18 +195,23 @@ done < <(find "${roots[@]}" -type f -name '*.jsonl' "${newer_pred[@]+"${newer_pr
 # Hand the file list to the scanner via a NUL-separated list file, so paths
 # with spaces or newlines survive and stdin stays free for the script heredoc.
 list="$(mktemp)"
-trap 'rm -f "$list"' EXIT
+self_list="$(mktemp)"
+trap 'rm -f "$list" "$self_list"' EXIT
 if [[ ${#files[@]} -gt 0 ]]; then
   printf '%s\0' "${files[@]}" > "$list"
 fi
+if [[ ${#self_files[@]} -gt 0 ]]; then
+  printf '%s\0' "${self_files[@]}" > "$self_list"
+fi
 
-python3 - "$list" "$HOOK_SOURCE" "$since" "$subagent_excluded" "$self_excluded" "$json" "$BASELINE_NOTE" <<'PY'
+python3 - "$list" "$HOOK_SOURCE" "$since" "$subagent_excluded" "$self_excluded" "$json" "$BASELINE_NOTE" "$self_list" <<'PY'
 import json as _json
 import os
 import re
 import sys
 
 list_path, hook_path, since, sub_excl, self_excl, want_json, baseline = sys.argv[1:8]
+self_list_path = sys.argv[8] if len(sys.argv) > 8 else ""
 sub_excl, self_excl, want_json = int(sub_excl), int(self_excl), int(want_json)
 
 
@@ -285,6 +310,27 @@ def has_marker(text):
     return any(form in text for form in MARKER_FORMS)
 
 
+def is_hook_record(rec):
+    """True if this record is hook OUTPUT, the only honest evidence that the
+    directive was actually injected.
+
+    Before this check, `directive-fired` was a text match on any line, so a
+    session that merely READ hooks-handlers/session-start.sh, or quoted the
+    directive in a prompt, scored as having received it -- the identical
+    mistake that produced the false 2.2% in #122 and that #123 repaired for
+    the announce signal but not for this one. Slug self-exclusion hid it,
+    because the sessions most likely to read the hook source are this repo's
+    own; surfacing the in-repo cohort (#149) made it visible.
+    """
+    if rec.get("type") != "attachment":
+        return False
+    att = rec.get("attachment")
+    if isinstance(att, dict):
+        return att.get("type") == "hook_success"
+    # Flat shape used by the fixtures and by older transcript versions.
+    return "stdout" in rec or "hookName" in rec
+
+
 def emitted_by_assistant(rec):
     """Return (texts, tool_names) the ASSISTANT produced in this record.
 
@@ -337,14 +383,17 @@ def scan(path):
         for line in fh:
             if not line.strip():
                 continue
-            if not fired and has_marker(line):
-                fired = True
             try:
                 rec = _json.loads(line)
             except ValueError:
                 continue
             if not isinstance(rec, dict):
                 continue
+
+            # Scoped to hook-output records: reading the hook source is not
+            # the same as receiving its output. See is_hook_record().
+            if not fired and is_hook_record(rec) and has_marker(line):
+                fired = True
 
             texts, tools = emitted_by_assistant(rec)
 
@@ -370,26 +419,55 @@ def scan(path):
 
 # --- Run -------------------------------------------------------------------
 
-with open(list_path, "rb") as fh:
-    raw = fh.read()
-paths = [p.decode("utf-8", "replace") for p in raw.split(b"\0") if p]
+def read_list(path):
+    if not path or not os.path.isfile(path):
+        return []
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    return [p.decode("utf-8", "replace") for p in raw.split(b"\0") if p]
 
-total = len(paths)
-n_fired = n_announce = n_remit = n_chapter = 0
-# Signal counts restricted to sessions that actually got the treatment. The
-# "of directive-fired" column must be compliance-among-treated, not a global
-# count over a smaller denominator -- that produces rates above 100%.
-f_announce = f_remit = f_chapter = 0
-for p in paths:
-    fired, announce, remit, chapter = scan(p)
-    n_fired += fired
-    n_announce += announce
-    n_remit += remit
-    n_chapter += chapter
-    if fired:
-        f_announce += announce
-        f_remit += remit
-        f_chapter += chapter
+
+def tally(paths):
+    """Scan a set of transcripts and return the counts for one cohort.
+
+    Signal counts restricted to sessions that actually got the treatment are
+    tracked separately: the "of directive-fired" column must be
+    compliance-among-treated, not a global count over a smaller denominator --
+    that produces rates above 100%.
+    """
+    t = dict(total=len(paths), fired=0, announce=0, remit=0, chapter=0,
+             f_announce=0, f_remit=0, f_chapter=0)
+    for p in paths:
+        fired, announce, remit, chapter = scan(p)
+        t["fired"] += fired
+        t["announce"] += announce
+        t["remit"] += remit
+        t["chapter"] += chapter
+        if fired:
+            t["f_announce"] += announce
+            t["f_remit"] += remit
+            t["f_chapter"] += chapter
+    return t
+
+
+paths = read_list(list_path)
+main = tally(paths)
+
+# This repo's own sessions are held out of the headline denominator but still
+# scanned and reported (issue #149). They are NOT contaminated by construction:
+# the scanner already counts only assistant-emitted text, skips sidechain
+# records, and skips assistant text that echoes the directive marker -- those
+# provenance defenses, not the slug filter, are what stop a session from
+# scoring itself. Reporting them separately keeps the cross-repo headline
+# clean while making the in-repo evidence visible instead of silently zero.
+self_paths = read_list(self_list_path)
+selfies = tally(self_paths)
+
+total = main["total"]
+n_fired, n_announce = main["fired"], main["announce"]
+n_remit, n_chapter = main["remit"], main["chapter"]
+f_announce, f_remit = main["f_announce"], main["f_remit"]
+f_chapter = main["f_chapter"]
 
 
 def rate(n, d):
@@ -427,6 +505,16 @@ if want_json:
             "count_when_directive_fired": f_chapter,
             "rate_of_directive_fired": rate(f_chapter, n_fired),
         },
+        # Held out of every figure above. Present so an in-repo-only window is
+        # visible rather than reported as a bare zero (issue #149).
+        "in_repo": {
+            "sessions": selfies["total"],
+            "directive_fired": selfies["fired"],
+            "resolve_announce": selfies["announce"],
+            "remit_crossing": selfies["remit"],
+            "chapter_mark": selfies["chapter"],
+            "resolve_announce_when_directive_fired": selfies["f_announce"],
+        },
     }, indent=2))
     sys.exit(0)
 
@@ -451,6 +539,21 @@ for label, n, f in (("resolve+announce", n_announce, f_announce),
                     ("chapter-mark", n_chapter, f_chapter)):
     out.append("  %-22s %6d   %-13s %d / %d  %s"
                % (label, n, pct(n, total), f, n_fired, pct(f, n_fired)))
+
+# In-repo cohort, reported but never folded into the figures above. Without
+# this line a window in which every treated session happened to be in this
+# repo reads as a flat zero -- which is what #149 was filed for.
+if selfies["total"]:
+    out.append("")
+    out.append("  in-repo (this plugin's own sessions; excluded from every figure above)")
+    out.append("    %d session(s), directive fired in %d"
+               % (selfies["total"], selfies["fired"]))
+    out.append("    resolve+announce %d  (%d of %d when directive fired)"
+               % (selfies["announce"], selfies["f_announce"], selfies["fired"]))
+    out.append("    remit-crossing %d   chapter-mark %d"
+               % (selfies["remit"], selfies["chapter"]))
+    out.append("    Read as corroboration, not as the experiment's result:"
+               " these sessions work on the directive itself.")
 print("\n".join(out))
 PY
 exit $?

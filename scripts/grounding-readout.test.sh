@@ -204,7 +204,13 @@ DIRECTIVE
 )
 HOOK_SRC2
 E="$TMP/echo-realistic"; mkdir -p "$E"
+# The hook record is deliberately present: this fixture is "the directive
+# genuinely fired AND the assistant quoted it back", which is the case the echo
+# guard exists for. Before #149 this file had no hook record and still scored
+# directive_fired==1, because firing was a bare text match -- the assertion
+# encoded the defect it was meant to guard against.
 cat > "$E/t.jsonl" <<'JSONL'
+{"type":"attachment","hookName":"SessionStart","stdout":"{\"hookSpecificOutput\":{\"additionalContext\":\"**Test plugin: role-grounding directive (realistic example)**\\n\\nAnnounce it in your opening lines.\"}}"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The **Test plugin: role-grounding directive (realistic example)** says to announce it in my opening lines, e.g. \"Operating as **Secretary of Operations Circle**\" -- but GlassFrog is not connected, so I cannot resolve a role."}]}}
 JSONL
 js="$(CLAUDE_PROJECTS_DIR="$E" bash "$SCRIPT" --hook "$HOOK2" --json)"
@@ -253,6 +259,43 @@ d=json.load(sys.stdin)
 assert d["sessions"]==3, d
 assert d["excluded"]["self_sessions"]==0, d
 ' || fail "--include-self should count this repo's sessions: $js"
+
+# 7b. In-repo sessions are REPORTED, not silently dropped (issue #149). Held
+#     out of every headline figure, but present on their own line -- otherwise a
+#     window in which every treated session happened to be in this repo reads as
+#     a flat zero, which is exactly what happened after the 2026-08-03 delivery
+#     fix: the readout said 0 announcements where the transcripts showed 2.
+js="$(CLAUDE_PROJECTS_DIR="$S" bash "$SCRIPT" --hook "$HOOK" --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==1, d                      # headline stays cross-repo only
+assert d["resolve_announce"]["count"]==1, d
+assert d["in_repo"]["sessions"]==2, d           # and the held-out cohort is visible
+assert d["in_repo"]["resolve_announce"]==2, d
+' || fail "in-repo sessions must be reported on their own line, not dropped: $js"
+
+# 7c. Reading the hook source is not receiving its output (issue #149).
+#     `directive-fired` used to be a bare text match on any line, so a session
+#     that merely READ hooks-handlers/session-start.sh, or quoted the directive
+#     in a prompt, scored as having been treated -- the identical mistake that
+#     produced the false 2.2% in #122. #123 repaired that for the announce
+#     signal but left it in place for this one, and slug self-exclusion hid it,
+#     because the sessions most likely to read the hook source are this repo's.
+#     Surfacing the in-repo cohort made it visible: 9 reported vs 4 real.
+R="$TMP/read-not-fired"; mkdir -p "$R"
+cat > "$R/t.jsonl" <<'JSONL'
+{"type":"user","message":{"role":"user","content":"here is the hook source: **Test plugin: role-grounding directive**"}}
+{"type":"attachment","attachment":{"type":"file_read","path":"hooks-handlers/session-start.sh"},"content":"**Test plugin: role-grounding directive**"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I can see the **Test plugin: role-grounding directive** header in that file."}]}}
+JSONL
+js="$(CLAUDE_PROJECTS_DIR="$R" bash "$SCRIPT" --hook "$HOOK" --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==1, d
+assert d["directive_fired"]["count"]==0, d
+' || fail "reading or quoting the hook source must not count as directive-fired: $js"
 
 # 8. Fail loudly when the marker cannot be derived, rather than reporting a
 #    zero it cannot justify. This is the guard against #122 rewording or

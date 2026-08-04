@@ -141,7 +141,7 @@ if _truthy "${HOLACRACY_GROUNDING_DIRECTIVE:-on}"; then
     grounding=$(cat <<'DIRECTIVE'
 **Holacracy plugin: role-grounding directive**
 
-Before your first substantive action this session, resolve and announce the active Holacratic role/circle per the procedure in `skills/shared/actor-and-role-resolution.md`: call `glassfrog_get_me` + `glassfrog_list_my_roles`, resolve to a single role + circle, then announce it in your opening lines (e.g. "Operating as **Role of Circle**").
+Before your first substantive action this session, resolve and announce the active Holacratic role/circle per the procedure in `skills/shared/actor-and-role-resolution.md` -- follow its Step 2 call shape, which is bounded: do NOT pass `include_roles: true` to `glassfrog_get_me`, and do NOT call `glassfrog_list_my_roles` unpaged. For a Partner who fills many roles both overflow the tool-result limit and cost you the turn. Then announce the result in your opening lines (e.g. "Operating as **Role of Circle**").
 
 This grounding has NOT yet been performed -- this directive only requests it and does not assert it happened (the hook has no GlassFrog access at fire time). If work crosses into another role's remit, name the boundary and mark a chapter. If GlassFrog isn't connected, name that limitation and ask which role/circle to treat as primary rather than assuming one.
 DIRECTIVE

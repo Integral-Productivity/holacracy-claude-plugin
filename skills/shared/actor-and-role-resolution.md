@@ -42,14 +42,33 @@ When a role skill is invoked, run this procedure **before** producing any role-s
 
 If actor identity has not yet been resolved this session:
 
-1. Call `glassfrog_get_me`. If it returns a person/agent, that is the actor. Note the actor name and id.
+1. Call `glassfrog_get_me` — **without** `include_roles`. If it returns a person/agent, that is the actor. Note the actor name and id. (`include_roles: true` embeds the whole roster and overflows the tool-result limit for any actor filling more than a handful of roles; see Step 2.)
 2. If `glassfrog_get_me` fails or returns nothing, ask the user: "Which actor should I treat as the basis for this session? (your own GlassFrog identity, or someone you're supporting?)"
 
 If GlassFrog is not connected at all, name the constraint: "I don't have live GlassFrog data, so I'm working from what you tell me. Whose role-context should I treat as primary?"
 
-### Step 2 -- Load the actor's role roster
+### Step 2 -- Load the actor's role roster (bounded)
 
-Call `glassfrog_list_my_roles` (or, if operating on behalf of someone else, the appropriate filtered `list_roles` query for that person). This returns every role the actor currently fills, each scoped to a circle.
+Call `glassfrog_list_my_roles` (or, if operating on behalf of someone else, the appropriate filtered `list_roles` query for that person). This returns every role the actor currently fills.
+
+**Page it. Do not call it unbounded.** Each role object embeds its full `accountabilities`, `domains`, `fillers`, and `tags` — roughly 1.5 KB per role. The default `per_page` is 100, so for a Partner filling ~60 roles the response runs past 90 KB and is rejected for exceeding the tool-result limit. The same is true of `glassfrog_get_me(include_roles: true)`, which returned **124,801 characters** for one real actor and failed outright. Both are the *obvious* way to make the call and both cost you the turn.
+
+```
+glassfrog_list_my_roles(per_page: 10)
+  -> { items: [...], pagination: { has_next_page, next_cursor } }
+glassfrog_list_my_roles(per_page: 10, cursor: <next_cursor>)   # repeat while has_next_page
+```
+
+Stop paging as soon as the target role is found — for a role skill with a specific target (Secretary, Rep Link), that is usually the first page or two, not the whole roster.
+
+**Resolving the circle name.** A role object carries `parent_role_id` but **no circle name**, so the roster alone cannot produce `Operating as **Role of Circle**`. The parent id refers to another role — the circle — so map it to that role's `name`:
+
+- If the parent is already in a page you have fetched, read its `name` directly.
+- Otherwise call `glassfrog_get_role(<parent_role_id>)` for just that one id.
+
+A circle is itself a role (`has_subroles: true`), which is why this is an id→role lookup rather than a separate circle endpoint.
+
+**Deferred tools.** In harnesses where MCP tools are loaded on demand, `glassfrog_*` must be fetched before the first call or it fails with a validation error rather than a permissions error. Load the two you need in a single lookup — `glassfrog_get_me`, `glassfrog_list_my_roles` — rather than one at a time.
 
 ### Step 3 -- Resolve to a single role + circle
 

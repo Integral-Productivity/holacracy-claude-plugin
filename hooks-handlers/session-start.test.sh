@@ -221,4 +221,25 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
 assert_quiet "$out" "exclusion must win over REQUIRE_PATH"
 
+# G15. The directive steers away from the unbounded call shape (issue #148).
+#      `glassfrog_get_me(include_roles: true)` returned 124,801 characters for a
+#      real actor and was rejected outright; an unpaged `list_my_roles` overflows
+#      the same way. Both are the obvious way to make the call. A directive that
+#      prescribes something which cannot complete costs the session its first
+#      turn -- the likeliest reason a session that received the directive never
+#      announced.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "include_roles" \
+  || fail "directive must name the unbounded call shape to avoid (issue #148)"
+
+# G16. The directive's FIRST line is the readout's detection marker and must not
+#      drift. scripts/grounding-readout.sh derives it from this heredoc at run
+#      time, and per ADR-0008 amendment A3 windows are comparable only within one
+#      directive revision -- so editing this line silently invalidates the open
+#      measurement window instead of failing. Pin it: changing it should be a
+#      deliberate act that trips a test, not a side effect of rewording the body.
+marker="$(awk "/<<'DIRECTIVE'/{found=1; next} found{print; exit}" "$HOOK")"
+[ "$marker" = '**Holacracy plugin: role-grounding directive**' ] \
+  || fail "directive marker line drifted to: '$marker' -- this closes the current PDCA-1 measurement window; see ADR-0008 amendment A3"
+
 echo "PASS: all session-start hook tests"

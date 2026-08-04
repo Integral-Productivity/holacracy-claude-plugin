@@ -166,3 +166,51 @@ trustworthy, and it is now the price of admission for any new check.
   change whose costs motivated this one.
 - [`evals/README.md`](../../evals/README.md) — the behavioural tier's contract,
   golden cases, and redaction requirement.
+
+## Amendments
+
+### 2026-08-04 — fixtures capture schemas, not redacted responses (#170)
+
+The Consequences section above says Tier 2 fixtures ship "carrying data from a
+real organization" with "redaction by default." **Implementing #170 showed that
+framing was wrong, and the approach inverted.**
+
+Probing the live API found that a single `list_my_roles` record carries
+`fillers[].name` and `fillers[].email` — PII repeated across all 81 roles — plus
+`purpose`, `accountabilities[].description` and `domains[].description`, which
+together read as a map of the organization's strategy. The API also returns
+full-length ids where ADR-0011's issue thread publishes only truncated display
+forms, so a recorded fixture would expose something genuinely new rather than
+re-publishing what was already out.
+
+Redacting that means substituting essentially every string in the payload, at
+which point the only thing genuinely recorded is the **schema** — which is where
+the value was, since the schema is what reveals fields nobody knew about.
+
+**So: capture the schema, generate the content.** `scripts/glassfrog-schema-capture.py`
+replaces every scalar with its type name and refuses to emit if that erasure did
+not fully apply. `scripts/glassfrog-fixture-gen.py` builds a synthetic
+organization from a hand-authored scenario spec and validates it against the
+captured schema, so a fixture cannot silently drift from the real API shape.
+
+The safety property changes character, and that is the point. Redaction is a
+process that fails by missing a field; this is structural — no real string has a
+path into a committed file. It matters more than the usual defence-in-depth
+argument because a leak is not undone by a later commit: it is in git history.
+
+Two further findings from the same work:
+
+- **`run_eval.py` is the triggering detector, not the behavioural runner.** The
+  Decision text above lists it among the Tier 2 components reused from
+  `skill-creator`. It returns a boolean for whether a skill fired, which is Tier
+  3's question. `aggregate_benchmark.py`, `agents/grader.md` and the eval viewer
+  *are* reusable; the runner that produces `grading.json` has to be built.
+- **The stub reproduces the API's defects deliberately.** It returns direct
+  children only from `list_subrole_tensions` and 422s `meeting_type` on
+  `update_tension`. A stub that smoothed either over would let a skill pass an
+  eval by doing something that fails in production — worse than no eval, because
+  it manufactures confidence.
+
+The original Decision text is left standing, per the ADR-0011 precedent for
+Option D: a decision record documents what was decided when, and rewriting it
+falsifies the record.

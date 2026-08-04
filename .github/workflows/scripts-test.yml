@@ -176,3 +176,19 @@ jobs:
           else
             bash scripts/skills-lint.sh
           fi
+
+      - name: evals fixture-harness regression suite
+        # Guards the behavioural-eval fixture harness (#170): schema capture,
+        # synthetic fixture generation, and the MCP replay stub.
+        #
+        # Section 2 of that suite is a LEAK GUARD, and it is the reason this step
+        # is not optional. Fixtures live in a public repository; the live API
+        # returns filler names and email addresses on every role record, plus
+        # purposes, accountabilities and domains. The harness is built so that no
+        # real string has a path into a committed file, and the guard asserts
+        # that property rather than trusting it.
+        #
+        # A leak is also not undone by a later commit — it is in git history — so
+        # the guard runs over the whole of evals/ on every PR, not over the files
+        # a given change happens to touch.
+        run: bash scripts/evals-harness.test.sh

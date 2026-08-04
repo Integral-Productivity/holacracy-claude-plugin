@@ -77,6 +77,23 @@ separate tier that costs API calls and runs nightly, not per-PR. See
 [`evals/README.md`](evals/README.md) and
 [ADR-0012](docs/adr/0012-test-the-skills-not-just-the-scaffolding.md).
 
+```bash
+bash scripts/evals-harness.test.sh       # fixture harness, mutation-checked
+```
+
+**Fixtures never contain real GlassFrog data, and that is structural rather than
+procedural.** `scripts/glassfrog-schema-capture.py` reduces a live response to
+type names; `scripts/glassfrog-fixture-gen.py` builds a synthetic org from a
+hand-authored `evals/scenarios/*.json` and validates it against that schema.
+Never commit a recorded response — the live API returns filler names and email
+addresses on every role record, this repo is public, and a leak is not undone by
+a later commit. § 2 of the harness suite is the guard that asserts it.
+
+`evals/stub/glassfrog_stub.py` **reproduces the live API's defects on purpose**:
+`list_subrole_tensions` returns direct children only, and `update_tension` 422s
+on `meeting_type`. Do not "fix" either — a stub that smoothed them over would let
+a skill pass an eval by doing something that fails in production.
+
 **Do not add a check without adding its mutation case.** `skills-lint.test.sh`
 asserts, for every check, both that a seeded defect fails the lint *and* that it
 passes with that check skipped. The second half is what proves the check is

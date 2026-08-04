@@ -26,6 +26,10 @@ Or add this repo directly to your plugin sources.
 
 - [`holacratic-ai-governance`](skills/holacratic-ai-governance/SKILL.md) — operating framework for AI engaging with any Holacracy-governed organization through GlassFrog. Grounds AI work in real role structure rather than generic assumptions.
 
+**Operational tracking**
+
+- [`checklist-metric-audit`](skills/checklist-metric-audit/SKILL.md) — audits a circle's checklist items and metrics against its purpose, accountabilities, and domains via a coverage matrix, then remediates the portfolio directly through the GlassFrog MCP. Checklist items and metrics are **operational, not governance** (Constitution Art. 3.2), so no proposal is required — changes apply after per-change confirmation, with destructive edits (delete, merge) always confirmed individually. Gaps that actually need a new accountability or domain are escalated to `/holacracy:capture-tension` instead.
+
 **Shared references**
 
 - [`shared/authority-boundaries.md`](skills/shared/authority-boundaries.md) — cross-role authority reference loaded by the four role skills when authority questions span more than one Core Role.
@@ -56,6 +60,7 @@ Or add this repo directly to your plugin sources.
 - [`/holacracy:review-project`](commands/review-project.md) — adversarial review of GlassFrog **projects** against the well-formedness rubric. Runs five critic lenses (actionability, goal-alignment, scope-authority, assignment-fit, red-team) over one project or a backlog; surfaces findings with drafted fixes; applies additive fixes (`create_action`, `link_goal_supporting_project`) with a per-item confirmation, leaves reframes/archives as advisory drafts, and routes scope/assignment gaps to the tension flow. No argument or a circle name walks the backlog inline; a named project gets a deep review via independent critic subagents. Never auto-writes.
 - [`/holacracy:capture-project`](commands/capture-project.md) — capture-time well-formedness guardrail: file a **new** project as a well-formed outcome with a first next-action, via a draft-and-confirm flow. Optional `$ARGUMENTS` for inline project text. Soft-gates on the rubric's Family A (outcome-framed / first next-action / clear owner), teaching the missing element with a drafted fix rather than hard-blocking; files additively (`create_role_project` then `create_action` with `parent_project_id`) with one per-project confirmation, then a light skippable goal-link nudge. The capture-time twin of `/holacracy:review-project` — prevents thin projects at intake instead of cleaning them up after the fact. Never auto-files; one project per invocation.
 - [`/holacracy:stalled-project-sweep`](commands/stalled-project-sweep.md) — back-of-loop lifecycle sweep for GlassFrog **projects**. Surfaces un-moving projects (no next-action, old `created_at`, or `status: "waiting"`) and offers per item to re-energize (draft a next-action) or archive (`status: "archived"`). Per-item confirm; never auto-archives; archive-over-delete. The project-side twin of `/holacracy:supersession-sweep`, and — unlike `/holacracy:review-project` — it *performs* the archive write (a lifecycle transition, not an authorship edit). Schedulable as a draft-only routine.
+- [`/holacracy:audit-portfolio`](commands/audit-portfolio.md) — audit a circle's **checklist items and metrics** against its purpose, accountabilities, and domains. Resolves actor + circle scope (optional circle-name argument), builds a coverage matrix over the circle role and every sub-role, and surfaces gaps, mis-owned items, missing frequencies, and checklist/metric instrument mismatches with drafted candidates and dispositions. Unlike the governance surfaces, it **applies** approved changes directly via the GlassFrog MCP — operational, not governance — with per-change confirmation for deletes and merges.
 
 **Session hook**
 
@@ -96,7 +101,7 @@ The first time a skill invokes a `glassfrog_*` tool, Claude runs the OAuth hands
 
 ### Working without GlassFrog
 
-All five skills degrade gracefully if the GlassFrog MCP is not connected. They will operate on constitutional knowledge and context the user provides directly, and will name that limitation clearly (e.g., "I don't have live governance data, so I'm working from what you've shared.").
+All six skills degrade gracefully if the GlassFrog MCP is not connected. They will operate on constitutional knowledge and context the user provides directly, and will name that limitation clearly (e.g., "I don't have live governance data, so I'm working from what you've shared.").
 
 ### Tension capture and the underlying API surface
 

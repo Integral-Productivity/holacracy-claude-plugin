@@ -7,7 +7,7 @@ This is the canonical set of gates any Holacratic tension passes through before 
 - The `/holacracy:tension-triage` slash command (readiness assessment over an existing backlog).
 - The `/holacracy:supersession-sweep` slash command (Step 4 is the supersession check).
 - The `holacratic-ai-governance` skill (proactive tension sensing during conversation).
-- The `holacracy-rep-link` skill, whose `references/tension-triage-guide.md` extends this with Rep-Link-specific escalation logic.
+- The `holacracy-rep-link` skill, whose `../holacracy-rep-link/references/tension-triage-guide.md` extends this with Rep-Link-specific escalation logic.
 
 Triage runs in sequence. **Stop at the first step that resolves the tension.**
 

@@ -1,0 +1,24 @@
+# Slash commands referenced in shipped prose that do not exist yet.
+# Format: /holacracy:<name> #<issue> <reason>
+#
+# Enforced by scripts/skills-lint.sh check 5.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# #166 deliberately points readers at /holacracy:process-tension, which has not
+# been built. That was the honest choice: the alternative was to quietly widen
+# tension-triage's scope to fill the gap, which is the exact conflation that PR
+# existed to undo.
+#
+# But an honest forward reference and a stale one look identical six months
+# later. Requiring a tracking issue gives every entry an expiry: when the issue
+# closes, the lint goes red, and somebody decides whether the command shipped
+# (drop the entry) or the plan died (drop the reference). Vapour becomes debt
+# with a date on it.
+#
+# Issue state is verified in CI, where `gh` is authenticated. Locally the
+# declaration alone is accepted so the lint stays runnable offline.
+
+/holacracy:process-tension  #160  the disposition router; triage hands off to it
+/holacracy:policy:audit     #103  v0.5 policy command, named by agents/holacracy-coach.md
+/holacracy:policy:cascade   #103  v0.5 policy command, named by agents/holacracy-coach.md

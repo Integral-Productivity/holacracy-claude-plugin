@@ -23,8 +23,8 @@ This document inventories every constitutional duty of the Facilitator role and 
 - Tactical decisions or project assignments (determined by role-fillers)
 
 **AI facilitation support**: Load the appropriate reference file before any meeting:
-- `references/tactical-meeting.md` for Tactical
-- `references/governance-meeting.md` for Governance
+- `./tactical-meeting.md` for Tactical
+- `./governance-meeting.md` for Governance
 
 ---
 

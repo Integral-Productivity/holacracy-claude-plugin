@@ -24,7 +24,7 @@ The flow can begin in three ways:
 
 1. **Explicit command.** User runs `/holacracy:capture-tension` (optionally with the tension text as `$ARGUMENTS`). Intent is clear; proceed.
 2. **Ambient detection.** `holacratic-ai-governance` is loaded and Claude observes tension language in conversation ("I keep hitting...", "no one owns...", "we can't get...", "I'm frustrated by..."). Claude **pauses** and offers to capture: *"That sounds like a tension worth filing -- want me to draft one?"* If the user assents, proceed. If they deflect, drop it and continue the original work.
-3. **Pattern 3 follow-up.** A tension surfaced by data-mining tension sensing (`holacratic-ai-governance/references/engagement-patterns.md` Pattern 3) is offered for capture. User confirms or skips; proceed for those they confirm.
+3. **Pattern 3 follow-up.** A tension surfaced by data-mining tension sensing (`../holacratic-ai-governance/references/engagement-patterns.md` Pattern 3) is offered for capture. User confirms or skips; proceed for those they confirm.
 
 Never proceed past Step 1 without the user's clear assent to capture.
 

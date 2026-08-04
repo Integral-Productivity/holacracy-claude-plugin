@@ -2,7 +2,7 @@
 name: holacracy-lead-link
 description: AI co-Lead Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Lead Link role, needs to set or refine circle strategy, wants to assign or reassess role assignments, needs to allocate circle capacity or resources across Projects and Roles, wants to draft governance proposals to address structural gaps, or says things like "help me think through my Lead Link work," "what should this circle prioritize," "who should fill this role," "help me set strategy," "we have a capacity problem," "I need to draft a governance proposal," or "what tensions should I bring to governance." Also trigger when managing role-person fit, deciding circle focus, or surfacing organizational tensions for governance. In solo-operator contexts, trigger when a single person filling multiple roles needs to reason about which role's work takes priority or how to allocate their own capacity.
 status: draft
-version: 1.1.0
+version: 1.1.1
 ---
 # Holacracy Lead Link Skill
 

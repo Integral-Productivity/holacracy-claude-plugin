@@ -378,4 +378,75 @@ assert len(m)>=20, m
 assert "grounding" in m.lower() or "holacracy" in m.lower(), m
 ' || fail "marker derived from the real hook looks wrong: $js"
 
+# 10. plugin_versions_seen -- which version actually RAN, read from the stamp
+#     the hook writes into every payload (#122 mechanism 1, given its first
+#     consumer here). The whole point is that #122's root cause -- a v0.6.0
+#     copy loading while 0.10.2 was recorded as installed -- was invisible in
+#     the data. Every sub-case below is a way that could go wrong again.
+V="$TMP/versions"; mkdir -p "$V"
+
+# 10a. Directive fired, stamped: the version is attributed to that session.
+cat > "$V/stamped.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"**Test plugin: role-grounding directive**\\n\\n_Directive emitted by holacracy-claude-plugin v0.12.0._\"}"}
+JSONL
+
+# 10b. The hook stayed quiet. This session did NOT receive the directive, but
+#      it still tells us which version ran -- that is the entire reason the
+#      quiet marker exists. Counting the version only on directive-carrying
+#      records would blind the instrument to exactly the sessions where a
+#      stale copy has nothing to say, which is the #122 shape.
+cat > "$V/quiet.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"_holacracy-claude-plugin v0.11.1: session-start hook ran; nothing to surface._\"}"}
+JSONL
+
+# 10c. An assistant QUOTING a version stamp must not score it. Same provenance
+#      rule as every other signal here: reading or repeating the text is not
+#      running that version. A whole-file grep would report v9.9.9 as loaded.
+cat > "$V/quoted.jsonl" <<'JSONL'
+{"type":"assistant","text":"The docs show _Directive emitted by holacracy-claude-plugin v9.9.9._ as the stamp format."}
+JSONL
+
+# 10d. A hook record with no stamp at all -- what a copy predating the stamp
+#      looks like. Must be counted as unknown, never silently omitted.
+cat > "$V/unstamped.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"**Test plugin: role-grounding directive**\"}"}
+JSONL
+
+js="$(CLAUDE_PROJECTS_DIR="$V" bash "$SCRIPT" --hook "$HOOK" --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+seen=d["plugin_versions_seen"]
+assert d["sessions"]==4, d
+assert seen.get("0.12.0")==1, seen          # 10a
+assert seen.get("0.11.1")==1, seen          # 10b: quiet marker still reports
+assert "9.9.9" not in seen, seen            # 10c: quoting is not running
+assert d["sessions_without_plugin_version"]==2, d   # 10c + 10d
+# The quiet session must not be miscounted as a firing: the quiet marker
+# deliberately omits the directive header line.
+assert d["directive_fired"]["count"]==2, d
+' || fail "plugin_versions_seen wrong: $js"
+
+# 10e. The same facts appear in the default human output, so an operator
+#      reading the table sees a stale deployment without reaching for --json.
+out="$(CLAUDE_PROJECTS_DIR="$V" bash "$SCRIPT" --hook "$HOOK")"
+echo "$out" | grep -q 'plugin versions seen:' || fail "expected a versions line in the table; got: $out"
+echo "$out" | grep -q '0.12.0 (1)' || fail "expected 0.12.0 (1) in the versions line; got: $out"
+echo "$out" | grep -q 'no version stamp (2)' || fail "expected the unknown count in the versions line; got: $out"
+
+# 10f. "unknown" is what the hook emits when version.txt is unreadable. It is a
+#      real answer and must be reported as such, not folded into the
+#      no-stamp bucket where it would be indistinguishable from an old copy.
+U="$TMP/unknownver"; mkdir -p "$U"
+cat > "$U/u.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"_holacracy-claude-plugin vunknown: session-start hook ran; nothing to surface._\"}"}
+JSONL
+js="$(CLAUDE_PROJECTS_DIR="$U" bash "$SCRIPT" --hook "$HOOK" --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["plugin_versions_seen"].get("unknown")==1, d
+assert d["sessions_without_plugin_version"]==0, d
+' || fail "an explicit 'unknown' stamp must be reported distinctly: $js"
+
 echo "PASS: all grounding-readout tests"

@@ -98,7 +98,24 @@ Two things to get right when reading it:
 - **`--since-start`, not `--since`.** `--since` filters on file mtime, which misfiles any session that began before the cutoff and was appended to afterwards — five of them in the 2026-08-03 window. `--since-start` buckets by the session's first record.
 - **The in-repo line is corroboration, not the result.** This repo's own sessions are held out of every headline figure and reported separately, because they work on the directive itself. Judge the experiment on the cross-repo figures.
 
+- **`plugin versions seen` is the first thing to read on a bad number.** The hook stamps the running version into every payload, and the readout reports which versions actually ran. A large `no version stamp` count means copies too old to carry the stamp — which is the [#122](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/122) condition exactly, and what took archaeology across three install channels to find the first time.
+
 The instrument is a proxy and says so: an assistant verbatim-quoting a documentation example still scores. [#71](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/71) tracks the structured session log that would replace it.
+
+### The two alarms
+
+The readout is descriptive — it has no thresholds and always exits 0. Two alarms read its output and fail loudly:
+
+```bash
+scripts/grounding-fire-rate-check.sh      # did the directive stop reaching sessions?
+scripts/plugin-version-skew-check.sh      # is the loaded version behind `stable`?
+```
+
+Both run **operator-local**, alongside the weekly `grounding-pdca1-readout` task — they read `~/.claude/projects` and `~/.claude/plugins`, which no CI runner has. CI runs their test suites, which drive them entirely through fixtures (`--readout-json`, `--fixture-root`, `--loaded-json`).
+
+Exit codes are the same for both: `0` clear, `1` alarm (a tracking issue is filed and updated, and auto-closed when it recovers), `2` usage or operational error. Add `--dry-run` to see the report without writing to GitHub.
+
+**`2` includes "nothing to measure."** An empty window, an unreadable readout, or a probe root with no plugin channels all exit 2 rather than reporting clear. Reporting health from absent evidence is precisely the failure #122 documents, and neither alarm is permitted to commit it.
 
 ## Agent skills
 

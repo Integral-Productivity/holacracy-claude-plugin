@@ -1,7 +1,9 @@
 name: Scripts tests
 
-# Runs the repo-local bash test suites and lints the scripts. Two suites today:
-# scripts/grounding-readout.test.sh and hooks-handlers/session-start.test.sh.
+# Runs the repo-local bash test suites and lints the scripts. Four suites today:
+# scripts/grounding-readout.test.sh, scripts/grounding-fire-rate-check.test.sh,
+# scripts/plugin-version-skew-check.test.sh, and
+# hooks-handlers/session-start.test.sh.
 #
 # Why this exists
 # ---------------
@@ -16,6 +18,15 @@ name: Scripts tests
 # assistant scoping, subagent exclusion, self exclusion, directive-echo guard,
 # marker derivation) fails the suite. Until this workflow existed, nothing ran
 # it -- a regression in the readout would have merged green. See issue #126.
+#
+# scripts/grounding-fire-rate-check.sh and scripts/plugin-version-skew-check.sh
+# are the fail-loud alarms for issue #122. Both run OPERATOR-LOCAL, because they
+# read ~/.claude/projects and ~/.claude/plugins, which no runner has -- so what
+# CI can do is run their suites, which drive them entirely through fixtures
+# (--readout-json, --fixture-root, --loaded-json). That split is the point:
+# without a fixture path the alarm code would never execute anywhere except the
+# moment it fires for real, and an alarm nobody has ever seen fire is the same
+# fail-silent shape #122 is about.
 #
 # hooks-handlers/session-start.sh injects the role-grounding directive and the
 # routine briefing. It is fail-silent by design, so every defect in it is
@@ -92,6 +103,22 @@ jobs:
 
       - name: grounding-readout regression suite
         run: bash scripts/grounding-readout.test.sh
+
+      - name: grounding-fire-rate-check regression suite
+        # Section 8 of this suite runs the check under `env -i` with a PATH
+        # carrying neither gh nor jq, proving --dry-run stays runnable here.
+        # Section 9 drives it through the REAL grounding-readout.sh, so a
+        # renamed JSON key fails the build instead of turning the alarm into a
+        # permanent silent zero.
+        run: bash scripts/grounding-fire-rate-check.test.sh
+
+      - name: plugin-version-skew-check regression suite
+        # Builds a reproduction of the exact issue #122 condition -- a v0.6.0
+        # copy materialized by the desktop app while installed_plugins.json
+        # reports 0.10.2 -- and asserts the alarm fires on it. Issue #150 asks
+        # for the alarm to be demonstrated against a reproduction rather than
+        # asserted; this step is that demonstration, on every PR.
+        run: bash scripts/plugin-version-skew-check.test.sh
 
       - name: session-start hook regression suite
         # Run under two timezones deliberately -- this is not redundancy.

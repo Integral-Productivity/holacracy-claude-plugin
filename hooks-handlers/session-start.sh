@@ -134,10 +134,24 @@ today = dt.date.today()
 
 
 def _date(s):
+    """Local calendar date for an ISO-8601 instant.
+
+    Ledger timestamps are UTC (`...Z`), but a routine's "today" means today in
+    the user's timezone -- so tz-aware values are converted to local before the
+    date is taken. Taking .date() straight off the UTC value and comparing it
+    against dt.date.today() (which is local) mixes timezones: for the hours the
+    two calendar dates disagree -- ~7h/day in Pacific -- a routine genuinely due
+    today does not surface, and windows are off by one. Issue #132; that
+    mismatch also made the test suite pass under a UTC CI runner while failing
+    locally, so it would have been wired in green and stayed broken.
+    """
     try:
-        return dt.datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+        d = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
     except Exception:
         return None
+    if d.tzinfo is not None:
+        d = d.astimezone()
+    return d.date()
 
 
 due = []

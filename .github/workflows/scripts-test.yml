@@ -1,9 +1,13 @@
 name: Scripts tests
 
-# Runs the repo-local bash test suites under scripts/ and lints the scripts.
+# Runs the repo-local bash test suites and lints the scripts. Two suites today:
+# scripts/grounding-readout.test.sh and hooks-handlers/session-start.test.sh.
 #
 # Why this exists
 # ---------------
+# Both suites guard instruments whose failure mode is a plausible-looking WRONG
+# answer rather than a crash, and neither was run by anything until wired here.
+#
 # scripts/grounding-readout.sh is the Check instrument for the PDCA-1 grounding
 # experiment (issue #60, docs/adr/0008-*). Its failure mode is producing a
 # plausible-looking number that is WRONG -- exactly the class of defect #123/#124
@@ -12,6 +16,13 @@ name: Scripts tests
 # assistant scoping, subagent exclusion, self exclusion, directive-echo guard,
 # marker derivation) fails the suite. Until this workflow existed, nothing ran
 # it -- a regression in the readout would have merged green. See issue #126.
+#
+# hooks-handlers/session-start.sh injects the role-grounding directive and the
+# routine briefing. It is fail-silent by design, so every defect in it is
+# invisible: issue #122 is a two-week outage nobody could see, and issue #132
+# found this suite had been red on the operator's machine while running nowhere.
+# The suite is likewise mutation-checked -- see the timezone note on its step
+# below, which is also why that step runs under more than one TZ.
 #
 # Why a new workflow rather than a step in ci.yml
 # -----------------------------------------------
@@ -81,3 +92,26 @@ jobs:
 
       - name: grounding-readout regression suite
         run: bash scripts/grounding-readout.test.sh
+
+      - name: session-start hook regression suite
+        # Run under two timezones deliberately -- this is not redundancy.
+        #
+        # The hook decides whether a routine is due by comparing a ledger
+        # timestamp's calendar date against today's. Issue #132: it took .date()
+        # off the UTC instant and compared it to a LOCAL today, so a routine due
+        # today silently failed to surface for the hours the two dates disagree.
+        # Under a UTC runner those two dates NEVER disagree, so the whole class
+        # of bug is invisible here. Mutation-checked: removing the local
+        # normalization in _date() passes under TZ=UTC and fails under every
+        # non-UTC zone tried (America/Los_Angeles, Europe/Berlin, Asia/Tokyo,
+        # Pacific/Kiritimati, Pacific/Midway).
+        #
+        # America/Los_Angeles is the operator's zone and carries a DST
+        # transition, so it also exercises a changing offset. Keep both legs.
+        run: |
+          set -euo pipefail
+          for tz in UTC America/Los_Angeles; do
+            echo "::group::session-start.test.sh (TZ=$tz)"
+            TZ="$tz" bash hooks-handlers/session-start.test.sh
+            echo "::endgroup::"
+          done

@@ -1,0 +1,34 @@
+{
+  "skill": "holacracy",
+  "surface": "/holacracy:tension-triage",
+  "status": "template",
+  "note": "Assertions are written; the GlassFrog fixture is not yet captured, so this case does not run in CI. It is the worked template for the remaining golden cases in evals/README.md.",
+  "evals": [
+    {
+      "eval_id": 0,
+      "eval_name": "authority-gate-fires-before-venue-routing",
+      "prompt": "Triage the unprocessed tensions on my roles in the Product Circle.",
+      "fixture": "fixtures/glassfrog/ten_03c044b3-domain-held.json",
+      "ground_truth": "ten_03c044b3 is a decision wholly inside the Productboard domain that the sensing role (Product Architecture) already holds. It waited 21 months for a meeting that Article 4 never required. Correct disposition: surface the already-held authority and offer conversion. Recorded on issue #120, comment 5172936811.",
+      "assertions": [
+        {
+          "text": "The response names the domain the sensing role already holds before it proposes any meeting venue",
+          "discriminating": true
+        },
+        {
+          "text": "The response does NOT route this tension to a governance or tactical venue",
+          "discriminating": true
+        },
+        {
+          "text": "The response offers conversion to a project or action rather than filing a proposal",
+          "discriminating": true
+        },
+        {
+          "text": "No GlassFrog write is issued without an explicit per-item confirmation prompt",
+          "discriminating": false,
+          "why_kept": "Non-discriminating by design — the constitutional safeguard must hold in every configuration. It is a floor, not a signal."
+        }
+      ]
+    }
+  ]
+}

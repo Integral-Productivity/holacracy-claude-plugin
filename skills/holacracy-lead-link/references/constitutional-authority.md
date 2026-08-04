@@ -2,7 +2,7 @@
 
 This document provides the constitutional reference specific to the Lead Link role: its purpose, accountabilities, domain, and authority boundaries *as a Lead Link*. Load it for Lead Link-specific compliance questions, authority disputes, or when onboarding to the role.
 
-**For the cross-role view** -- how Lead Link authority interacts with Facilitator, Secretary, and Rep Link authority, how the role-filler autonomy principle applies, and how to distinguish governance from operational decisions -- load `../shared/authority-boundaries.md` instead of or in addition to this file.
+**For the cross-role view** -- how Lead Link authority interacts with Facilitator, Secretary, and Rep Link authority, how the role-filler autonomy principle applies, and how to distinguish governance from operational decisions -- load `../../shared/authority-boundaries.md` instead of or in addition to this file.
 
 ---
 

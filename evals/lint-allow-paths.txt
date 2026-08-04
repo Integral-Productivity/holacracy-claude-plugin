@@ -1,0 +1,17 @@
+# Backticked paths that intentionally do not resolve from the file citing them.
+# Format: <citing-file> <path> <reason>
+#
+# Keyed on the PAIR, never the path alone: `../shared/authority-boundaries.md`
+# is correct prose in CLAUDE.md (which defines the convention) and a real bug in
+# a role skill's references/ file (where it silently mis-resolves). A path-only
+# allowlist would excuse the first and silence the second.
+#
+# Keep this list near-empty. The usual fix is to write the repo-root-relative
+# path, which is better documentation anyway. Every entry here should be a file
+# whose SUBJECT is the path convention itself.
+
+CLAUDE.md                        ../shared/authority-boundaries.md      defines the role-skill load convention
+CLAUDE.md                        ../../shared/authority-boundaries.md   defines the references/ load convention
+CLAUDE.md                        references/tension-triage-guide.md     names the rep-link file relative to its own skill
+skills/shared/agentic-routines.md ../shared/agentic-routines.md         self-describes how role skills load it
+skills/shared/agentic-routines.md ../../shared/agentic-routines.md      self-describes how references/ files load it

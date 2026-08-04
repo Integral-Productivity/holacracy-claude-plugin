@@ -142,3 +142,37 @@ jobs:
             TZ="$tz" bash hooks-handlers/session-start.test.sh
             echo "::endgroup::"
           done
+
+      - name: skills-lint regression suite
+        # Mutation-checked, same contract as the two suites above: for each of
+        # the six checks there is a fixture violating only that check, and the
+        # suite asserts BOTH that the lint fails on it AND that it passes with
+        # that check skipped. The second assertion is what proves no check is
+        # dead weight -- a check some other check incidentally covers would pass
+        # a naive suite while buying nothing.
+        run: bash scripts/skills-lint.test.sh
+
+      - name: skills-lint on this ref
+        # The suite above proves the checks work against fixtures. This runs
+        # them against the actual plugin, which is the point.
+        #
+        # --base is passed only on pull_request, because check 4 (a skill's
+        # `version:` moved when its content did) is inherently diff-aware and
+        # has nothing to compare against on a push to main. It is skipped rather
+        # than faked, so the check never reports a conclusion it cannot support.
+        #
+        # SKILLS_LINT_CHECK_ISSUES turns on the leg of check 5 that asks GitHub
+        # whether a declared forward reference's tracking issue is still open.
+        # That needs `gh` authenticated, which is true here and not on a laptop,
+        # so the local run degrades to accepting the declaration alone.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SKILLS_LINT_CHECK_ISSUES: "1"
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            bash scripts/skills-lint.sh --base "origin/${{ github.base_ref }}"
+          else
+            bash scripts/skills-lint.sh
+          fi

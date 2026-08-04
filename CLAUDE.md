@@ -28,9 +28,9 @@ holacracy-claude-plugin/
 
 ## Shared reference
 
-`skills/shared/authority-boundaries.md` is loaded by the four role skills via the relative path `../shared/authority-boundaries.md`. If a role skill's `references/` file needs to load it, the path is `../../shared/authority-boundaries.md`. Keep these paths intact when editing.
+`skills/shared/authority-boundaries.md` is loaded by the four role skills via the relative path `../shared/authority-boundaries.md`. If a role skill's `references/` file needs to load it, the path is `../../shared/authority-boundaries.md`. **This rule is now enforced** — `scripts/skills-lint.sh` check 1 resolves every backticked path from the file that cites it. It had been stated here for months and three files violated it anyway, with nine broken load paths sitting on `main` until the check found them.
 
-`skills/shared/triage-gates.md` holds the five gates every tension passes through, loaded by the `tension-capture` subagent, `/holacracy:capture-tension`, `/holacracy:tension-triage`, `/holacracy:supersession-sweep`, the `holacratic-ai-governance` skill, and the Rep Link's `references/tension-triage-guide.md` (which extends it and keeps its own filename). **Callers cite gates by number, so renumbering the file means editing every caller** — it was renamed from `tension-triage.md` and gained a new Step 1 in one pass ([ADR-0011](docs/adr/0011-separate-tension-readiness-from-tension-disposition.md)), which shifted all four original steps. Grep `triage-gates.md` and check the `Step N` next to each hit before changing the file's structure.
+`skills/shared/triage-gates.md` holds the five gates every tension passes through, loaded by the `tension-capture` subagent, `/holacracy:capture-tension`, `/holacracy:tension-triage`, `/holacracy:supersession-sweep`, the `holacratic-ai-governance` skill, and the Rep Link's `references/tension-triage-guide.md` (which extends it and keeps its own filename). Callers cite gates by number, so renumbering the file means editing every caller — it was renamed from `tension-triage.md` and gained a new Step 1 in one pass ([ADR-0011](docs/adr/0011-separate-tension-readiness-from-tension-disposition.md)), which shifted all four original steps. **You no longer have to remember this**: `skills-lint.sh` check 2 asserts every `` `X.md` Step N `` citation names a heading that exists in `X.md`.
 
 The plugin separates **tension readiness** (`/holacracy:tension-triage` — is this well-formed, non-duplicate, still real?) from **tension disposition** (`/holacracy:process-tension` — what output does it become?). Do not let a readiness surface start producing outputs; that conflation is what ADR-0011 exists to undo. `/holacracy:process-tension` and the authority-class write commands are not built yet — see [#120](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/120) and its child issues.
 
@@ -47,6 +47,40 @@ Wired in via `.mcp.json` at the repo root. Server is `https://ipllc-glassfrog-mc
 ## Editing skills
 
 The skills here are the canonical source of truth. The original five were extracted from the [Integral-Productivity/skills](https://github.com/Integral-Productivity/skills) monorepo; newer skills such as `checklist-metric-audit` originate here. Updates land here first.
+
+## Testing the skills
+
+**The markdown is the product. Test it like code.** Run before you push:
+
+```bash
+bash scripts/skills-lint.sh              # static integrity, ~1s, offline
+bash scripts/skills-lint.test.sh         # the lint's own mutation-checked suite
+```
+
+`skills-lint.sh` runs six checks over every shipped markdown file: path
+resolution, `Step N` citation integrity, frontmatter contract, skill-version
+bumped when content changed, referenced-command existence, and orphaned shared
+references. CI runs both on every PR via `scripts-test.yml`, plus
+`--base origin/<base>` so the version-bump check has something to diff against.
+
+Two escape hatches, both under `evals/` and both requiring a written reason:
+
+- `lint-allow-paths.txt` — a path that intentionally does not resolve from the
+  file citing it, keyed on the **pair** so allowlisting CLAUDE.md's description
+  of a convention does not also excuse a real bug elsewhere.
+- `forward-references.txt` — a slash command named in prose before it exists.
+  **Every entry needs an open issue.** When the issue closes, the lint goes red,
+  so a forward reference cannot quietly become a stale one.
+
+Behavioural evaluation — does the skill actually *do* what it says — is a
+separate tier that costs API calls and runs nightly, not per-PR. See
+[`evals/README.md`](evals/README.md) and
+[ADR-0012](docs/adr/0012-test-the-skills-not-just-the-scaffolding.md).
+
+**Do not add a check without adding its mutation case.** `skills-lint.test.sh`
+asserts, for every check, both that a seeded defect fails the lint *and* that it
+passes with that check skipped. The second half is what proves the check is
+load-bearing rather than incidentally covered by another.
 
 ## Versioning
 

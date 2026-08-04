@@ -76,6 +76,30 @@ Do not use the `release-as` key in `release-please-config.json` — it is sticky
 
 Convention of record: [`docs/adr/0010-release-please-is-the-sole-writer-of-the-plugin-version.md`](docs/adr/0010-release-please-is-the-sole-writer-of-the-plugin-version.md), which amends ADR-0002's manual release steps and leaves its tag-driven `stable` promotion intact.
 
+## Measuring whether the grounding directive fired
+
+**Do not grep transcripts for the directive text.** It is the obvious move and it is wrong:
+
+```bash
+# WRONG — do not use this
+grep -l "Holacracy plugin: role-grounding" ~/.claude/projects/*/*.jsonl
+```
+
+On 2026-08-03 that returned **10 files** against a true **3**. Whole-file grep cannot tell *the hook injected this* from *the session read or quoted it* — and the sessions most likely to read the hook source are this repo's own. It is the same mistake that produced the false 2.2% in [#122](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/122) and the 23 false positives in [#123](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/123).
+
+Use the instrument, which counts only hook-output records and derives its marker from the live hook:
+
+```bash
+scripts/grounding-readout.sh --since-start 2026-08-03T19:52
+```
+
+Two things to get right when reading it:
+
+- **`--since-start`, not `--since`.** `--since` filters on file mtime, which misfiles any session that began before the cutoff and was appended to afterwards — five of them in the 2026-08-03 window. `--since-start` buckets by the session's first record.
+- **The in-repo line is corroboration, not the result.** This repo's own sessions are held out of every headline figure and reported separately, because they work on the directive itself. Judge the experiment on the cross-repo figures.
+
+The instrument is a proxy and says so: an assistant verbatim-quoting a documentation example still scores. [#71](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/71) tracks the structured session log that would replace it.
+
 ## Agent skills
 
 ### Issue tracker

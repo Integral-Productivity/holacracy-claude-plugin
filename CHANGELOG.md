@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.11.0...v0.11.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **ci:** diff version-authority no-hand-edits against the merge base ([#136](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/136)) ([85c3fb2](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/85c3fb2118a402986d23b8fb469dc77363ab9d08))
+
 ## [0.11.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.10.3...v0.11.0) (2026-08-04)
 
 

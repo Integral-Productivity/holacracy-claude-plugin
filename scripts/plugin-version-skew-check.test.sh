@@ -36,6 +36,11 @@ EOF
 
 APP='Library/Application Support/Claude/local-agent-mode-sessions'
 
+# The console table only. The alarm body repeats the same rows twice more (once
+# as a markdown table of skewed channels, once fenced), so counting rows over
+# the whole output triples them.
+console_table() { printf '%s\n' "$1" | sed -n '1,/^::error/p'; }
+
 # ---------------------------------------------------------------------------
 # 1. The #122 reproduction: desktop app pinned at 0.6.0, install record 0.10.2,
 #    stable 0.10.3. Every config file read plausible; the loaded code was two
@@ -180,5 +185,134 @@ out="$(bash "$SCRIPT" --nonsense 2>&1)"; rc=$?
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R3" --stable-version 0.12.0 \
         --loaded-json "$TMP/no-such-file.json" 2>&1)"; rc=$?
 [ "$rc" -eq 2 ] || fail "a missing --loaded-json file should exit 2, got $rc: $out"
+
+# ---------------------------------------------------------------------------
+# Sections 11+ pin the repairs from the FIRST LIVE RUN of this check, which
+# reported 5 skewed channels: 1 real, 4 artifacts of the probe, and silence
+# about the 2 channels that caused #122. Each section below is one of those.
+# ---------------------------------------------------------------------------
+
+# 11. THE OBSERVED FALSE POSITIVE. The cache retains every version ever
+#     installed, one directory each. A row per directory reports history as
+#     skew -- the live run called 0.6.0, 0.10.2 and 0.10.3 "BEHIND" when they
+#     were archived copies nothing loads. One marketplace is ONE channel, at
+#     its newest version.
+R11="$TMP/cachehistory"
+for v in 0.6.0 0.10.2 0.10.3 0.12.0; do
+  mkcopy "$R11/.claude/plugins/cache/mkt/holacracy/$v" "$v"
+done
+out="$(bash "$SCRIPT" --dry-run --fixture-root "$R11" --stable-version 0.12.0 \
+        --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "a cache holding archived versions must not alarm, got $rc: $out"
+[ "$(console_table "$out" | grep -c 'plugin cache')" -eq 1 ] \
+  || fail "one marketplace must yield exactly one cache row; got: $out"
+echo "$out" | grep -q 'also cached: 0.10.3, 0.10.2, 0.6.0' \
+  || fail "archived versions belong in the detail, not as rows; got: $out"
+
+# 12. Two marketplaces are two channels, judged independently. The live run had
+#     one current and one a release behind; both facts must survive.
+R12="$TMP/twomarkets"
+for v in 0.10.2 0.10.3; do mkcopy "$R12/.claude/plugins/cache/internal/holacracy/$v" "$v"; done
+for v in 0.10.3 0.12.0; do mkcopy "$R12/.claude/plugins/cache/labs/holacracy/$v" "$v"; done
+out="$(bash "$SCRIPT" --dry-run --fixture-root "$R12" --stable-version 0.12.0 \
+        --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "a marketplace behind stable must still alarm, got $rc: $out"
+[ "$(console_table "$out" | grep -c 'plugin cache')" -eq 2 ] \
+  || fail "two marketplaces must yield exactly two cache rows; got: $out"
+console_table "$out" | grep -Eq 'plugin cache +0.10.3 +BEHIND +internal' \
+  || fail "the stale marketplace must read BEHIND at its newest version; got: $out"
+console_table "$out" | grep -Eq 'plugin cache +0.12.0 +ok +labs' \
+  || fail "the current marketplace must read ok; got: $out"
+
+# 13. EVERY CHANNEL EMITS A ROW. The live run printed no `desktop app copy` and
+#     no `recorded install` line at all -- the two channels #122 lived in --
+#     and nothing said they were missing. A channel with nothing to report must
+#     still report that it has nothing (ADR-0008 A1's quiet-marker principle).
+for chan in 'desktop app copy' 'recorded install' 'plugin cache' 'loaded'; do
+  console_table "$out" | grep -q "$chan" || fail "channel '$chan' must always emit a row; got: $out"
+done
+
+# 14. A channel that is provably not in use reads `n/a` and does NOT alarm.
+#     R12 has no app-sessions tree and no installed_plugins.json, yet section
+#     12 above alarms only for the stale marketplace -- if `n/a` alarmed, an
+#     operator who does not use the desktop app would see a permanent false
+#     positive and learn to ignore this check.
+console_table "$out" | grep -Eq 'desktop app copy +— +n/a' \
+  || fail "an absent surface must read n/a; got: $out"
+echo "$out" | grep -q 'surface not present' || fail "expected an explicit absence reason; got: $out"
+skewlines="$(echo "$out" | grep -c '| \*\*BEHIND\*\* |')"
+[ "$skewlines" -eq 1 ] || fail "only the stale marketplace should be reported as skew; got: $out"
+
+# 15. But absence that we CANNOT DISTINGUISH from unreadability alarms. Copies
+#     live at `rpm/plugin_<opaque-ID>/`, so the plugin name is nowhere in the
+#     path: if other plugins are materialized there and none is identifiable as
+#     ours, we cannot say what that surface runs. That is the #122 condition
+#     and it must not be silent.
+R15="$TMP/opaque"
+mkcopy "$R15/$APP/abc123/rpm/plugin_other" 0.1.0 reclaim-assistant
+mkcopy "$R15/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+out="$(bash "$SCRIPT" --dry-run --fixture-root "$R15" --stable-version 0.12.0 \
+        --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "an unidentifiable app surface must alarm, got $rc: $out"
+echo "$out" | grep -q 'NONE identifiable as holacracy' \
+  || fail "expected an explicit cannot-tell message; got: $out"
+
+# 15b. A surface that exists but has materialized nothing is not in use, so it
+#      is n/a rather than an alarm.
+R15b="$TMP/emptysurface"
+mkdir -p "$R15b/$APP/abc123/rpm"
+mkcopy "$R15b/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+out="$(bash "$SCRIPT" --dry-run --fixture-root "$R15b" --stable-version 0.12.0 \
+        --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "a surface with nothing materialized must not alarm, got $rc: $out"
+echo "$out" | grep -q 'no plugins materialized' || fail "expected the empty-surface reason; got: $out"
+
+# 16. Identification does not depend on one assumed layout. The old probe
+#     demanded a manifest naming us, with a version.txt fallback gated on the
+#     PATH containing "holacracy" -- which `rpm/plugin_<ID>/` never does,
+#     making that fallback dead for the only surface it was written for. A copy
+#     with no manifest but our structural fingerprint is still ours.
+R16="$TMP/nomanifest"
+D16="$R16/$APP/abc123/rpm/plugin_opaque"
+mkdir -p "$D16/hooks-handlers" "$D16/skills/holacracy-facilitator"
+touch "$D16/hooks-handlers/session-start.sh"
+echo "0.6.0" > "$D16/version.txt"
+mkcopy "$R16/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+out="$(bash "$SCRIPT" --dry-run --fixture-root "$R16" --stable-version 0.12.0 \
+        --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "a manifest-less stale copy must be found and alarm, got $rc: $out"
+console_table "$out" | grep -Eq 'desktop app copy +0.6.0 +BEHIND' \
+  || fail "the structural fingerprint must identify the copy; got: $out"
+
+# 17. installed_plugins.json: absent and present-without-us are both provable
+#     absences (the plugin name would be in the key), so they read n/a.
+#     Unparseable is different -- the file is there and we cannot read it,
+#     which is unreadability, and alarms.
+R17="$TMP/installrecord"
+mkcopy "$R17/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+mkdir -p "$R17/.claude/plugins"
+echo '{"some-other-plugin@mkt": {"version": "1.0.0"}}' > "$R17/.claude/plugins/installed_plugins.json"
+out="$(bash "$SCRIPT" --dry-run --fixture-root "$R17" --stable-version 0.12.0 \
+        --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "an install record without us must not alarm, got $rc: $out"
+echo "$out" | grep -q 'has no holacracy entry' || fail "expected the no-entry reason; got: $out"
+
+echo 'not json at all' > "$R17/.claude/plugins/installed_plugins.json"
+out="$(bash "$SCRIPT" --dry-run --fixture-root "$R17" --stable-version 0.12.0 \
+        --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "an unparseable install record must alarm, got $rc: $out"
+echo "$out" | grep -q 'present but unparseable' || fail "expected the unparseable reason; got: $out"
+
+# 18. Every channel absent -> nothing was COMPARED, so exit 2. The old guard
+#     counted rows, which stops meaning anything once absent channels report
+#     themselves: four honest n/a rows would have looked like four successful
+#     comparisons and reported clear.
+R18="$TMP/allabsent"; mkdir -p "$R18"
+out="$(bash "$SCRIPT" --dry-run --fixture-root "$R18" --stable-version 0.12.0 2>&1)"; rc=$?
+[ "$rc" -eq 2 ] || fail "no comparable channel must exit 2, got $rc: $out"
+echo "$out" | grep -q 'NOT a pass' || fail "expected an explicit not-a-pass message; got: $out"
+# ...and the rows must still be printed, so the reader can see WHY nothing was
+# comparable rather than getting a bare error.
+echo "$out" | grep -q 'desktop app copy' || fail "absent channels must still be listed; got: $out"
 
 echo "PASS: all plugin-version-skew-check tests"

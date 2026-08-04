@@ -119,6 +119,8 @@ Both run **operator-local**, alongside the weekly `grounding-pdca1-readout` task
 
 Exit codes are the same for both: `0` clear, `1` alarm (a tracking issue is filed and updated, and auto-closed when it recovers), `2` usage or operational error. Add `--dry-run` to see the report without writing to GitHub.
 
+The skew check adds `n/a` for a channel that is provably not in use — no plugin cache, no install record, no desktop-app surface. That is a fact, not a fault, and it does not alarm. `UNKNOWN` is different: it means a channel that *is* in use could not be read, which is the #122 condition.
+
 **`2` includes "nothing to measure."** An empty window, an unreadable readout, or a probe root with no plugin channels all exit 2 rather than reporting clear. Reporting health from absent evidence is precisely the failure #122 documents, and neither alarm is permitted to commit it.
 
 ## Agent skills

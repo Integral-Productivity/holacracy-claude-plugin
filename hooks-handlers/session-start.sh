@@ -10,8 +10,11 @@
 #   2. A routine briefing: scheduled-task routines tagged with the `holacracy/`
 #      prefix that fire today or have anomalies (e.g., last fire failed).
 #
-# Silent when there's nothing to report. Fail-silent on error so a broken hook
-# never blocks the user's session.
+# NEVER writes nothing: when there is nothing to surface it emits a one-line
+# quiet marker carrying the plugin version, so a transcript can always tell
+# "ran with nothing to say" from "never ran" (issue #122 -- a stale copy that
+# emitted nothing left no trace and went undetected for two weeks). Still
+# fail-silent on *error*, so a broken hook never blocks the user's session.
 #
 # Routine discovery relies on the user's scheduled tasks being tagged with
 # titles that start with `holacracy/<role>/<routine>/<scope>` -- a convention
@@ -24,6 +27,25 @@
 # demonstrated by learning-output-style).
 
 set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Which version is actually running (issue #122).
+#
+# The outage #122 documents was a v0.6.0 copy being loaded while 0.10.2 was
+# recorded as installed. It stayed invisible for two weeks precisely because
+# nothing the hook emitted said which version produced it -- diagnosing it took
+# archaeology across three install channels. Stamping the version into every
+# payload turns that into a grep over transcripts.
+#
+# "unknown" when version.txt cannot be read, never blank: a missing version must
+# read as missing, not as an empty string that looks like an absent field.
+_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _hook_dir=""
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${_hook_dir%/hooks-handlers}}"
+PLUGIN_VERSION="unknown"
+if [[ -r "$PLUGIN_ROOT/version.txt" ]]; then
+  PLUGIN_VERSION="$(tr -d '[:space:]' < "$PLUGIN_ROOT/version.txt")"
+  [[ -n "$PLUGIN_VERSION" ]] || PLUGIN_VERSION="unknown"
+fi
 
 # ---------------------------------------------------------------------------
 # Part 1 -- Role-grounding directive (issue #62, Track A PDCA-1).
@@ -49,7 +71,18 @@ set -uo pipefail
 #       connector is wired" -- it does not, and cannot, assert a live session.
 #   HOLACRACY_GROUNDING_REQUIRE_PATH       <regex> (default unset) only inject
 #       when $PWD matches this extended-regex (e.g. a governed-work worktree).
-# When both gates are set they AND together (both must pass to inject).
+#   HOLACRACY_GROUNDING_EXCLUDE            <regex> (default unset) do NOT inject
+#       when $PWD matches this extended-regex.
+# When several gates are set they AND together, and EXCLUDE always wins.
+#
+# Why the scoping knob is an exclusion and not a positive gate (issue #122):
+# every opt-in form shares one property -- a misconfiguration makes the
+# directive silently absent, which is byte-for-byte the two-week outage this
+# hook is recovering from. An opt-out inverts the failure mode: forgetting to
+# configure it means the directive shows up somewhere unwanted, which is
+# visible, mildly annoying, and one edit to fix. Given that this whole effort
+# exists because a silent zero went undetected, the default belongs to the
+# option whose failure announces itself.
 
 # Portable lowercase (avoids ${var,,} for older bash).
 _lc() { printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'; }
@@ -62,13 +95,31 @@ _truthy() {
   esac
 }
 
-# Honest proxy for "GlassFrog connector declared": a readable .mcp.json naming
-# glassfrog in the plugin root or the session cwd.
+# Honest proxy for "a GlassFrog connector is declared in the WORKING TREE": a
+# readable .mcp.json naming glassfrog at $PWD, at $PWD/.claude, or anywhere up
+# to and including the enclosing git root.
+#
+# This deliberately does NOT consult $CLAUDE_PLUGIN_ROOT. The plugin ships its
+# own .mcp.json naming glassfrog, so probing there made the gate return true in
+# every directory on the machine -- dead configuration that read as a working
+# check (issue #122). The old form appeared to behave in the test suite only
+# because CLAUDE_PLUGIN_ROOT is unset there; in production it is always set, so
+# the gate was true everywhere it mattered. See G9.
+#
+# The walk to the git root fixes a second defect: the old check tested the exact
+# $PWD only, so a session started in a subdirectory of a connector-declaring
+# repo did not match.
 _glassfrog_declared() {
-  local f
-  for f in "${CLAUDE_PLUGIN_ROOT:-}/.mcp.json" "${PWD:-}/.mcp.json" "${PWD:-}/.claude/.mcp.json"; do
-    [[ "$f" != "/.mcp.json" && "$f" != "/.claude/.mcp.json" && -r "$f" ]] \
-      && grep -qi 'glassfrog' "$f" 2>/dev/null && return 0
+  local dir="${PWD:-}" f
+  [[ -n "$dir" ]] || return 1
+  while [[ -n "$dir" ]]; do
+    for f in "$dir/.mcp.json" "$dir/.claude/.mcp.json"; do
+      [[ -r "$f" ]] && grep -qi 'glassfrog' "$f" 2>/dev/null && return 0
+    done
+    # Stop at the repo root (.git is a dir in a normal clone, a file in a
+    # worktree) and at the filesystem root.
+    [[ -e "$dir/.git" || "$dir" == "/" ]] && break
+    dir="$(dirname "$dir")"
   done
   return 1
 }
@@ -82,6 +133,10 @@ if _truthy "${HOLACRACY_GROUNDING_DIRECTIVE:-on}"; then
   if [[ -n "${HOLACRACY_GROUNDING_REQUIRE_PATH:-}" ]]; then
     printf '%s' "${PWD:-}" | grep -Eq -- "${HOLACRACY_GROUNDING_REQUIRE_PATH}" 2>/dev/null || inject=0
   fi
+  # Exclusion is evaluated last and wins over every positive gate.
+  if [[ -n "${HOLACRACY_GROUNDING_EXCLUDE:-}" ]]; then
+    printf '%s' "${PWD:-}" | grep -Eq -- "${HOLACRACY_GROUNDING_EXCLUDE}" 2>/dev/null && inject=0
+  fi
   if [[ "$inject" -eq 1 ]]; then
     grounding=$(cat <<'DIRECTIVE'
 **Holacracy plugin: role-grounding directive**
@@ -91,6 +146,13 @@ Before your first substantive action this session, resolve and announce the acti
 This grounding has NOT yet been performed -- this directive only requests it and does not assert it happened (the hook has no GlassFrog access at fire time). If work crosses into another role's remit, name the boundary and mark a chapter. If GlassFrog isn't connected, name that limitation and ask which role/circle to treat as primary rather than assuming one.
 DIRECTIVE
 )
+    # Stamp the running version. Appended AFTER the heredoc and never inside it:
+    # scripts/grounding-readout.sh derives its detection marker from the first
+    # non-empty line of this `DIRECTIVE` heredoc at run time, and its header
+    # warns that windows are only comparable within one directive revision. A
+    # version string inside the block would change every release and silently
+    # break that comparison.
+    grounding="${grounding}"$'\n\n'"_Directive emitted by holacracy-claude-plugin v${PLUGIN_VERSION}._"
   fi
 fi
 
@@ -247,7 +309,18 @@ elif [[ -n "$grounding" ]]; then
 elif [[ -n "$briefing" ]]; then
   additional_context="$briefing"
 else
-  exit 0
+  # NEVER exit silent (issue #122).
+  #
+  # A hook that writes nothing to stdout leaves no record in the transcript at
+  # all, so "ran and had nothing to surface" is indistinguishable from "never
+  # ran" -- which is exactly how a stale copy emitting nothing went undetected
+  # for two weeks. This marker is the smallest thing that makes the difference
+  # observable, and it carries the version for the same reason.
+  #
+  # It deliberately does NOT contain the directive's marker line, so
+  # scripts/grounding-readout.sh will not miscount a quiet session as a
+  # directive firing.
+  additional_context="_holacracy-claude-plugin v${PLUGIN_VERSION}: session-start hook ran; nothing to surface._"
 fi
 
 # Emit the SessionStart envelope.

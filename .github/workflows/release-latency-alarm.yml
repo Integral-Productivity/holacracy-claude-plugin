@@ -1,0 +1,127 @@
+name: Release latency alarm
+
+# Alarms when a release PR has been sitting open past a threshold.
+#
+# WHY THIS EXISTS
+# ---------------
+# `version-authority.yml` (#100) guards that the version files are CORRECT. It
+# says nothing about how long a release PR sits open, and that is the gap that
+# lets "shipped" mean two different things:
+#
+#   - to the author, MERGED TO MAIN;
+#   - to every consumer, RELEASED, PROMOTED TO `stable`, AND LOADED.
+#
+# Those meanings drifted 34 days once. v0.6.0 was tagged 2026-06-23; PR #70
+# merged the SessionStart role-grounding directive on 2026-07-20; the next tag
+# was v0.10.0 on 2026-07-27. Because the marketplace installs from `stable`, and
+# `stable` only advances when promote-stable.yml fires on a tag, that directive
+# was unshippable for the whole week between merge and release. Every session in
+# that window ran pre-directive code. Nothing reported it. That is Layer 1 of
+# #122, and this workflow is its alarm (#129).
+#
+# WHAT FIRES
+# ----------
+# Three layers, all from scripts/release-pr-age-check.sh, in this order:
+#
+#   1. a sticky comment on the release PR itself — where the merge happens;
+#   2. a tracking issue labelled `main-health` — survives outside the PR view,
+#      and auto-closes on the next run once the release lands;
+#   3. a failed run, red in the Actions tab.
+#
+# Layers 1 and 2 are idempotent: they are found by an HTML-comment marker and
+# UPDATED in place, so a release PR left open for a week produces one comment
+# and one issue, not seven of each. The daily cadence plus in-place updates is
+# what keeps a persistent alarm from becoming noise people learn to ignore.
+#
+# THRESHOLD
+# ---------
+# `RELEASE_PR_MAX_AGE_DAYS` below is the single tuning knob — deliberately a
+# top-level `env:` rather than a number buried in the script, so changing it is
+# a one-line diff on this file. The script's own default (3) applies only when
+# it is run by hand with no override.
+#
+# WHY NOT A REQUIRED CHECK ON THE PR
+# ----------------------------------
+# A required status check cannot express "this became true while nothing
+# happened" — checks run on events, and a PR sitting untouched generates none.
+# Time passing is precisely the event here, so it has to be a schedule.
+#
+# OPERATIONAL NOTES
+# -----------------
+# - `schedule:` only ever runs on the DEFAULT branch, and `workflow_dispatch`
+#   requires the workflow file to be present on the default branch. So neither
+#   trigger can be exercised from the PR that adds this file. Verification
+#   before merge was done by running the script directly against live repo
+#   state with a synthetic clock (`--now`); see the PR body for the transcript.
+#   Dispatch it once after merge to confirm the CI path end to end.
+# - GitHub disables scheduled workflows in repos with no activity for 60 days.
+#   If this ever goes quiet, check whether it was auto-disabled before trusting
+#   its silence — a disabled alarm and a clear alarm look identical.
+
+on:
+  schedule:
+    # 15:17 UTC daily = 08:17 America/Los_Angeles (PDT) / 07:17 (PST).
+    # Deliberately off the hour: GitHub delays cron runs queued on the hour,
+    # and a release-latency alarm that is itself latent is a poor joke.
+    - cron: '17 15 * * *'
+  workflow_dispatch:
+    inputs:
+      max-age-days:
+        description: 'Override the age threshold in days for this run only.'
+        required: false
+        type: string
+      dry-run:
+        description: 'Compute and print the report, but write nothing to GitHub.'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read        # checkout
+  issues: write         # open / update / close the tracking issue
+  pull-requests: write  # the sticky comment on the release PR
+
+env:
+  # THE KNOB. Three days, not seven: the observed failure was 34 days, but PR
+  # #70 was unshippable for 7 days and that alone invalidated an experiment's
+  # Check phase. Three days lets a Friday merge survive the weekend and alarm on
+  # Monday — the shortest window that does not manufacture noise.
+  RELEASE_PR_MAX_AGE_DAYS: 3
+
+jobs:
+  release-latency:
+    name: Release PR age
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check release PR age
+        shell: bash # gives -eo pipefail, so `tee` below cannot mask a failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `inputs.*` are attacker-influenceable strings on a public repo, so
+          # they are routed through `env:` and referenced as "$VAR" rather than
+          # inline-expanded into the script body — the devops-excellence ADR-045
+          # convention that version-authority.yml also follows. The script
+          # additionally validates that the threshold is an integer.
+          INPUT_MAX_AGE: ${{ inputs.max-age-days }}
+          INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          args=(--repo "$GITHUB_REPOSITORY")
+
+          if [ -n "${INPUT_MAX_AGE:-}" ]; then
+            echo "::notice::Threshold overridden for this run: ${INPUT_MAX_AGE}d (workflow default is ${RELEASE_PR_MAX_AGE_DAYS}d)."
+            args+=(--max-age-days "$INPUT_MAX_AGE")
+          else
+            args+=(--max-age-days "$RELEASE_PR_MAX_AGE_DAYS")
+          fi
+
+          if [ "${INPUT_DRY_RUN:-false}" = "true" ]; then
+            echo "::notice::Dry run — the report is computed and printed, but nothing is written to GitHub."
+            args+=(--dry-run)
+          fi
+
+          # tee to the job summary so the report renders as markdown on the run
+          # page, not only as console text. pipefail (from `shell: bash`) keeps
+          # the script's exit 1 as the step's exit status.
+          bash scripts/release-pr-age-check.sh "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

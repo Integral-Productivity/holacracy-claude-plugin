@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.10.2...v0.10.3) (2026-08-04)
+
+
+### Bug Fixes
+
+* **scripts:** make grounding-readout measure behavior, not its own treatment ([#124](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/124)) ([f40b036](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/f40b0363d45b916654c0ede470e6c674247aea77))
+
 ## [0.10.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.10.1...v0.10.2) (2026-07-27)
 
 

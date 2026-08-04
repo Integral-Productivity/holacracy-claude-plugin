@@ -293,6 +293,23 @@ ANNOUNCE_RE = re.compile(r"operating as \*\*([^*\n]+?) of ([^*\n]+?)\*\*", re.I)
 REMIT_RE = re.compile(r"remit|crosses into|role boundary", re.I)
 CHAPTER_RE = re.compile(r"mark_chapter")
 
+# The version the hook stamps into every payload it emits -- both the directive
+# ("_Directive emitted by holacracy-claude-plugin vX.Y.Z._") and the quiet
+# marker. Counted ONLY from hook records, for the same reason every other
+# signal here is provenance-scoped: a session that reads the hook source or
+# quotes a release note must not be reported as having run that version.
+#
+# This is the first consumer of that stamp. It exists because #122's root cause
+# -- a v0.6.0 copy loading while 0.10.2 was recorded as installed -- was
+# invisible in the data and took archaeology across three install channels to
+# find. With this line, a stale deployment is a glance at the readout.
+#
+# Anchored to a semver core so the trailing "._" of the markdown italics stops
+# the match cleanly; "unknown" is what the hook emits when version.txt is
+# unreadable, and must be reported rather than dropped.
+VERSION_RE = re.compile(
+    r"holacracy-claude-plugin v(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?|unknown)")
+
 # Template metavariables that must never score. These are what the 2026-07-20
 # window's only assistant-emitted bold announcements actually were.
 PLACEHOLDERS = {
@@ -386,10 +403,11 @@ def emitted_by_assistant(rec):
 
 def scan(path):
     fired = announce = remit = chapter = False
+    version = None
     try:
         fh = open(path, encoding="utf-8", errors="replace")
     except OSError:
-        return fired, announce, remit, chapter
+        return fired, announce, remit, chapter, version
     with fh:
         for line in fh:
             if not line.strip():
@@ -403,8 +421,18 @@ def scan(path):
 
             # Scoped to hook-output records: reading the hook source is not
             # the same as receiving its output. See is_hook_record().
-            if not fired and is_hook_record(rec) and has_marker(line):
-                fired = True
+            if is_hook_record(rec):
+                if not fired and has_marker(line):
+                    fired = True
+                # Checked on EVERY hook record, not only the one carrying the
+                # directive: a session the hook stayed quiet in still emits the
+                # quiet marker, and that marker's version is exactly the
+                # evidence that distinguishes "ran and had nothing to say" from
+                # "never ran". Dropping it would reintroduce the blind spot.
+                if version is None:
+                    m = VERSION_RE.search(line)
+                    if m:
+                        version = m.group(1)
 
             texts, tools = emitted_by_assistant(rec)
 
@@ -423,9 +451,9 @@ def scan(path):
                             break
                 if not remit and REMIT_RE.search(text):
                     remit = True
-            if fired and announce and remit and chapter:
+            if fired and announce and remit and chapter and version is not None:
                 break
-    return fired, announce, remit, chapter
+    return fired, announce, remit, chapter, version
 
 
 # --- Run -------------------------------------------------------------------
@@ -496,9 +524,10 @@ def tally(paths):
     that produces rates above 100%.
     """
     t = dict(total=len(paths), fired=0, announce=0, remit=0, chapter=0,
-             f_announce=0, f_remit=0, f_chapter=0)
+             f_announce=0, f_remit=0, f_chapter=0,
+             versions={}, no_version=0)
     for p in paths:
-        fired, announce, remit, chapter = scan(p)
+        fired, announce, remit, chapter, version = scan(p)
         t["fired"] += fired
         t["announce"] += announce
         t["remit"] += remit
@@ -507,7 +536,24 @@ def tally(paths):
             t["f_announce"] += announce
             t["f_remit"] += remit
             t["f_chapter"] += chapter
+        if version is None:
+            # Counted, never omitted. A session whose loaded version cannot be
+            # determined is the #122 condition itself -- v0.6.0 predated the
+            # stamp and so emitted nothing at all. Silence here must read as
+            # "unknown", not as "fine".
+            t["no_version"] += 1
+        else:
+            t["versions"][version] = t["versions"].get(version, 0) + 1
     return t
+
+
+def versions_line(t):
+    """One-line human summary of which plugin versions actually ran."""
+    parts = ["%s (%d)" % (v, n)
+             for v, n in sorted(t["versions"].items(), reverse=True)]
+    if t["no_version"]:
+        parts.append("no version stamp (%d)" % t["no_version"])
+    return ", ".join(parts) if parts else "none"
 
 
 paths = read_list(list_path)
@@ -547,6 +593,12 @@ if want_json:
         "directive_marker_source": hook_path,
         "excluded": {"subagent_files": sub_excl, "self_sessions": self_excl},
         "directive_fired": {"count": n_fired, "rate": rate(n_fired, total)},
+        # Which plugin version actually ran, per session, read from the stamp
+        # the hook writes into every payload. `sessions_without_plugin_version`
+        # is the count that matters most: a copy old enough to predate the
+        # stamp emits nothing, which is precisely the #122 failure.
+        "plugin_versions_seen": main["versions"],
+        "sessions_without_plugin_version": main["no_version"],
         "resolve_announce": {
             "count": n_announce,
             "rate_of_sessions": rate(n_announce, total),
@@ -574,6 +626,8 @@ if want_json:
             "remit_crossing": selfies["remit"],
             "chapter_mark": selfies["chapter"],
             "resolve_announce_when_directive_fired": selfies["f_announce"],
+            "plugin_versions_seen": selfies["versions"],
+            "sessions_without_plugin_version": selfies["no_version"],
         },
     }, indent=2))
     sys.exit(0)
@@ -589,6 +643,9 @@ out.append("  scanned: %d session transcript(s)  "
            % (total, sub_excl, self_excl))
 out.append("  directive fired in: %d session(s)  (%s)"
            % (n_fired, pct(n_fired, total)))
+# Which version actually ran. Skew between this and the released version is the
+# #122 root cause; naming it here turns that diagnosis into a glance.
+out.append("  plugin versions seen: %s" % versions_line(main))
 out.append("  %s" % baseline)
 out.append("")
 out.append("  %-22s %6s   %-13s %s"
@@ -612,6 +669,7 @@ if selfies["total"]:
                % (selfies["announce"], selfies["f_announce"], selfies["fired"]))
     out.append("    remit-crossing %d   chapter-mark %d"
                % (selfies["remit"], selfies["chapter"]))
+    out.append("    plugin versions seen: %s" % versions_line(selfies))
     out.append("    Read as corroboration, not as the experiment's result:"
                " these sessions work on the directive itself.")
 print("\n".join(out))

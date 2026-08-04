@@ -76,3 +76,33 @@ The fifth Consequence — "a transcript merely quoting 'operating as' counts" �
 A caveat the original Decision did not record, and which now constrains how this experiment may be read: **the readout derives its directive marker from the *current* hook source at run time.** That is deliberate — a hard-coded copy would report a confident zero after any reword, the same fail-silent shape the instrument exists to detect (the [ADR-0007](0007-route-artifacts-by-live-glassfrog-domains-not-a-hardcoded-table.md) principle: derive from live source, never a static table). The consequence is that re-running the readout over a window recorded *before* a reword under-counts `directive-fired`. **Windows are comparable only within one directive revision.** Any future change to the directive's leading line closes the current measurement window and opens a new one; treat cross-revision comparisons as invalid rather than as a change in behavior.
 
 Folded into this amendment rather than raised as a competing edit, per #127's own sequencing note.
+
+### A4 — 2026-08-04: the alarms that read the fail-loud data, and the window this experiment restarts from (issues [#122](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/122), [#150](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/150))
+
+A1 made the failure *observable*: every payload now carries the running version, and a quiet session emits a marker instead of nothing. Observable is not the same as observed. For a day the data sat in every transcript with no consumer — which is the same position the outage occupied for two weeks, one step earlier in the chain. Two operator-local alarms close it:
+
+- **`scripts/grounding-fire-rate-check.sh`** — counts hook-output records over a rolling window and fails when the directive's fire rate falls below a floor (default 0.9, n ≥ 10). It shells `grounding-readout.sh` rather than scanning transcripts itself, because whole-file grep cannot distinguish *the hook injected this* from *the session read it* — the error that produced the false 2.2% in #122 and the 23 false positives in #123.
+- **`scripts/plugin-version-skew-check.sh`** — compares the version actually **loaded** (from the transcript stamp) against the desktop-app copy, the plugin cache, the recorded install, and `stable`. This is the check that would have caught #122 on day one.
+
+Three properties are load-bearing, and each is the inverse of something that went wrong:
+
+1. **`stable` is the authority, not `main` and not the newest tag.** The marketplace installs from `stable`, and a tag can exist while promotion has failed (#108).
+2. **An undeterminable answer is an alarm, never a pass.** A copy predating the version stamp emits no stamp at all — exactly how v0.6.0 presented — so "cannot determine the loaded version", "zero sessions in the window", and "no channels found" all fail loudly rather than reporting clear. Reporting health from absent evidence is the failure this ADR keeps rediscovering.
+3. **Both alarms are demonstrated firing, not merely asserted.** Their suites reproduce the #122 condition (v0.6.0 loaded, 0.10.2 recorded, `stable` ahead of both) and drive the alarm path on every PR through fixture affordances. An alarm nobody has ever seen fire is the same fail-silent shape as no alarm.
+
+They run **operator-local**, on the schedule that runs the weekly readout; CI runs their test suites. Transcripts and install channels live on the operator's machine, and no runner can see them.
+
+**The standing lesson, stated because it caused layer 1 of the outage and then recurred while this amendment was being written:** *shipped* means **released, promoted to `stable`, and loaded** — not merged. PR #70 merged the directive on 2026-07-20; the next release was 2026-07-27; no session could have received it in between no matter what the handler said. `scripts/release-pr-age-check.sh` alarms on the gap.
+
+#### The measurement window this reopens
+
+Two start dates, because they answer different questions and only one of them survives a reword of the directive (see A3):
+
+| window | starts | why |
+| --- | --- | --- |
+| **delivery** (`directive-fired`) | 2026-08-03 19:52 PDT | the verified re-install. The directive's leading line — the marker the readout derives — is unchanged across v0.10.3 → v0.12.0, so firings remain comparable across that boundary. |
+| **behavior** (`resolve+announce`) | the date **v0.12.0 is verifiably loaded** | v0.12.0 changed the directive's *body*: the call it previously prescribed returned ~124k characters and was rejected for exceeding the tool-result limit, which is the most plausible explanation for the one post-fix session that did not announce. Announce rates either side of that change measure two different treatments. |
+
+The minimum n is stated **before** the result, not after: **≥ 30 directive-fired sessions cross-repo and ≥ 7 elapsed days**, whichever is later. The prior window's n = 3 supported no conclusion, and choosing a threshold after seeing the number is how a null result becomes an argument.
+
+The denominator stays "all sessions" — A2 kept always-on — so the reopened window remains comparable to the 0-of-40 pre-experiment baseline. No redefinition needed.

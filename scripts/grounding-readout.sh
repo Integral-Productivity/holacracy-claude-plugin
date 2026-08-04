@@ -72,10 +72,17 @@
 # higher-fidelity successor.
 #
 # Usage:
-#   scripts/grounding-readout.sh [--since YYYY-MM-DD] [--project <slug>]
-#                                [--json] [--include-self] [--hook PATH]
-#                                [DIR ...]
-#   --since        only count transcripts modified on/after this date
+#   scripts/grounding-readout.sh [--since YYYY-MM-DD] [--since-start WHEN]
+#                                [--project <slug>] [--json] [--include-self]
+#                                [--hook PATH] [DIR ...]
+#   --since        only count transcripts MODIFIED on/after this date
+#   --since-start  only count sessions that STARTED on/after this instant
+#                  (YYYY-MM-DD or YYYY-MM-DDTHH:MM, local unless offset given).
+#                  Prefer this for "did the directive fire after <fix>?": mtime
+#                  misfiles any session that began before the cutoff and was
+#                  appended to afterwards -- five of them in the 2026-08-03
+#                  window. Sessions with an unreadable start time are dropped,
+#                  never guessed into the window.
 #   --project      restrict to $CLAUDE_PROJECTS_DIR/<slug>
 #   --json         emit machine-readable JSON instead of the table
 #   --include-self include this repo's own sessions (off by default)
@@ -96,6 +103,7 @@ HOOK_SOURCE="${HOLACRACY_HOOK_SOURCE:-$REPO_ROOT/hooks-handlers/session-start.sh
 BASELINE_NOTE="baseline: 0 of 40 pre-experiment sessions had 'Operating as ...'"
 
 since=""
+since_start=""
 project=""
 json=0
 include_self=0
@@ -104,11 +112,12 @@ dirs=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --since)        since="${2:-}"; shift 2 ;;
+    --since-start)  since_start="${2:-}"; shift 2 ;;
     --project)      project="${2:-}"; shift 2 ;;
     --json)         json=1; shift ;;
     --include-self) include_self=1; shift ;;
     --hook)         HOOK_SOURCE="${2:-}"; shift 2 ;;
-    -h|--help)      sed -n '2,75p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)      sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; while [[ $# -gt 0 ]]; do dirs+=("$1"); shift; done ;;
     *)  dirs+=("$1"); shift ;;
   esac
@@ -204,7 +213,8 @@ if [[ ${#self_files[@]} -gt 0 ]]; then
   printf '%s\0' "${self_files[@]}" > "$self_list"
 fi
 
-python3 - "$list" "$HOOK_SOURCE" "$since" "$subagent_excluded" "$self_excluded" "$json" "$BASELINE_NOTE" "$self_list" <<'PY'
+python3 - "$list" "$HOOK_SOURCE" "$since" "$subagent_excluded" "$self_excluded" "$json" "$BASELINE_NOTE" "$self_list" "$since_start" <<'PY'
+import datetime as _dt
 import json as _json
 import os
 import re
@@ -212,6 +222,7 @@ import sys
 
 list_path, hook_path, since, sub_excl, self_excl, want_json, baseline = sys.argv[1:8]
 self_list_path = sys.argv[8] if len(sys.argv) > 8 else ""
+since_start = sys.argv[9] if len(sys.argv) > 9 else ""
 sub_excl, self_excl, want_json = int(sub_excl), int(self_excl), int(want_json)
 
 
@@ -419,12 +430,61 @@ def scan(path):
 
 # --- Run -------------------------------------------------------------------
 
+def _session_start(path):
+    """Timestamp of the FIRST record in a transcript, i.e. when the session
+    began. Returns None if it cannot be read."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    ts = _json.loads(line).get("timestamp")
+                except ValueError:
+                    return None
+                if not ts:
+                    return None
+                return _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _parse_cutoff(text):
+    """Accept YYYY-MM-DD or YYYY-MM-DDTHH:MM[:SS][+ZZ:ZZ]. Naive values are
+    read as LOCAL time, matching how an operator states a wall-clock cutoff."""
+    try:
+        d = _dt.datetime.fromisoformat(text)
+    except ValueError:
+        die("cannot parse --since-start %r; expected YYYY-MM-DD or "
+            "YYYY-MM-DDTHH:MM" % text)
+    if d.tzinfo is None:
+        d = d.astimezone()
+    return d
+
+
+CUTOFF = _parse_cutoff(since_start) if since_start else None
+
+
 def read_list(path):
     if not path or not os.path.isfile(path):
         return []
     with open(path, "rb") as fh:
         raw = fh.read()
-    return [p.decode("utf-8", "replace") for p in raw.split(b"\0") if p]
+    paths = [p.decode("utf-8", "replace") for p in raw.split(b"\0") if p]
+    if CUTOFF is None:
+        return paths
+    # Bucket by when the session STARTED, not by file mtime. --since uses
+    # find -newer, which misfiles any session that began before the cutoff and
+    # was merely appended to afterwards -- five of them in the 2026-08-03
+    # window. Sessions whose start time cannot be read are dropped rather than
+    # guessed at: an unknown start must not silently land in the window.
+    kept = []
+    for p in paths:
+        st = _session_start(p)
+        if st is not None and st >= CUTOFF:
+            kept.append(p)
+    return kept
 
 
 def tally(paths):

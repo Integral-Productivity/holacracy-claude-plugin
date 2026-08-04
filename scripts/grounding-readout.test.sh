@@ -297,6 +297,48 @@ assert d["sessions"]==1, d
 assert d["directive_fired"]["count"]==0, d
 ' || fail "reading or quoting the hook source must not count as directive-fired: $js"
 
+# 7d. --since-start buckets by when the session STARTED, not by file mtime
+#     (issue #151). Both fixtures below have a current mtime, so --since would
+#     keep both; only the start timestamp separates them. This is the axis that
+#     matters for "did the directive fire after <fix>?" -- a session that began
+#     before the cutoff and was merely appended to afterwards must not land in
+#     the window. Five did in the 2026-08-03 window.
+W="$TMP/window"; mkdir -p "$W"
+cat > "$W/old.jsonl" <<'JSONL'
+{"type":"attachment","hookName":"SessionStart","timestamp":"2026-01-01T00:00:00Z","stdout":"{\"hookSpecificOutput\":{\"additionalContext\":\"**Test plugin: role-grounding directive**\"}}"}
+JSONL
+cat > "$W/new.jsonl" <<'JSONL'
+{"type":"attachment","hookName":"SessionStart","timestamp":"2026-06-01T00:00:00Z","stdout":"{\"hookSpecificOutput\":{\"additionalContext\":\"**Test plugin: role-grounding directive**\"}}"}
+JSONL
+
+js="$(CLAUDE_PROJECTS_DIR="$W" bash "$SCRIPT" --hook "$HOOK" --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==2, d
+assert d["directive_fired"]["count"]==2, d
+' || fail "both window fixtures should count with no --since-start: $js"
+
+js="$(CLAUDE_PROJECTS_DIR="$W" bash "$SCRIPT" --hook "$HOOK" --since-start 2026-03-01 --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==1, d
+assert d["directive_fired"]["count"]==1, d
+' || fail "--since-start must exclude the session that STARTED before the cutoff: $js"
+
+# 7e. A transcript with no readable start timestamp is dropped under
+#     --since-start rather than guessed into the window. An unknown start must
+#     never be counted as "after the fix" -- that is how a delivery claim gets
+#     inflated by exactly the sessions it cannot account for.
+cp "$D/genuine.jsonl" "$W/nostamp.jsonl"
+js="$(CLAUDE_PROJECTS_DIR="$W" bash "$SCRIPT" --hook "$HOOK" --since-start 2026-03-01 --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==1, d
+' || fail "a transcript with no readable start time must not enter the window: $js"
+
 # 8. Fail loudly when the marker cannot be derived, rather than reporting a
 #    zero it cannot justify. This is the guard against #122 rewording or
 #    restructuring the directive without this instrument noticing.

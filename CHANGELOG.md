@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.11.1...v0.12.0) (2026-08-04)
+
+
+### Features
+
+* **hooks:** make the session-start hook fail loudly instead of silently ([#153](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/153)) ([8531c1a](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/8531c1adb76f05c93ab76cea7c99bf74e3008d59))
+* **readout:** add --since-start, and warn off the naive transcript grep ([#157](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/157)) ([86017da](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/86017da450d7d0da8c596b4eca03462017443848))
+
+
+### Bug Fixes
+
+* **grounding:** make the directive's role-resolution call shape executable ([#154](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/154)) ([58ca14b](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/58ca14b2949c9704adf743cca46ae694833aab16))
+* **hooks:** compare routine dates in local time, not UTC-vs-local ([#144](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/144)) ([8943dc8](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/8943dc83f48f963f1dbe13ad26fe7b01afaa4146))
+* **readout:** report in-repo sessions, and count firings from hook records ([#156](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/156)) ([2ec6a2c](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/2ec6a2cabcbfa5f08de556abfabd4c5e71a35571))
+
 ## [0.11.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.11.0...v0.11.1) (2026-08-04)
 
 

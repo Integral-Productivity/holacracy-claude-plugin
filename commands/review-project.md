@@ -5,7 +5,7 @@ argument-hint: [project name/id, or circle name — optional]
 
 # /holacracy:review-project
 
-Review GlassFrog **projects** for quality: is each one well-formed (an actionable outcome with a next-action and a clear owner) and well-placed (serving a goal, within the owner role's authority, on the best-fit role)? For each finding, Claude drafts a fix; the human confirms per-item; only additive fixes are written to GlassFrog. This is the project-side analog of `/holacracy:process-inbox`.
+Review GlassFrog **projects** for quality: is each one well-formed (an actionable outcome with a next-action and a clear owner) and well-placed (serving a goal, within the owner role's authority, on the best-fit role)? For each finding, Claude drafts a fix; the human confirms per-item; only additive fixes are written to GlassFrog. This is the project-side analog of `/holacracy:tension-triage`.
 
 Load two shared references at the start:
 
@@ -37,7 +37,7 @@ Load two shared references at the start:
    - **Backlog walk:** show a one-line verdict per project first -- its state (`well-formed`, `needs-outcome`, ...), where the verdict is the state of the highest-severity surviving finding. Expand the findings block **only for non-well-formed projects**. A `well-formed` project gets one line and no expansion.
    - **Deep single-project:** always expand the full findings block.
 
-6. **The per-project findings block** (modeled on `/holacracy:process-inbox`):
+6. **The per-project findings block** (modeled on `/holacracy:tension-triage`):
 
    ```
    Project [N of M]: [description excerpt]   (proj_xxx, owned by [Role] of [Circle])

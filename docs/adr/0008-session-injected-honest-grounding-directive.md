@@ -88,6 +88,14 @@ Three properties are load-bearing, and each is the inverse of something that wen
 
 1. **`stable` is the authority, not `main` and not the newest tag.** The marketplace installs from `stable`, and a tag can exist while promotion has failed (#108).
 2. **An undeterminable answer is an alarm, never a pass.** A copy predating the version stamp emits no stamp at all — exactly how v0.6.0 presented — so "cannot determine the loaded version", "zero sessions in the window", and "no channels found" all fail loudly rather than reporting clear. Reporting health from absent evidence is the failure this ADR keeps rediscovering.
+
+   Refined on 2026-08-04 by the skew alarm's first live run, which reported four false BEHINDs and said nothing at all about the two channels #122 lived in. Two rules came out of it, and they pull in opposite directions:
+
+   - **Silence is never acceptable.** A channel with nothing to report still emits a row. `channels_found` was 6 on that run, so even the "nothing compared" guard stayed quiet while the important probes returned empty. The guard now counts channels whose version could actually be *compared*, not rows.
+   - **But not every absence is a fault.** The test is whether absence *proves* the channel is unused or only means we could not read it. Where the plugin's name is in the path (the cache) or in a key (the install record), absence is proof — report `n/a` and do not alarm. Where identity is opaque (`rpm/plugin_<ID>/`), absence among copies that do exist means we cannot tell what is running — that is the #122 condition, and it alarms.
+
+   The second rule is not a softening of the first. An alarm that fires on every legitimate absence gets ignored, and an ignored alarm is indistinguishable from no alarm — which is what invariant 2 exists to prevent.
+
 3. **Both alarms are demonstrated firing, not merely asserted.** Their suites reproduce the #122 condition (v0.6.0 loaded, 0.10.2 recorded, `stable` ahead of both) and drive the alarm path on every PR through fixture affordances. An alarm nobody has ever seen fire is the same fail-silent shape as no alarm.
 
 They run **operator-local**, on the schedule that runs the weekly readout; CI runs their test suites. Transcripts and install channels live on the operator's machine, and no runner can see them.

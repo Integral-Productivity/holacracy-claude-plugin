@@ -223,27 +223,76 @@ def read_json(path):
         return None
 
 
+# Files that together identify a copy of THIS plugin when no manifest names it.
+# Chosen because both are ours and neither is generic enough to match another
+# plugin that happens to ship skills or hooks.
+FINGERPRINT = (
+    os.path.join("hooks-handlers", "session-start.sh"),
+    os.path.join("skills", "holacracy-facilitator"),
+)
+
+NO_VERSION = "<unreadable>"
+
+
+def read_version_txt(d):
+    try:
+        with open(os.path.join(d, "version.txt"), encoding="utf-8") as fh:
+            return fh.read().strip() or None
+    except OSError:
+        return None
+
+
 def plugin_version_at(d):
-    """Version of a materialized plugin copy at directory `d`, if it is ours."""
+    """Version of a materialized plugin copy at `d`, or None if it is not ours.
+
+    Ordered strategies, first hit wins. The previous single-strategy form
+    demanded a `.claude-plugin/plugin.json` naming us, with a `version.txt`
+    fallback gated on the PATH containing the plugin name -- which a
+    `rpm/plugin_<opaque-ID>/` directory never does. That made the fallback dead
+    for the one surface it was written to cover, and the desktop-app copies
+    invisible. Per ADR-0007: derive identity from what is on disk, not from a
+    single assumed shape.
+    """
+    # 1. A manifest that names a plugin is authoritative in both directions --
+    #    it identifies ours AND positively rules out someone else's.
     meta = read_json(os.path.join(d, ".claude-plugin", "plugin.json"))
-    if isinstance(meta, dict):
+    if isinstance(meta, dict) and meta.get("name") is not None:
         if str(meta.get("name", "")).strip().lower() != NAME:
             return None
         v = str(meta.get("version", "")).strip()
-        if v:
-            return v
-    # version.txt is the fallback: `release-type: simple` writes it, and a copy
-    # can carry it without a parseable manifest.
-    try:
-        with open(os.path.join(d, "version.txt"), encoding="utf-8") as fh:
-            v = fh.read().strip()
-    except OSError:
-        return None
-    # With no manifest to confirm identity, only trust the path.
-    return v if (v and NAME in d.lower()) else None
+        return v or read_version_txt(d) or NO_VERSION
+
+    # 2. No usable manifest: identify structurally. A copy carrying both of our
+    #    fingerprint paths is ours whatever the directory is called.
+    if all(os.path.exists(os.path.join(d, p)) for p in FINGERPRINT):
+        return read_version_txt(d) or NO_VERSION
+
+    # 3. Last resort: the path names us.
+    if NAME in d.lower():
+        return read_version_txt(d)
+
+    return None
 
 
-channels = []   # (label, version_or_None, note)
+# (label, version_or_None, note, is_na)
+#
+# `is_na` marks a channel that is legitimately not in use here -- reported as a
+# row, never as an alarm. The distinction that decides it:
+#
+#   Does absence PROVE the channel is unused, or only that we could not read it?
+#
+# Where the plugin name appears in the path (the cache) or in a key (the install
+# record), absence is proof: the plugin is not installed through that channel,
+# and saying so is honest. Where identity is opaque (`rpm/plugin_<ID>/`),
+# absence among copies that DO exist means we could not tell what is there --
+# which is the #122 condition, and alarms.
+#
+# What is never acceptable is an omitted row. The first live run reported five
+# skewed channels and silently said nothing about the two that caused #122;
+# `channels_found` was 6, so the "nothing compared" guard did not trip either.
+# That is the quiet-marker principle from ADR-0008 A1, missed here: a channel
+# with nothing to say must still say so.
+channels = []
 
 # --- loaded, from transcripts ---------------------------------------------
 if LOADED_JSON:
@@ -259,56 +308,100 @@ if LOADED_JSON:
         note = ", ".join("%s (%d)" % (v, n) for v, n in sorted(seen.items(), reverse=True))
         if unstamped:
             note += ", no version stamp (%d)" % unstamped
-        channels.append(("loaded (session transcripts)", worst, note))
+        channels.append(("loaded (session transcripts)", worst, note, False))
     elif sessions:
         channels.append((
             "loaded (session transcripts)", None,
             "%d session(s) in the last %s day(s), NONE carrying a version stamp"
-            % (sessions, DAYS)))
+            % (sessions, DAYS), False))
     else:
         channels.append((
             "loaded (session transcripts)", None,
-            "no sessions in the last %s day(s)" % DAYS))
+            "no sessions in the last %s day(s)" % DAYS, False))
 
 # --- desktop app materialized copies --------------------------------------
-app_globs = [
+#
+# The channel that was stale in #122, and the one whose identity is opaque:
+# copies live in `rpm/plugin_<ID>/`, so the plugin name is nowhere in the path.
+# That is exactly why absence here cannot be read as "not installed".
+app_roots = [
     os.path.join(ROOT, "Library", "Application Support", "Claude",
-                 "local-agent-mode-sessions", "*", "rpm", "plugin_*"),
-    os.path.join(ROOT, ".config", "Claude",
-                 "local-agent-mode-sessions", "*", "rpm", "plugin_*"),
+                 "local-agent-mode-sessions"),
+    os.path.join(ROOT, ".config", "Claude", "local-agent-mode-sessions"),
 ]
-for pattern in app_globs:
-    for d in sorted(glob.glob(pattern)):
+present_roots = [r for r in app_roots if os.path.isdir(r)]
+app_rows, app_copies_seen = [], 0
+for r in present_roots:
+    for d in sorted(glob.glob(os.path.join(r, "*", "rpm", "plugin_*"))):
         # `*.bak-YYYY-MM-DD-HHMM` app-session directories are backups nothing
         # loads from. In #122 one such copy reported 0.2.0 and was inert
         # clutter; alarming on it would train the reader to ignore this check.
         if ".bak-" in d:
             continue
+        app_copies_seen += 1
         v = plugin_version_at(d)
         if v:
-            channels.append(("desktop app copy", v, os.path.relpath(d, ROOT)))
+            app_rows.append(("desktop app copy", v, os.path.relpath(d, ROOT), False))
+
+if app_rows:
+    channels.extend(app_rows)
+elif not present_roots:
+    channels.append(("desktop app copy", None,
+                     "surface not present under %s" % ROOT, True))
+elif app_copies_seen == 0:
+    channels.append(("desktop app copy", None,
+                     "surface present, no plugins materialized into it", True))
+else:
+    # Copies exist and none is identifiable as ours. We cannot say what this
+    # surface is running -- the #122 condition, so it alarms.
+    channels.append((
+        "desktop app copy", None,
+        "%d plugin copies present, NONE identifiable as %s -- cannot tell what "
+        "this surface runs" % (app_copies_seen, NAME), False))
 
 # --- plugin cache ----------------------------------------------------------
-for d in sorted(glob.glob(os.path.join(ROOT, ".claude", "plugins", "cache",
-                                       "*", NAME, "*"))):
+#
+# The cache retains EVERY version ever installed, one directory per version, so
+# a row per directory reports history as skew. The first live run showed a cache
+# holding 0.6.0/0.10.2/0.10.3 alongside 0.12.0 and called four of them BEHIND --
+# four false alarms about archived copies nothing loads. The effective version
+# of a marketplace's cache is the NEWEST one present; the rest are detail.
+cache_root = os.path.join(ROOT, ".claude", "plugins", "cache")
+by_market = {}
+for d in sorted(glob.glob(os.path.join(cache_root, "*", NAME, "*"))):
     if not os.path.isdir(d):
         continue
-    # A manifest-confirmed copy is reported WHATEVER its version string says,
-    # including an unparseable one -- that lands as UNKNOWN below, which is
-    # skew. Dropping it would make a garbled version look like no version at
-    # all, i.e. like health. Only when there is no manifest do we fall back to
-    # the directory name, and then it must parse, so stray non-version
-    # directories in the cache tree are not mistaken for installs.
-    v = plugin_version_at(d)
-    if v is None:
-        v = os.path.basename(d)
-        if not key(v):
-            continue
-    channels.append(("plugin cache", v, os.path.relpath(d, ROOT)))
+    v = plugin_version_at(d) or os.path.basename(d)
+    if not v:
+        continue
+    market = os.path.basename(os.path.dirname(os.path.dirname(d)))
+    by_market.setdefault(market, {})[v] = d
+
+for market in sorted(by_market):
+    versions = by_market[market]
+    comparable = [v for v in versions if key(v)]
+    effective = max(comparable, key=key) if comparable else sorted(versions)[0]
+    archived = sorted((v for v in versions if v != effective),
+                      key=lambda x: key(x) or (0, 0, 0), reverse=True)
+    note = "%s (effective)" % market
+    if archived:
+        note += "; also cached: %s" % ", ".join(archived)
+    channels.append(("plugin cache", effective, note, False))
+
+if not by_market:
+    # The plugin name is a path component here, so its absence is proof of
+    # "not cached", not an inability to read. Reporting that as UNKNOWN would
+    # be crying wolf; omitting the row entirely is the bug being fixed.
+    where = "no plugin cache under %s" % ROOT
+    if os.path.isdir(cache_root):
+        where = "cache present, no %s entry in any marketplace" % NAME
+    channels.append(("plugin cache", None, where, True))
 
 # --- recorded install ------------------------------------------------------
-installed = read_json(os.path.join(ROOT, ".claude", "plugins",
-                                   "installed_plugins.json"))
+installed_path = os.path.join(ROOT, ".claude", "plugins",
+                              "installed_plugins.json")
+installed = read_json(installed_path)
+install_rows = []
 if isinstance(installed, dict):
     for k, val in sorted(installed.items()):
         if NAME not in str(k).lower():
@@ -318,15 +411,33 @@ if isinstance(installed, dict):
             v = str(val.get("version") or "").strip() or None
         elif isinstance(val, str):
             v = val.strip() or None
-        if v:
-            channels.append(("recorded install", v, str(k)))
+        install_rows.append(("recorded install", v or NO_VERSION, str(k), False))
+
+if install_rows:
+    channels.extend(install_rows)
+elif not os.path.exists(installed_path):
+    channels.append(("recorded install", None,
+                     "no installed_plugins.json under %s" % ROOT, True))
+elif installed is None:
+    # The file is there and we could not parse it. That is unreadability, not
+    # absence, so it alarms.
+    channels.append(("recorded install", None,
+                     "installed_plugins.json present but unparseable", False))
+else:
+    # Parsed cleanly and we are simply not in it. The plugin name would be in
+    # the key, so this is proof of "not recorded", not a failure to read.
+    channels.append(("recorded install", None,
+                     "installed_plugins.json has no %s entry" % NAME, True))
 
 # --- verdict ---------------------------------------------------------------
 stable_key = key(STABLE)
 rows, skewed = [], []
-for label, v, note in channels:
+comparable_channels = 0
+for label, v, note, is_na in channels:
     k = key(v)
-    if k is None:
+    if is_na:
+        status = "n/a"
+    elif k is None:
         status = "UNKNOWN"
     elif stable_key is None:
         status = "?"
@@ -336,11 +447,19 @@ for label, v, note in channels:
         status = "AHEAD"
     else:
         status = "ok"
+    if status in ("ok", "BEHIND", "AHEAD"):
+        comparable_channels += 1
     # AHEAD is reported but never alarms: a local dev checkout legitimately
-    # runs ahead of `stable`. BEHIND and UNKNOWN are the #122 conditions.
+    # runs ahead of `stable`. n/a never alarms either -- it means the channel
+    # is provably not in use here, which is a fact, not a fault. BEHIND and
+    # UNKNOWN are the #122 conditions.
     if status in ("BEHIND", "UNKNOWN"):
         skewed.append((label, v, note, status))
-    rows.append((label, v or "<undetermined>", status, note))
+    if is_na:
+        shown = "—"
+    else:
+        shown = v or "<undetermined>"
+    rows.append((label, shown, status, note))
 
 lines = []
 lines.append("  authority: stable = %s" % STABLE)
@@ -358,6 +477,11 @@ out = {
     "skew": [{"channel": c, "version": v, "detail": n, "status": s}
              for c, v, n, s in skewed],
     "channels_found": len(rows),
+    # Rows whose version could actually be compared against `stable`. This, not
+    # the row count, is what "did we measure anything" means now that absent
+    # channels report themselves instead of vanishing -- a run of four honest
+    # `n/a` rows has compared nothing and must not read as clear.
+    "comparable_channels": comparable_channels,
 }
 print(json.dumps(out))
 PY
@@ -365,16 +489,21 @@ PY
 
 table="$(printf '%s' "$report" | python3 -c 'import json,sys; print(json.load(sys.stdin)["table"])')"
 skew_count="$(printf '%s' "$report" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["skew"]))')"
-found="$(printf '%s' "$report" | python3 -c 'import json,sys; print(json.load(sys.stdin)["channels_found"])')"
+comparable="$(printf '%s' "$report" | python3 -c 'import json,sys; print(json.load(sys.stdin)["comparable_channels"])')"
 
 echo "Plugin version skew check"
 printf '%s\n' "$table"
 echo
 
-# Finding no channels at all is not health -- it means the probe looked in the
-# wrong place. Saying "clear" there would be a pass on no evidence.
-if [ "$found" -eq 0 ]; then
-  die "no plugin channels found under $PROBE_ROOT. Nothing was compared, so this is NOT a pass — check the probe root."
+# Comparing nothing is not health -- it means the probe looked in the wrong
+# place, or every channel is legitimately absent and there is no deployment to
+# judge. Either way, saying "clear" would be a pass on no evidence.
+#
+# Anchored on COMPARABLE channels, not on row count. Every channel now emits a
+# row even when it has nothing to report, so counting rows would let a run of
+# four honest `n/a` rows look like four successful comparisons.
+if [ "$comparable" -eq 0 ]; then
+  die "no channel under $PROBE_ROOT yielded a version that could be compared against stable. Nothing was measured, so this is NOT a pass — check the probe root."
 fi
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,8 @@ Date: 2026-07-20
 
 Accepted (experimental — the first PDCA experiment of the Continuous Organizational-Context Grounding effort; superseding/escalation is decided at that experiment's Act step)
 
+> **Amended 2026-08-04** — see [Amendments](#amendments). The Decision and Consequences below are the record as accepted on 2026-07-20; three of their claims no longer describe the shipped system. Read the amendments before relying on this ADR.
+
 ## Context
 
 The plugin *documents* a grounding standard — before doing role-specific work, resolve the active actor and role/circle and **announce** it ("Operating as **Role of Circle**"), re-validating on pivot (`skills/shared/actor-and-role-resolution.md`). But nothing *made it hold*. The one event-driven hook (`hooks-handlers/session-start.sh`) only surfaced scheduled-routine briefings; in ordinary sessions the grounding machinery never engaged. A baseline sample found the announcement string "Operating as …" in **0 of 40** recent sessions. Grounding depended entirely on operator vigilance, and got none.
@@ -38,3 +40,39 @@ Measurement is a separate, equally honest artifact: `scripts/grounding-readout.s
 - It does **not** change any skill's resolution procedure — `skills/shared/actor-and-role-resolution.md` is unchanged; the directive points the session at it.
 - It does **not** make the hook call GlassFrog or assert live connection state — by constitution of the honesty invariant, it cannot.
 - It does **not** replace the coarse readout with structured logging; that is a separate, deferred follow-up.
+
+## Amendments
+
+### A1 — 2026-08-04: "fail-silent" never meant "write nothing" (issue [#122](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/122))
+
+Invariant 2 above conflated two things, and the shipped hook took the wrong one. A hook that writes nothing to stdout leaves **no record in the transcript at all**, so "ran and had nothing to surface" is indistinguishable from "never ran."
+
+That is not hypothetical. From 2026-07-20 the Claude desktop app loaded a **v0.6.0** copy of the plugin — predating the directive — whose handler emitted nothing. It ran every session and left no trace. The directive reached **1 of 301** sessions for two weeks and nothing surfaced it.
+
+Invariant 2 is restated:
+
+> **Fail-silent on *error*, never silent in *output*.** A broken or gated-off directive must never block a session. But when there is nothing to surface, the hook emits a one-line quiet marker naming the plugin version, so a transcript can always distinguish "ran with nothing to say" from "never ran."
+
+Every payload — directive or quiet marker — now carries the running version, read from `version.txt` at fire time (`unknown` if unreadable, never blank). Diagnosing the outage required archaeology across three install channels precisely because nothing the hook emitted said which version produced it.
+
+The version string is appended **after** the `DIRECTIVE` heredoc, never inside it: `scripts/grounding-readout.sh` derives its detection marker from the heredoc's first non-empty line at run time, and a per-release string in that block would silently break cross-window comparison.
+
+### A2 — 2026-08-04: scoping is an opt-out, and the GlassFrog gate was dead (issue [#122](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/122))
+
+Invariant 3's list of gates is amended by adding `HOLACRACY_GROUNDING_EXCLUDE` (`<regex>`; do **not** inject when `$PWD` matches). It is evaluated last and wins over every positive gate.
+
+**Always-on remains the default**, and scoping is expressed as exclusion rather than as a positive gate that must be satisfied. Every opt-in form shares one property: a misconfiguration makes the directive *silently absent* — byte-for-byte the failure above, invisible for two weeks. An opt-out inverts the failure mode into something visible and one edit from fixed. Given that this whole effort exists because a silent zero went undetected, the default belongs to the option whose failure announces itself.
+
+Measurement drove this rather than preference. A connector-declaration gate was the intuitive scoping choice and turned out close to inverted: of 139 repos under `~/GitHub`, **4** declare a GlassFrog connector, accounting for ~7% of sessions — and they are where the GlassFrog *tooling* is built, not where governed work happens. Session volume concentrates in repos that declare nothing.
+
+Separately, the third Consequence above — that the gate's proxy "can drift from 'the connector is actually connected'" — understated the defect. `_glassfrog_declared()` probed `$CLAUDE_PLUGIN_ROOT/.mcp.json` **first**, and the plugin ships its own `.mcp.json` naming glassfrog, so the gate returned true in every directory on the machine. It was not a drifting proxy; it was dead configuration that read as a working check. It now consults only the working tree — `$PWD`, `$PWD/.claude`, and up to the enclosing git root, which also fixes its failure to match from a subdirectory.
+
+### A3 — 2026-08-04: the readout description is pre-#123 (issue [#127](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/127))
+
+The Decision's closing paragraph describes `scripts/grounding-readout.sh` as it was before #123/#124. It no longer greps whole transcripts. It parses JSONL and counts announcements only from **assistant-emitted** text in the anchored form `Operating as **<role> of <circle>**`, excluding template placeholders and directive echoes; it excludes subagent transcripts, sidechain records, and this repo's own sessions (`--include-self` opts back in); and it reports delivery alongside behavior (`announced / directive-fired` as well as `announced / all-sessions`), deriving the directive marker from the hook at run time and exiting 2 if it cannot find one.
+
+The fifth Consequence — "a transcript merely quoting 'operating as' counts" — is therefore no longer true as written. A weaker version survives: an assistant verbatim-quoting a documentation example still scores.
+
+A caveat the original Decision did not record, and which now constrains how this experiment may be read: **the readout derives its directive marker from the *current* hook source at run time.** That is deliberate — a hard-coded copy would report a confident zero after any reword, the same fail-silent shape the instrument exists to detect (the [ADR-0007](0007-route-artifacts-by-live-glassfrog-domains-not-a-hardcoded-table.md) principle: derive from live source, never a static table). The consequence is that re-running the readout over a window recorded *before* a reword under-counts `directive-fired`. **Windows are comparable only within one directive revision.** Any future change to the directive's leading line closes the current measurement window and opens a new one; treat cross-revision comparisons as invalid rather than as a change in behavior.
+
+Folded into this amendment rather than raised as a competing edit, per #127's own sequencing note.

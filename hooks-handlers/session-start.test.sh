@@ -5,8 +5,9 @@
 # No framework — plain asserts. Exits non-zero on first failure.
 #
 # Covers the surfacing window, the heredoc-injection safety fix, legacy-entry
-# rendering, the anomaly path, the fail-silent contract, and the role-grounding
-# directive (issue #62) with its honesty and gating behavior.
+# rendering, the anomaly path, the never-write-nothing contract (issue #122),
+# local-timezone date semantics (issue #132), and the role-grounding directive
+# (issue #62) with its honesty, versioning, and gating behavior.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -37,9 +38,23 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $1"; exit 1; }
 
+# The hook must NEVER write nothing (issue #122). Empty stdout leaves no record
+# in the transcript, so "ran with nothing to surface" cannot be told apart from
+# "never ran" -- the condition that hid a two-week outage. "Silent" is therefore
+# asserted as *the quiet marker*, not as empty output.
+assert_quiet() {  # $1 = captured output, $2 = context for the failure message
+  [ -n "$1" ] || fail "$2: hook wrote nothing; it must emit the quiet marker"
+  echo "$1" | grep -q "nothing to surface" \
+    || fail "$2: expected the quiet marker, got: $1"
+  echo "$1" | grep -q "role-grounding directive" \
+    && fail "$2: the quiet marker must not carry the directive"
+  echo "$1" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' \
+    || fail "$2: quiet-marker envelope is not valid JSON"
+}
+
 # Routine-briefing tests (1-5) run with the grounding directive OFF so they
 # exercise the briefing path in isolation and prove it is unchanged from before
-# issue #62. Grounding-specific tests (G1-G8) set their own env explicitly.
+# issue #62. Grounding-specific tests (G1-G14) set their own env explicitly.
 export HOLACRACY_GROUNDING_DIRECTIVE=off
 
 # 1. A windowed entry whose packet_summary contains a triple-quote and a
@@ -67,16 +82,19 @@ JSONL
 out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/l3.jsonl" bash "$HOOK")"
 echo "$out" | grep -q "last fire FAILED" || fail "error entry did not surface as anomaly"
 
-# 4. Unreadable ledger -> silent, exit 0.
+# 4. Unreadable ledger -> nothing to surface (quiet marker), exit 0.
 out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/missing.jsonl" bash "$HOOK")"; rc=$?
-[ -z "$out" ] && [ "$rc" -eq 0 ] || fail "unreadable ledger was not silent/exit-0"
+[ "$rc" -eq 0 ] || fail "unreadable ledger did not exit 0"
+assert_quiet "$out" "unreadable ledger"
 
-# 5. Out-of-window entry -> silent.
+# 5. Out-of-window entry -> does not surface; quiet marker instead.
 cat > "$TMP/l5.jsonl" <<JSONL
 {"id":"d","title":"holacracy/secretary/pre-tactical-prep/x","surface_from":"2026-07-01T00:00:00Z","surface_until":"2026-07-01T23:59:59Z","last_status":"ok","packet_summary":"future"}
 JSONL
 out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/l5.jsonl" bash "$HOOK")"
-[ -z "$out" ] || fail "out-of-window entry should not surface"
+echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/x" \
+  && fail "out-of-window entry should not surface"
+assert_quiet "$out" "out-of-window entry"
 
 # 6. Timezone semantics (issue #132). A routine whose next_fire is today in
 #    LOCAL time but a DIFFERENT calendar day in UTC must still surface. This is
@@ -131,11 +149,12 @@ echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/ops" || fail "combi
 
 # G4. Explicit off + no ledger -> silent (toggle works; existing behavior).
 out="$(cd "$TMP" && HOLACRACY_GROUNDING_DIRECTIVE=off HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"; rc=$?
-[ -z "$out" ] && [ "$rc" -eq 0 ] || fail "grounding off + no ledger should be silent/exit-0"
+[ "$rc" -eq 0 ] || fail "grounding off + no ledger did not exit 0"
+assert_quiet "$out" "grounding master toggle off"
 
 # G5. GlassFrog gate ON, no connector declared in cwd -> no injection (silent).
 out="$(cd "$TMP" && HOLACRACY_GROUNDING_DIRECTIVE=on HOLACRACY_GROUNDING_REQUIRE_GLASSFROG=on HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-[ -z "$out" ] || fail "glassfrog gate should suppress injection when no connector is declared"
+assert_quiet "$out" "glassfrog gate with no connector declared"
 
 # G6. GlassFrog gate ON, a .mcp.json naming glassfrog present in cwd -> injects.
 mkdir -p "$TMP/gf"
@@ -147,10 +166,59 @@ echo "$out" | grep -q "role-grounding directive" || fail "glassfrog gate should 
 
 # G7. Path gate: a regex that does not match $PWD -> no injection.
 out="$(cd "$TMP" && HOLACRACY_GROUNDING_DIRECTIVE=on HOLACRACY_GROUNDING_REQUIRE_PATH='this-path-does-not-exist-xyz' HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-[ -z "$out" ] || fail "path gate should suppress injection when \$PWD does not match"
+assert_quiet "$out" "path gate not matching \$PWD"
 
 # G8. Path gate: a regex that matches $PWD -> injects.
 out="$(cd "$TMP" && HOLACRACY_GROUNDING_DIRECTIVE=on HOLACRACY_GROUNDING_REQUIRE_PATH="$(basename "$TMP")" HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
 echo "$out" | grep -q "role-grounding directive" || fail "path gate should allow injection when \$PWD matches"
+
+# G9. The GlassFrog gate must consult the WORKING TREE, not the plugin root.
+#     This is the #122 regression: the plugin ships its own .mcp.json naming
+#     glassfrog, and the old check probed "$CLAUDE_PLUGIN_ROOT/.mcp.json" first,
+#     so the gate returned true in every directory on the machine -- dead config
+#     that read as a working check. It looked fine in this suite only because
+#     CLAUDE_PLUGIN_ROOT is unset here; in production it is always set. Setting
+#     it explicitly is what makes this test able to catch the defect.
+out="$(cd "$TMP" && CLAUDE_PLUGIN_ROOT="$(cd "$HERE/.." && pwd)" \
+  HOLACRACY_GROUNDING_DIRECTIVE=on HOLACRACY_GROUNDING_REQUIRE_GLASSFROG=on \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_quiet "$out" "glassfrog gate must ignore the plugin's own .mcp.json"
+
+# G10. The payload names the version that produced it (issue #122). Without
+#      this, a transcript cannot say which copy of the plugin fired, which is
+#      what made the 0.6.0-vs-0.10.2 outage take archaeology to diagnose.
+expected_version="$(tr -d '[:space:]' < "$HERE/../version.txt")"
+[ -n "$expected_version" ] || fail "version.txt is empty or unreadable"
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "v${expected_version}" \
+  || fail "directive payload does not carry version ${expected_version}"
+
+# G11. The quiet marker carries the version too -- a session that surfaced
+#      nothing still records which copy of the plugin ran.
+out="$(cd "$TMP" && HOLACRACY_GROUNDING_DIRECTIVE=off HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "v${expected_version}" \
+  || fail "quiet marker does not carry version ${expected_version}"
+
+# G12. Exclusion regex suppresses the directive (the opt-out scoping decision
+#      from #122). Default stays always-on; this is the named way out.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_EXCLUDE="$(basename "$TMP")" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_quiet "$out" "exclusion regex matching \$PWD"
+
+# G13. A non-matching exclusion leaves the default alone.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_EXCLUDE='this-path-does-not-exist-xyz' \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "role-grounding directive" \
+  || fail "non-matching exclusion should not suppress the directive"
+
+# G14. Exclusion wins over a positive gate that would otherwise allow injection.
+#      Order matters: the whole point of an opt-out is that it is the last word.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_REQUIRE_PATH="$(basename "$TMP")" \
+  HOLACRACY_GROUNDING_EXCLUDE="$(basename "$TMP")" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_quiet "$out" "exclusion must win over REQUIRE_PATH"
 
 echo "PASS: all session-start hook tests"

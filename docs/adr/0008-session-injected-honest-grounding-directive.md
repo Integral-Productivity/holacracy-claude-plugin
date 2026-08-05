@@ -111,6 +111,10 @@ Two start dates, because they answer different questions and only one of them su
 | **delivery** (`directive-fired`) | 2026-08-03 19:52 PDT | the verified re-install. The directive's leading line — the marker the readout derives — is unchanged across v0.10.3 → v0.12.0, so firings remain comparable across that boundary. |
 | **behavior** (`resolve+announce`) | the date **v0.12.0 is verifiably loaded** | v0.12.0 changed the directive's *body*: the call it previously prescribed returned ~124k characters and was rejected for exceeding the tool-result limit, which is the most plausible explanation for the one post-fix session that did not announce. Announce rates either side of that change measure two different treatments. |
 
-The minimum n is stated **before** the result, not after: **≥ 30 directive-fired sessions cross-repo and ≥ 7 elapsed days**, whichever is later. The prior window's n = 3 supported no conclusion, and choosing a threshold after seeing the number is how a null result becomes an argument.
+The minimum n is stated **before** the result, not after: **≥ 30 directive-fired sessions cross-repo and ≥ 7 elapsed days**, whichever is later. The prior window supported no conclusion, and choosing a threshold after seeing the number is how a null result becomes an argument.
+
+*Corrected 2026-08-05:* that prior window was recorded as **n = 3**, and the 3 was itself an artifact. `grounding-readout.sh` dated a session by its *first* record and dropped it when that record carried no `timestamp` — which Claude Code's opening summary record routinely does not. Re-run after the repair (#175), the same shape of window reported **8 sessions where it had reported 1**, six of them carrying the v0.12.0 stamp that showed delivery working. So the true prior n is unknown and larger than 3, and every `--since-start` figure taken before #175 under-counted its denominator silently.
+
+This does not weaken the rule above; it is the sharpest argument for it. A threshold chosen after the fact would have been chosen against a number the instrument had quietly truncated. The window opens on the post-#175 instrument, and figures from before it are not comparable to what follows.
 
 The denominator stays "all sessions" — A2 kept always-on — so the reopened window remains comparable to the 0-of-40 pre-experiment baseline. No redefinition needed.

@@ -1,9 +1,16 @@
 name: Scripts tests
 
 # Runs the repo-local bash test suites and lints the scripts. Every `*.test.sh`
-# in the repo should have a step below; the steps are the coverage, because a
-# committed test file nothing invokes reads as coverage while providing none
-# (that is why issue #143 was a separate issue from #129).
+# in the repo has a step below; the steps are the coverage, because a committed
+# test file nothing invokes reads as coverage while providing none (that is why
+# issue #143 was a separate issue from #129).
+#
+# That is enforced, not remembered: the `test-wiring on this ref` step below
+# runs scripts/test-wiring-check.sh, which enumerates every tracked `*.test.sh`
+# and fails if any is not invoked by a workflow. Add a suite without adding its
+# step and this workflow goes red naming the file. Until issue #186 the rule
+# lived in this paragraph alone, which is the weakest enforcement mechanism
+# that exists -- the same argument skills-lint.sh's header makes about CLAUDE.md.
 #
 # Why this exists
 # ---------------
@@ -100,6 +107,28 @@ jobs:
           fi
           shellcheck --version | head -2
           shellcheck scripts/*.sh
+
+      - name: test-wiring regression suite
+        # Mutation-checked, same contract as the suites below: for each defense
+        # (wiring, verb, comments, boundary) there is a fixture violating only
+        # that defense, and the suite asserts BOTH that the guard fails on it
+        # AND that it passes with that defense disabled. The second half is what
+        # proves no defense is dead weight.
+        #
+        # Hermetic: every fixture is a throwaway git repo driven through
+        # --root, because the guard reads its corpora with `git ls-files` and
+        # tracked-ness is part of the contract rather than a detail to stub.
+        run: bash scripts/test-wiring-check.test.sh
+
+      - name: test-wiring on this ref
+        # The enforcement the header promises. Every tracked *.test.sh must be
+        # invoked by a workflow; add a suite without adding its step and this
+        # step goes red naming the file.
+        #
+        # Runs FIRST among the on-this-ref checks deliberately. If a suite were
+        # unwired, every step below would still pass -- that is the whole defect
+        # -- so this is the only step that can report it.
+        run: bash scripts/test-wiring-check.sh
 
       - name: grounding-readout regression suite
         run: bash scripts/grounding-readout.test.sh

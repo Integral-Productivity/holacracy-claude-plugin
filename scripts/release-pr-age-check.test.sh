@@ -93,20 +93,52 @@ chmod +x "$TMP/bin/gh"
 # script's own comment says the two must never be collapsed. Nothing enforced
 # that, so these stubs do: each implements exactly one platform's contract.
 #
-# The BSD stub's `-d` handling is the load-bearing detail. On real BSD, `-d`
-# sets daylight-saving time rather than parsing a datestring, so `date -d "$iso"`
-# is ACCEPTED AND WRONG -- it returns now, not the timestamp. Emulating that
-# faithfully (rather than making it fail) is what lets section 7 catch a
-# REORDERING of the two branches and not only a deletion: put GNU first and, on
-# BSD, every PR silently becomes zero days old.
+# There are TWO BSD variants here, because `-d` differs between them and that
+# difference is what decides whether ORDER matters:
+#
+#   bsd-bin         macOS. Probed on macOS 27 (2026-08-05): `date -u -d <iso>`
+#                   is `illegal option -- d`, rc 1 -- `-d` does not merely
+#                   misbehave there, it does not exist. This is the operator's
+#                   machine, and it is why an unparseable --now really does
+#                   exit 2 on it.
+#
+#   bsd-legacy-bin  FreeBSD-style, and the hazard `iso_to_epoch`'s own comment
+#                   names: `-d` sets daylight-saving time instead of parsing a
+#                   datestring, so `date -d <iso>` is ACCEPTED AND WRONG -- it
+#                   answers "now". Emulating that rather than making it fail is
+#                   what makes ORDER observable: with GNU tried first on such a
+#                   platform, every PR silently becomes zero days old and the
+#                   alarm never fires again.
+#
+# Worth flagging for whoever next edits `iso_to_epoch`: its comment presents the
+# accepted-and-wrong behaviour as current BSD, and on macOS that is no longer
+# so. Both variants are pinned here either way.
 
 _parse='import sys,datetime as d;print(int(d.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=d.timezone.utc).timestamp()))'
 
-mkdir -p "$TMP/bsd-bin" "$TMP/gnu-bin"
+mkdir -p "$TMP/bsd-bin" "$TMP/bsd-legacy-bin" "$TMP/gnu-bin"
 
 cat > "$TMP/bsd-bin/date" <<STUB
 #!/usr/bin/env bash
-# BSD date: supports -j -f FMT; -d sets DST and silently yields "now".
+# macOS date: supports -j -f FMT; -d is not an option at all.
+set -uo pipefail
+iso=''
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    -d) echo "date: illegal option -- d" >&2; exit 1 ;;
+    -u|-j) shift ;;
+    -f) shift 2 ;;
+    +%s) shift ;;
+    *) iso="\$1"; shift ;;
+  esac
+done
+[ -n "\$iso" ] || exec /bin/date -u +%s
+exec python3 -c '$_parse' "\$iso"
+STUB
+
+cat > "$TMP/bsd-legacy-bin/date" <<STUB
+#!/usr/bin/env bash
+# FreeBSD-style date: supports -j -f FMT; -d sets DST and silently yields "now".
 set -uo pipefail
 iso=''; saw_j=false; saw_d=false
 while [ \$# -gt 0 ]; do
@@ -142,7 +174,7 @@ done
 exec python3 -c '$_parse' "\$iso"
 STUB
 
-chmod +x "$TMP/bsd-bin/date" "$TMP/gnu-bin/date"
+chmod +x "$TMP/bsd-bin/date" "$TMP/bsd-legacy-bin/date" "$TMP/gnu-bin/date"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -225,9 +257,18 @@ echo '{not json' > "$S1/garbage.json"
 out="$(run "$SCRIPT" "$S1" --pr-json "$S1/garbage.json" 2>&1)"; rc=$?
 [ "$rc" -eq 2 ] || fail "an unparseable --pr-json file must exit 2, got $rc: $out"
 
-out="$(PATH="$TMP/bin:$PATH" STUB_DIR="$S1" bash "$SCRIPT" --repo o/r --dry-run \
-        --now 'last tuesday' 2>&1)"; rc=$?
-[ "$rc" -eq 2 ] || fail "an unparseable --now must exit 2, got $rc: $out"
+# An unparseable --now is exit 2, asserted under BOTH date stubs rather than
+# under whichever `date` the machine happens to have. The fixture string has to
+# be one NEITHER platform accepts, and that is easy to get wrong: this assertion
+# first shipped with `last tuesday`, which BSD rejects and GNU cheerfully parses
+# -- so it passed on the operator's Mac and failed on the Linux runner. The
+# script's tolerance for `--now` is its platform's tolerance, so pin the case on
+# both platforms explicitly instead of inheriting the runner's.
+for datebin in "$TMP/bsd-bin" "$TMP/gnu-bin"; do
+  out="$(PATH="$datebin:$TMP/bin:$PATH" STUB_DIR="$S1" bash "$SCRIPT" --repo o/r \
+          --dry-run --now 'definitely-not-a-timestamp' 2>&1)"; rc=$?
+  [ "$rc" -eq 2 ] || fail "an unparseable --now must exit 2 under $datebin, got $rc: $out"
+done
 
 # ---------------------------------------------------------------------------
 # 2. The threshold boundary, pinned in BOTH directions. An off-by-one here is
@@ -390,32 +431,24 @@ echo "$out" | grep -q '::warning::' || fail "stable behind main with no release 
 # 7. `iso_to_epoch` on BOTH platforms. The script's comment says the BSD and GNU
 #    calls must never be collapsed and that BSD must be tried first; nothing
 #    enforced either claim. These stubs do, by implementing exactly one
-#    platform's contract each.
-#
-#    The BSD stub answers `-d` with NOW rather than an error, which is what real
-#    BSD does (`-d` sets DST). That is why p_bsd catches a REORDER as well as a
-#    deletion: with GNU tried first on BSD, every PR silently becomes 0 days old
-#    and the alarm never fires again.
+#    platform's contract each. See the stub definitions above for why there are
+#    two BSD variants; in short, only the legacy one makes ORDER observable.
 # ---------------------------------------------------------------------------
-p_bsd() {  # p_bsd SCRIPT -> 0 when the 5-day age is right on a BSD-only date
-  local script="$1" s out; s="$(newstub "bsd-$$-$RANDOM")"
+p_on_date() {  # p_on_date SCRIPT DATEBIN -> 0 when the 5-day age is right there
+  local script="$1" datebin="$2" s out; s="$(newstub "date-$$-$RANDOM")"
   mkprs "$s/prs.json" "$RELEASE_BRANCH" 2026-08-01T00:00:00Z
-  out="$(PATH="$TMP/bsd-bin:$TMP/bin:$PATH" STUB_DIR="$s" bash "$script" \
+  out="$(PATH="$datebin:$TMP/bin:$PATH" STUB_DIR="$s" bash "$script" \
           --repo o/r --dry-run --now "$NOW" --pr-json "$s/prs.json" 2>&1)"
   printf '%s' "$out" | grep -q 'open for 5 days' || return 1
   return 0
 }
-p_bsd "$SCRIPT" || fail "the age must be correct on a BSD-only date (BSD branch, tried first)"
+p_bsd()        { p_on_date "$1" "$TMP/bsd-bin"; }
+p_bsd_legacy() { p_on_date "$1" "$TMP/bsd-legacy-bin"; }
+p_gnu()        { p_on_date "$1" "$TMP/gnu-bin"; }
 
-p_gnu() {  # p_gnu SCRIPT -> 0 when the 5-day age is right on a GNU-only date
-  local script="$1" s out; s="$(newstub "gnu-$$-$RANDOM")"
-  mkprs "$s/prs.json" "$RELEASE_BRANCH" 2026-08-01T00:00:00Z
-  out="$(PATH="$TMP/gnu-bin:$TMP/bin:$PATH" STUB_DIR="$s" bash "$script" \
-          --repo o/r --dry-run --now "$NOW" --pr-json "$s/prs.json" 2>&1)"
-  printf '%s' "$out" | grep -q 'open for 5 days' || return 1
-  return 0
-}
-p_gnu "$SCRIPT" || fail "the age must be correct on a GNU-only date (GNU fallback branch)"
+p_bsd "$SCRIPT"        || fail "the age must be correct on macOS-style date (BSD branch)"
+p_bsd_legacy "$SCRIPT" || fail "the age must be correct on FreeBSD-style date (BSD branch, tried FIRST)"
+p_gnu "$SCRIPT"        || fail "the age must be correct on a GNU-only date (GNU fallback branch)"
 
 # ---------------------------------------------------------------------------
 # 8. A clock that runs backwards clamps to 0 rather than reporting a negative
@@ -457,12 +490,18 @@ m="$(mutate threshold 's/-lt "$MAX_AGE_DAYS"/-le "$MAX_AGE_DAYS"/')"
 p_boundary "$m" && fail "mutation: off-by-one in the threshold comparison did not fail the suite"
 
 # 9d/9e. Collapse `iso_to_epoch` to a single platform. Each mutant still passes
-#        on the platform it kept, which is exactly why this went unnoticed: a
-#        GNU-only script is green on every CI runner we have and wrong on the
-#        operator's Mac, where the check is actually run by hand.
+#        on the platform it kept, which is exactly why this would go unnoticed:
+#        a GNU-only script is green on every CI runner we have and wrong on the
+#        operator's Mac, where the check is also run by hand.
+#
+#        The BSD-removal mutant is also the closest one-line stand-in for a
+#        REORDER. On the legacy platform, "BSD attempt no longer succeeds" and
+#        "GNU attempt runs first" have the same consequence: the GNU form
+#        answers `now` and every PR reads as zero days old.
 m="$(mutate nobsd 's/date -u -j -f/false -u -j -f/')"
-p_bsd "$m" && fail "mutation: removing the BSD date branch did not fail the suite"
-p_gnu "$m" || fail "the BSD-removal mutant should still work on GNU -- otherwise 9d proves nothing"
+p_bsd "$m"        && fail "mutation: removing the BSD date branch did not fail the suite"
+p_bsd_legacy "$m" && fail "mutation: removing the BSD date branch did not fail on legacy BSD"
+p_gnu "$m"        || fail "the BSD-removal mutant should still work on GNU -- otherwise 9d proves nothing"
 
 m="$(mutate nognu 's/date -u -d "$iso"/false -u -d "$iso"/')"
 p_gnu "$m" && fail "mutation: removing the GNU date branch did not fail the suite"

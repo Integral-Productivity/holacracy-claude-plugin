@@ -32,7 +32,9 @@ self-contained prompt.
 **Every observable signal said it worked.** All three calls returned trigger ids.
 All three fired within 90 seconds of their scheduled time and recorded
 `ended_reason: run_once_fired`. Twenty-five minutes later, **not one of the three
-branches existed** and nothing had been pushed.
+branches existed** and nothing had been pushed — and a re-check **eighteen hours
+on** found the same three branches still absent and the default branch unmoved.
+Slowness was not the explanation.
 
 The tool had done exactly what it said, and the sessions it produced could not do
 the work.
@@ -156,6 +158,8 @@ create_trigger(#159) -> trig_01Q52iyY…   ✓ created
 01:25:00  git ls-remote --heads origin 'refs/heads/claude/*'
           -> claude/focused-wu-b77968      (unrelated, months old)
           MISSING: all three expected branches
+
+19:11:00  same command, +18h    -> same result, default branch unmoved
 ```
 
 The check that would have caught it before the twenty-five-minute wait — read the

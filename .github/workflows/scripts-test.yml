@@ -1,14 +1,14 @@
 name: Scripts tests
 
-# Runs the repo-local bash test suites and lints the scripts. Four suites today:
-# scripts/grounding-readout.test.sh, scripts/grounding-fire-rate-check.test.sh,
-# scripts/plugin-version-skew-check.test.sh, and
-# hooks-handlers/session-start.test.sh.
+# Runs the repo-local bash test suites and lints the scripts. Every `*.test.sh`
+# in the repo should have a step below; the steps are the coverage, because a
+# committed test file nothing invokes reads as coverage while providing none
+# (that is why issue #143 was a separate issue from #129).
 #
 # Why this exists
 # ---------------
-# Both suites guard instruments whose failure mode is a plausible-looking WRONG
-# answer rather than a crash, and neither was run by anything until wired here.
+# These suites guard instruments whose failure mode is a plausible-looking WRONG
+# answer rather than a crash, and none was run by anything until wired here.
 #
 # scripts/grounding-readout.sh is the Check instrument for the PDCA-1 grounding
 # experiment (issue #60, docs/adr/0008-*). Its failure mode is producing a
@@ -119,6 +119,25 @@ jobs:
         # for the alarm to be demonstrated against a reproduction rather than
         # asserted; this step is that demonstration, on every PR.
         run: bash scripts/plugin-version-skew-check.test.sh
+
+      - name: release-pr-age-check regression suite
+        # scripts/release-pr-age-check.sh is the alarm for issue #129: a release
+        # PR left open means "merged" and "shipped" have drifted apart, and they
+        # drifted 34 days once with nothing anywhere reporting it. Until issue
+        # #143 this script was covered by `shellcheck scripts/*.sh` and nothing
+        # else -- and shellcheck has no opinion about whether the threshold
+        # comparison is the right way round. A regression making the alarm
+        # always report "no alarm" would have merged green, which is the same
+        # fail-silent shape the script exists to catch, one level up.
+        #
+        # Hermetic: `--now` and `--pr-json` are the script's own affordances,
+        # and the suite adds a stub `gh` plus BSD-only and GNU-only `date` stubs
+        # on PATH, so no network and no real repository are involved. Mutation-
+        # checked to the same contract as the suites above -- section 9 seeds
+        # one defect at a time (branch prefix, age arithmetic, threshold
+        # comparison, each half of the BSD/GNU date fallback) and asserts the
+        # matching property flips.
+        run: bash scripts/release-pr-age-check.test.sh
 
       - name: session-start hook regression suite
         # Run under two timezones deliberately -- this is not redundancy.

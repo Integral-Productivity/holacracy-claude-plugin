@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.13.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.12.0...v0.13.0) (2026-08-05)
+
+
+### Features
+
+* **evals:** capture GlassFrog schemas and generate fixtures, never record them ([#174](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/174)) ([12a0a89](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/12a0a89bb2ef77ae2ed072de519c8c63fa92f512))
+* **evals:** four golden behavioural cases, the runner that grades them, and a nightly workflow ([#180](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/180)) ([38e23b5](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/38e23b5dc54d3cca3b89f75099f015ed65f3917c))
+* **fitness:** alarm when the grounding directive stops firing or the plugin goes stale ([#164](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/164)) ([2a2a522](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/2a2a522d678325f1ee86acdff85a6b702dc3da7f))
+* **tension:** split triage from disposition, and put authority first ([#166](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/166)) ([a2e8838](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/a2e8838c024f62ee04d9afce1c9e92580992230b))
+* **testing:** lint the markdown that is the product, and fix what it found ([#168](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/168)) ([8895248](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/889524869201183bfe73da8987e38056a6cdd20d))
+
+
+### Bug Fixes
+
+* **fitness:** stop the skew alarm crying wolf and going quiet in the same run ([#167](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/167)) ([444d5fa](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/444d5fa3b8b9b665fa74380a52354efc577258e1))
+* **readout:** date a session by its first dated record, and window the exclusion counts ([#175](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/175)) ([50ae5b3](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/50ae5b3f570a9429ca2cf0343179db5d9ddaa6f0))
+
 ## [0.12.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.11.1...v0.12.0) (2026-08-04)
 
 

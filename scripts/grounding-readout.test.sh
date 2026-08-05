@@ -449,4 +449,87 @@ assert d["plugin_versions_seen"].get("unknown")==1, d
 assert d["sessions_without_plugin_version"]==0, d
 ' || fail "an explicit 'unknown' stamp must be reported distinctly: $js"
 
+# 11. A transcript whose FIRST record carries no timestamp must still be dated
+#     from a later record, not dropped. Claude Code transcripts routinely open
+#     with a summary/meta record that has none.
+#
+#     Measured on 2026-08-04: a 2-hour window holding seven sessions reported
+#     ONE, and the six it dropped were exactly the sessions carrying the
+#     v0.12.0 stamp that proved a delivery fix had landed. The readout printed
+#     `plugin versions seen: no version stamp` while the fix was working --
+#     absence of evidence rendered as evidence of absence, which is the #122
+#     failure shape occurring in the instrument rather than the hook.
+LATE="$TMP/latestamp"; mkdir -p "$LATE"
+cat > "$LATE/meta-first.jsonl" <<'JSONL'
+{"type":"summary","summary":"Prior session context","leafUuid":"abc-123"}
+{"type":"attachment","timestamp":"2026-08-04T21:43:08.405Z","stdout":"{\"additionalContext\":\"**Test plugin: role-grounding directive**\\n\\n_Directive emitted by holacracy-claude-plugin v0.12.0._\"}"}
+JSONL
+js="$(CLAUDE_PROJECTS_DIR="$LATE" bash "$SCRIPT" --hook "$HOOK" --since-start 2026-08-04 --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==1, ("a session dated by a later record must be counted", d)
+assert d["plugin_versions_seen"].get("0.12.0")==1, d
+' || fail "a leading record without a timestamp must not drop the session: $js"
+
+# 11b. Still dropped when NO record in the opening window carries a timestamp.
+#      An undatable session must not be guessed into the window -- that is the
+#      defense #123 added and it stays.
+cat > "$LATE/never.jsonl" <<'JSONL'
+{"type":"summary","summary":"no timestamps anywhere"}
+{"type":"assistant","text":"Operating as **Secretary of Operations Circle**."}
+JSONL
+js="$(CLAUDE_PROJECTS_DIR="$LATE" bash "$SCRIPT" --hook "$HOOK" --since-start 2026-08-04 --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==1, ("an undatable session must stay out of the window", d)
+' || fail "an undatable session must not enter the window: $js"
+
+# 11c. A malformed line before the first dated record is skipped, not fatal.
+#      One unparseable record must not disqualify a session from counting.
+cat > "$LATE/garbled.jsonl" <<'JSONL'
+{not valid json
+{"type":"attachment","timestamp":"2026-08-04T21:57:42.980Z","stdout":"{\"additionalContext\":\"**Test plugin: role-grounding directive**\\n\\n_Directive emitted by holacracy-claude-plugin v0.12.0._\"}"}
+JSONL
+js="$(CLAUDE_PROJECTS_DIR="$LATE" bash "$SCRIPT" --hook "$HOOK" --since-start 2026-08-04 --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==2, ("a malformed leading line must not drop the session", d)
+assert d["plugin_versions_seen"].get("0.12.0")==2, d
+' || fail "a malformed leading line must not drop the session: $js"
+
+# 12. Reported exclusions are WINDOWED, like every other figure in the report.
+#     They used to be counted while gathering files, before --since-start was
+#     applied, so a 2-hour run announced "excluded: 705 subagent file(s), 27
+#     self session(s)" for a window containing none of them. That reads as "27
+#     in-repo sessions we are not showing you" when the true figure is zero.
+W12="$TMP/windowedexcl"; mkdir -p "$W12/subagents"
+cat > "$W12/in-window.jsonl" <<'JSONL'
+{"type":"assistant","timestamp":"2026-08-04T21:00:00Z","text":"hello"}
+JSONL
+cat > "$W12/subagents/old-sub.jsonl" <<'JSONL'
+{"type":"assistant","timestamp":"2020-01-01T00:00:00Z","text":"old subagent"}
+JSONL
+cat > "$W12/subagents/new-sub.jsonl" <<'JSONL'
+{"type":"assistant","timestamp":"2026-08-04T21:00:00Z","text":"new subagent"}
+JSONL
+js="$(CLAUDE_PROJECTS_DIR="$W12" bash "$SCRIPT" --hook "$HOOK" --since-start 2026-08-04 --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==1, d
+# Two subagent files exist; only one starts inside the window.
+assert d["excluded"]["subagent_files"]==1, ("subagent exclusions must be windowed", d)
+' || fail "exclusion counts must respect --since-start: $js"
+
+# 12b. With no window, the exclusion counts cover the whole corpus.
+js="$(CLAUDE_PROJECTS_DIR="$W12" bash "$SCRIPT" --hook "$HOOK" --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["excluded"]["subagent_files"]==2, ("unwindowed runs count the whole corpus", d)
+' || fail "unwindowed exclusion counts should cover the corpus: $js"
+
 echo "PASS: all grounding-readout tests"

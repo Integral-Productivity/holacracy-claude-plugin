@@ -125,7 +125,10 @@ WORKFLOWS="$(git -C "$ROOT" ls-files '.github/workflows/*' 2>/dev/null)"
 
 HAYSTACK="$(
   while IFS= read -r wf; do
-    [ -n "$wf" ] && [ -f "$ROOT/$wf" ] || continue
+    # Two guards, not `A && B || continue` -- that shape is not if-then-else
+    # and shellcheck 0.9.0 on the runner is right to say so (SC2015).
+    [ -n "$wf" ] || continue
+    [ -f "$ROOT/$wf" ] || continue
     if skipped comments; then
       cat "$ROOT/$wf"
     else

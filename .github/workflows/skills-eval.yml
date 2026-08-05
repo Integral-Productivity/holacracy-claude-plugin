@@ -130,12 +130,25 @@ jobs:
         # as-is; a copy in this repo would drift from it silently, and the
         # mean ± stddev and with/without delta it computes are the reason the
         # component was chosen over writing one.
+        #
+        # The price of not vendoring is that upstream's layout is ours to track,
+        # and it has already moved once: the path gained a `skills/skill-creator/`
+        # segment. Because the graded tier had never actually run — no API key,
+        # so every green run took the skip-with-notice path — that break sat
+        # latent from the day this workflow was written until the first real
+        # dispatch. `test -f` is what turns it into a loud two-second failure
+        # instead of a confusing one at the Aggregate step; keep it. The resolved
+        # path is exported once so the next upstream move is a one-line fix
+        # rather than three edits with a chance of a partial one.
         run: |
           set -euo pipefail
           git clone --depth 1 --filter=blob:none --sparse \
             https://github.com/anthropics/claude-plugins-official.git "$RUNNER_TEMP/spc"
-          git -C "$RUNNER_TEMP/spc" sparse-checkout set plugins/skill-creator/scripts
-          test -f "$RUNNER_TEMP/spc/plugins/skill-creator/scripts/aggregate_benchmark.py"
+          git -C "$RUNNER_TEMP/spc" sparse-checkout set \
+            plugins/skill-creator/skills/skill-creator/scripts
+          AGGREGATOR="$RUNNER_TEMP/spc/plugins/skill-creator/skills/skill-creator/scripts/aggregate_benchmark.py"
+          test -f "$AGGREGATOR"
+          echo "AGGREGATOR=$AGGREGATOR" >> "$GITHUB_ENV"
 
       - name: Run the behavioural evals
         if: steps.key.outputs.present == 'true'
@@ -165,8 +178,7 @@ jobs:
         if: steps.key.outputs.present == 'true'
         run: |
           set -euo pipefail
-          python3 "$RUNNER_TEMP/spc/plugins/skill-creator/scripts/aggregate_benchmark.py" \
-            "$RUNNER_TEMP/benchmark"
+          python3 "$AGGREGATOR" "$RUNNER_TEMP/benchmark"
           cp "$RUNNER_TEMP/benchmark/benchmark.json" "$RUNNER_TEMP/benchmark-current.json"
 
       - name: Report against the committed baseline

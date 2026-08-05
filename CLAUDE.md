@@ -78,8 +78,51 @@ separate tier that costs API calls and runs nightly, not per-PR. See
 [ADR-0012](docs/adr/0012-test-the-skills-not-just-the-scaffolding.md).
 
 ```bash
-bash scripts/evals-harness.test.sh       # fixture harness, mutation-checked
+bash scripts/evals-harness.test.sh          # fixture harness, mutation-checked
+bash scripts/run-behavioural-eval.test.sh   # the nightly runner's suite, offline
 ```
+
+**Both of those run on every PR; the graded tier they guard does not.**
+`.github/workflows/skills-eval.yml` runs `scripts/run-behavioural-eval.py`
+nightly and on `workflow_dispatch`, against `ANTHROPIC_API_KEY`. That asymmetry
+is deliberate and it is also the risk: an instrument that executes once a day
+against a secret no laptop holds is [#122](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/122)'s
+shape exactly. So the suite substitutes a fake model that replays a scripted plan
+through the *real* stub over the *real* generated MCP config, and everything but
+the model is exercised offline, per PR.
+
+Three things about the runner are worth knowing before you change it:
+
+- **A run that did not really happen must fail every assertion, not pass the
+  negative ones.** An empty write log contains no forbidden write, so
+  `no_write_of` passes on a session that never ran. Three conditions are treated
+  as execution failures for exactly this reason: the executor did not start, the
+  result event carried `is_error`, or the model made no tool calls at all. Two of
+  those were live defects — the second was found by the first real run, where
+  `--bare` refused an OAuth login and the eval scored green on the safeguard it
+  was meant to be testing.
+- **`--bare`, `--plugin-dir` and `--strict-mcp-config` are load-bearing, not
+  tidying.** `--plugin-dir` is the only route by which the plugin enters the
+  session, which is what makes `without_skill` a real absence rather than a hope.
+  `--strict-mcp-config` is what stops the plugin's own `.mcp.json` — which points
+  at the **production** GlassFrog connector — from loading alongside the stub.
+- **Ordering claims are checked in Python, not judged.** "Successor before
+  archive" and "no write without confirmation" are read off the stub's write log.
+  Deterministic, free, and the cheapest available reduction in the variance that
+  `evals/README.md` says makes a nightly job ignorable.
+
+Every assertion must declare `discriminating`, and a non-discriminating one must
+carry `why_kept`. The runner refuses a case file that omits either. An assertion
+that passes with the skill disabled measures nothing, and the only defensible
+exception is a constitutional floor that must hold in every configuration.
+
+`evals/benchmark.json` is the baseline [#173](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/173)'s
+regression alarm compares against. **It is currently unmeasured**, and says so in
+its own body: no graded run has happened because `ANTHROPIC_API_KEY` is not yet a
+repository secret. Seed it from a real `workflow_dispatch` run rather than
+filling in a plausible number — a baseline nobody measured is the same
+report-health-from-absent-evidence failure the grounding readout section below
+spends a page on.
 
 **Fixtures never contain real GlassFrog data, and that is structural rather than
 procedural.** `scripts/glassfrog-schema-capture.py` reduces a live response to

@@ -1,0 +1,63 @@
+{
+  "scenario": "blended-tension",
+  "purpose": "Triage-gates Step 2 must PARTITION a genuinely blended tension rather than refusing it (which loses the structural half) or leaving it fused (which makes it unresolvable). Modelled on ten_00fc5815, which sat fused for 15 months (issue #120). The second tension is a control: it is purely structural and must NOT be partitioned, so an eval cannot pass by partitioning everything it sees.",
+  "organization": "Northwind Collective",
+  "actor": {
+    "name": "Rowan Iveson",
+    "email": "rowan@example.invalid"
+  },
+  "roles": [
+    {
+      "key": "operations-circle",
+      "name": "Operations Circle",
+      "purpose": "Commitments that hold without anyone chasing them",
+      "accountabilities": [
+        "Holding the circle's operating cadence across quarters"
+      ],
+      "domains": [],
+      "filled_by_actor": false
+    },
+    {
+      "key": "circle-lead",
+      "name": "Circle Lead",
+      "parent": "operations-circle",
+      "purpose": "Commitments that hold without anyone chasing them",
+      "flags": ["structural"],
+      "accountabilities": [
+        "Ensuring the capacity of and load/demand on the circle remain balanced",
+        "Defining metrics for roles within the circle"
+      ],
+      "domains": [],
+      "filled_by_actor": true
+    },
+    {
+      "key": "delivery-coordination",
+      "name": "Delivery Coordination",
+      "parent": "operations-circle",
+      "purpose": "Work reaches the people waiting for it",
+      "accountabilities": [
+        "Sequencing committed work across the circle's roles"
+      ],
+      "domains": [],
+      "filled_by_actor": true
+    }
+  ],
+  "tensions": [
+    {
+      "key": "blended",
+      "on": "circle-lead",
+      "status": "unprocessed",
+      "created_at": "2025-04-16T08:30:00Z",
+      "updated_at": "2025-04-16T08:30:00Z",
+      "body": "I am unclear on my priority work. Nothing in this circle makes the order of competing commitments visible, so when two roles both need something from me the resolution is ad hoc and whoever asked most recently tends to win. I have also not been finishing things as planned, and have left committed work incomplete while moving on to fresh and more novel work. Both of these have been true for a while and I keep re-noticing them together."
+    },
+    {
+      "key": "purely-structural",
+      "on": "delivery-coordination",
+      "status": "unprocessed",
+      "created_at": "2025-09-02T13:15:00Z",
+      "updated_at": "2025-09-02T13:15:00Z",
+      "body": "No role holds the decision about whether a slipped commitment is re-sequenced or dropped. Delivery Coordination sequences the work but does not own the call to drop it, so slipped items sit in the queue indefinitely without anyone being wrong."
+    }
+  ]
+}

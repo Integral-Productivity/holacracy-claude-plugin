@@ -1,0 +1,63 @@
+{
+  "scenario": "structural-supersession",
+  "purpose": "Triage-gates Step 4's 'successor before archive' rule. Two long-standing tensions describe a live exposure that a role created since covers structurally. Archiving them alone drops the exposure, because no other record carries it. The successor must be written on the covering role, citing the originals, BEFORE either archive. Modelled on ten_343f2946 and ten_564abcab, superseded by the creation of an Information Security Officer role (issue #120).",
+  "organization": "Harbourline Works",
+  "actor": {
+    "name": "Wren Okonjo",
+    "email": "wren@example.invalid"
+  },
+  "roles": [
+    {
+      "key": "technology-circle",
+      "name": "Technology Circle",
+      "purpose": "Systems the organization can depend on without watching them",
+      "accountabilities": [
+        "Holding the coherence of the organization's technical estate"
+      ],
+      "domains": [],
+      "filled_by_actor": false
+    },
+    {
+      "key": "platform-ops",
+      "name": "Platform Operations",
+      "parent": "technology-circle",
+      "purpose": "Infrastructure nobody has to think about",
+      "accountabilities": [
+        "Running the deployment and monitoring pipeline"
+      ],
+      "domains": ["Deployment Pipeline"],
+      "filled_by_actor": true
+    },
+    {
+      "key": "security-officer",
+      "name": "Information Security Officer",
+      "parent": "technology-circle",
+      "purpose": "Exposure is owned before it is discovered",
+      "accountabilities": [
+        "Reviewing and approving third-party access to organizational data",
+        "Maintaining the joiner-mover-leaver process for system credentials",
+        "Holding the register of known security exposures and their owners"
+      ],
+      "domains": ["Access Control Policy", "Vendor Security Review"],
+      "filled_by_actor": true
+    }
+  ],
+  "tensions": [
+    {
+      "key": "vendor-access",
+      "on": "platform-ops",
+      "status": "unprocessed",
+      "created_at": "2023-05-22T10:40:00Z",
+      "updated_at": "2023-05-22T10:40:00Z",
+      "body": "Third-party tools get connected to our production data without anyone reviewing what they can read. Two vendors currently hold broad read access that nobody approved and nobody reviews. Platform Operations runs the pipeline but does not own the access decision, so the review keeps not happening and the access keeps accumulating."
+    },
+    {
+      "key": "offboarding-credentials",
+      "on": "platform-ops",
+      "status": "unprocessed",
+      "created_at": "2023-11-08T16:05:00Z",
+      "updated_at": "2023-11-08T16:05:00Z",
+      "body": "When someone leaves, their credentials stay live until somebody happens to notice. There is no owner for revocation and no list of what needs revoking, so at least three departed contributors still have working logins to systems holding customer data."
+    }
+  ]
+}

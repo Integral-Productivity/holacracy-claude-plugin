@@ -1,32 +1,112 @@
 {
   "skill": "holacracy",
   "surface": "/holacracy:tension-triage",
-  "status": "template",
-  "note": "Assertions are written; the GlassFrog fixture is not yet captured, so this case does not run in CI. It is the worked template for the remaining golden cases in evals/README.md.",
+  "status": "active",
+  "note": "Three golden cases whose correct disposition a human reached and recorded on issue #120 during the 2026-08-01 backlog run. Run by scripts/run-behavioural-eval.py. Prompts are natural language, identical across with_skill and without_skill, so the delta measures what the plugin changes rather than how the surface was invoked. If a case fails because the surface never engaged, that is a triggering finding for #172, not a behavioural one — read the transcript before reading the score.",
   "evals": [
     {
       "eval_id": 0,
       "eval_name": "authority-gate-fires-before-venue-routing",
-      "prompt": "Triage the unprocessed tensions on my roles in the Product Circle.",
-      "fixture": "fixtures/glassfrog/ten_03c044b3-domain-held.json",
-      "ground_truth": "ten_03c044b3 is a decision wholly inside the Productboard domain that the sensing role (Product Architecture) already holds. It waited 21 months for a meeting that Article 4 never required. Correct disposition: surface the already-held authority and offer conversion. Recorded on issue #120, comment 5172936811.",
+      "fixture": "evals/fixtures/glassfrog/authority-already-held.json",
+      "prompt": "Triage the unprocessed tensions on my roles in the Product Circle. Walk me through what you find for each one.",
+      "ground_truth": "The tension on Product Architecture about representing customer problems in the roadmap tool sits wholly inside the Roadmap Tooling Configuration domain, which Product Architecture already holds. Article 4 gives the role-filler unilateral authority to act within their own domains, so it needs no meeting and no proposal — it needs the work done. Modelled on ten_03c044b3, which waited 21 months for a meeting that was never required (issue #120, comment 5172936811). The Circle Lead tension about who decides scope-versus-date is the genuinely governable one and SHOULD reach venue routing.",
       "assertions": [
         {
-          "text": "The response names the domain the sensing role already holds before it proposes any meeting venue",
+          "text": "For the roadmap-tooling tension, the response names the domain Product Architecture already holds (Roadmap Tooling Configuration, or Product Taxonomy) before it proposes any meeting venue for that tension",
           "discriminating": true
         },
         {
-          "text": "The response does NOT route this tension to a governance or tactical venue",
+          "text": "The response does not route the roadmap-tooling tension to a governance or tactical meeting as its disposition",
           "discriminating": true
         },
         {
-          "text": "The response offers conversion to a project or action rather than filing a proposal",
+          "text": "The response offers to convert the roadmap-tooling tension into a project or an action, rather than filing a proposal or scheduling a meeting",
           "discriminating": true
         },
         {
-          "text": "No GlassFrog write is issued without an explicit per-item confirmation prompt",
+          "text": "The response still treats the Circle Lead tension about who decides scope-versus-date as genuinely governable, rather than resolving every tension at the authority gate",
+          "discriminating": true
+        },
+        {
+          "text": "No GlassFrog write is issued, because the prompt carried no per-item confirmation",
           "discriminating": false,
-          "why_kept": "Non-discriminating by design — the constitutional safeguard must hold in every configuration. It is a floor, not a signal."
+          "why_kept": "Non-discriminating by design — the constitutional safeguard is a floor that must hold in every configuration, including without_skill. Kept and labelled per issue #171. Mechanical, so it costs no tokens and cannot drift between nightly runs.",
+          "check": { "kind": "no_writes" }
+        }
+      ]
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "blended-tension-partitioned",
+      "fixture": "evals/fixtures/glassfrog/blended-tension.json",
+      "prompt": "Triage the unprocessed tensions on my roles. Where a body no longer scans well, show me the edit you would make to it.",
+      "ground_truth": "The Circle Lead tension is genuinely blended. Applying the substitution test — would the same problem exist if a different person filled the role — splits it: the absence of any mechanism making priority order visible survives a change of filler and is governable; moving to novel work before finishing committed work travels with the person and is not. Correct move is to keep the tension and PARTITION the body, marking the behavioural half explicitly out of scope for proposals, then carry only the structural half into venue routing. Refusing loses the structural half; leaving it fused makes it unresolvable — ten_00fc5815 sat that way for 15 months. The Delivery Coordination tension is wholly structural and must NOT be partitioned.",
+      "assertions": [
+        {
+          "text": "The Circle Lead tension is partitioned into a structural half and a personal half — it is neither refused outright nor left as a single fused body",
+          "discriminating": true
+        },
+        {
+          "text": "The structural half is identified as the absence of any mechanism making priority order visible across roles, and it is the half carried forward to venue routing",
+          "discriminating": true
+        },
+        {
+          "text": "The personal half is retained and marked explicitly as out of scope for proposals or governance, rather than being deleted or written to GlassFrog as a governable item",
+          "discriminating": true
+        },
+        {
+          "text": "The Delivery Coordination tension about who decides to re-sequence or drop a slipped commitment is NOT partitioned — it is treated as wholly structural",
+          "discriminating": true
+        },
+        {
+          "text": "No GlassFrog write is issued, because the prompt carried no per-item confirmation",
+          "discriminating": false,
+          "why_kept": "The same constitutional floor as eval 0. It must hold on a prompt that invites an edit, which is exactly where the pull to write is strongest.",
+          "check": { "kind": "no_writes" }
+        }
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "successor-written-before-archive",
+      "fixture": "evals/fixtures/glassfrog/structural-supersession.json",
+      "prompt": "Triage the unprocessed tensions on my roles in the Technology Circle. I created the Information Security Officer role after both of the Platform Operations tensions were filed, and I want the backlog cleaned up in this pass — you have my go-ahead to make the GlassFrog changes as you work through them rather than checking back on each one.",
+      "ground_truth": "Both Platform Operations tensions describe a live, material exposure — unreviewed third-party read access to production data, and working logins still held by departed contributors — that the Information Security Officer role now covers structurally. Archiving them alone drops the exposure, because no other record carries it. The correct order is: write the successor on Information Security Officer, citing the archived originals, and only then archive. Modelled on ten_343f2946 and ten_564abcab (issue #120). Also: meeting_type cannot be written through the API — update_tension 422s on it — so the venue belongs in a body prefix or in the conversation, never in that field.",
+      "assertions": [
+        {
+          "text": "A successor tension is created before either original is archived",
+          "discriminating": true,
+          "check": {
+            "kind": "write_ordering",
+            "first": {
+              "tool": "glassfrog_create_tension",
+              "args_contain": { "role_id": "role_1715df911bad30563796c08f70a7d4ca" }
+            },
+            "then": {
+              "tool": "glassfrog_update_tension",
+              "args_contain": { "status": "archived" }
+            }
+          }
+        },
+        {
+          "text": "No write carries a meeting_type argument, which the API rejects with 422",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": { "args_match": { "meeting_type": "." } }
+          }
+        },
+        {
+          "text": "The successor tension is written on Information Security Officer, not left on Platform Operations",
+          "discriminating": true
+        },
+        {
+          "text": "The successor body carries the substance of both originals — unreviewed third-party access to production data, and live credentials belonging to departed contributors — rather than a generic pointer to 'security work'",
+          "discriminating": true
+        },
+        {
+          "text": "The response says plainly that archiving alone would drop a live exposure no other record carries, rather than presenting the archive as routine cleanup",
+          "discriminating": true
         }
       ]
     }

@@ -1,0 +1,30 @@
+{
+  "_note": "Baseline for the behavioural tier. UNMEASURED: no graded run has been performed, because the graded tier needs ANTHROPIC_API_KEY and that secret is a separate human action (issue #171). Every statistic below is null on purpose. Seeding it with a plausible number would give #173's regression alarm something to compare against that nobody measured, which is the failure mode CLAUDE.md's readout section spends a page on: reporting health from absent evidence. The shape is aggregate_benchmark.py's output so a real run drops straight in.",
+  "measured": false,
+  "how_to_seed": [
+    "1. Add ANTHROPIC_API_KEY as a repository secret.",
+    "2. Run the 'Skills eval (behavioural)' workflow via workflow_dispatch with runs=3. Three runs is the minimum that yields a stddev worth reading.",
+    "3. Download the behavioural-benchmark artifact and commit its benchmark.json over this file.",
+    "4. Read the stddev before trusting the mean. Per evals/README.md a wide-variance case is a defect in the case, not a finding about the skill — fix the case before it becomes a baseline."
+  ],
+  "generated_at": null,
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": { "mean": null, "stddev": null, "min": null, "max": null },
+      "time_seconds": { "mean": null, "stddev": null, "min": null, "max": null },
+      "tokens": { "mean": null, "stddev": null, "min": null, "max": null }
+    },
+    "without_skill": {
+      "pass_rate": { "mean": null, "stddev": null, "min": null, "max": null },
+      "time_seconds": { "mean": null, "stddev": null, "min": null, "max": null },
+      "tokens": { "mean": null, "stddev": null, "min": null, "max": null }
+    }
+  },
+  "delta": null,
+  "cases": [
+    { "surface": "/holacracy:tension-triage", "eval_id": 0, "eval_name": "authority-gate-fires-before-venue-routing" },
+    { "surface": "/holacracy:tension-triage", "eval_id": 1, "eval_name": "blended-tension-partitioned" },
+    { "surface": "/holacracy:tension-triage", "eval_id": 2, "eval_name": "successor-written-before-archive" },
+    { "surface": "/holacracy:capture-tension", "eval_id": 0, "eval_name": "person-tension-refused-and-routed-to-idr" }
+  ]
+}

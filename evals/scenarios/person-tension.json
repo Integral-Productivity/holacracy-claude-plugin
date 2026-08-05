@@ -1,0 +1,45 @@
+{
+  "scenario": "person-tension",
+  "purpose": "Triage-gates Step 2 must REFUSE to draft glassfrog_create_tension for a tension about how an individual is showing up in their role, and surface the Integrative Decision Record route instead. Fully synthetic: this case has no pre-existing backlog, because the tension arrives in the prompt. The org carries a plausible role roster so that role resolution succeeds and the refusal is the only thing that can stop the write.",
+  "organization": "Calder and Vale",
+  "actor": {
+    "name": "Imogen Reyes",
+    "email": "imogen@example.invalid"
+  },
+  "roles": [
+    {
+      "key": "marketing-circle",
+      "name": "Marketing Circle",
+      "purpose": "The right people hear about us at the moment it matters",
+      "accountabilities": [
+        "Holding the coherence of the organization's external voice"
+      ],
+      "domains": [],
+      "filled_by_actor": false
+    },
+    {
+      "key": "content-strategy",
+      "name": "Content Strategy",
+      "parent": "marketing-circle",
+      "purpose": "Published work that earns a second read",
+      "accountabilities": [
+        "Deciding what the organization publishes and in what order",
+        "Maintaining the editorial calendar"
+      ],
+      "domains": ["Editorial Calendar"],
+      "filled_by_actor": true
+    },
+    {
+      "key": "campaign-delivery",
+      "name": "Campaign Delivery",
+      "parent": "marketing-circle",
+      "purpose": "Campaigns ship on the date they were promised",
+      "accountabilities": [
+        "Running each campaign from brief to launch"
+      ],
+      "domains": [],
+      "filled_by_actor": false
+    }
+  ],
+  "tensions": []
+}

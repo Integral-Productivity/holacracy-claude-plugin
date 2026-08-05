@@ -200,22 +200,29 @@ Two things to get right when reading it:
 
 The instrument is a proxy and says so: an assistant verbatim-quoting a documentation example still scores. [#71](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/71) tracks the structured session log that would replace it.
 
-### The two alarms
+### The alarms
 
-The readout is descriptive — it has no thresholds and always exits 0. Two alarms read its output and fail loudly:
+The readout is descriptive — it has no thresholds and always exits 0. Three alarms fail loudly. (The heading carried a count until [#187](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/187); it was wrong by one for as long as the third alarm had existed, which is why the count is gone rather than corrected — the same fix [#143](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/143) made to `scripts-test.yml`'s header.)
 
 ```bash
 scripts/grounding-fire-rate-check.sh      # did the directive stop reaching sessions?
 scripts/plugin-version-skew-check.sh      # is the loaded version behind `stable`?
+scripts/release-pr-age-check.sh           # has anything actually shipped?
 ```
 
-Both run **operator-local**, alongside the weekly `grounding-pdca1-readout` task — they read `~/.claude/projects` and `~/.claude/plugins`, which no CI runner has. CI runs their test suites, which drive them entirely through fixtures (`--readout-json`, `--fixture-root`, `--loaded-json`).
+The first two read the readout's output and run **operator-local**, alongside the weekly `grounding-pdca1-readout` task — they read `~/.claude/projects` and `~/.claude/plugins`, which no CI runner has. CI runs their test suites, which drive them entirely through fixtures (`--readout-json`, `--fixture-root`, `--loaded-json`).
 
-Exit codes are the same for both: `0` clear, `1` alarm (a tracking issue is filed and updated, and auto-closed when it recovers), `2` usage or operational error. Add `--dry-run` to see the report without writing to GitHub.
+**The third is not operator-local, and that is the thing to get right about it.** It reads only the GitHub API — no `~/.claude`, no local install — so it runs anywhere `gh` is authenticated, and it already runs on a schedule: `.github/workflows/release-latency-alarm.yml` fires it daily at 15:17 UTC and on `workflow_dispatch`. Hand-running it is for verification, not coverage. Its verification affordances are `--now` (a synthetic clock) and `--pr-json` (substitute the open-PR list for a fixture — PR metadata only; the reads of `stable` and of the PR's head branch still hit the live repo). Neither is used by the workflow. Reading this section and coming away thinking all three need a human at a laptop is the misread that leaves the scheduled one hand-run and the operator-local two uncovered.
+
+It belongs in this section because it guards the precondition the other two measure against: merging is not shipping. Consumers install from `stable`, `stable` only advances when `promote-stable.yml` fires on a `vX.Y.Z` tag, and that tag only exists once the release PR merges. A directive that has not been released cannot reach any session no matter what the handler says — that is Layer 1 of [#122](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/122), the 34-day freeze [#129](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/129) was filed for.
+
+Exit codes are the same for all three: `0` clear, `1` alarm (a tracking issue is filed and updated, and auto-closed when it recovers), `2` usage or operational error. Add `--dry-run` to see the report without writing to GitHub — on all three, a `--dry-run` that *would* have alarmed still exits 1. The release check adds one notification layer the other two have nowhere to put: a sticky comment on the release PR itself, upserted by the same marker as the tracking issue, so the alarm appears where the merge happens.
 
 The skew check adds `n/a` for a channel that is provably not in use — no plugin cache, no install record, no desktop-app surface. That is a fact, not a fault, and it does not alarm. `UNKNOWN` is different: it means a channel that *is* in use could not be read, which is the #122 condition.
 
-**`2` includes "nothing to measure."** An empty window, an unreadable readout, or a probe root with no plugin channels all exit 2 rather than reporting clear. Reporting health from absent evidence is precisely the failure #122 documents, and neither alarm is permitted to commit it.
+**`2` includes "nothing to measure."** An empty window, an unreadable readout, or a probe root with no plugin channels all exit 2 rather than reporting clear. Reporting health from absent evidence is precisely the failure #122 documents, and neither operator-local alarm is permitted to commit it.
+
+**The release check does not hold that line as tightly, and you should know where.** Its clear paths still exit `0` when `stable` or `compare/stable...main` could not be read; the unreadable figure degrades to `<unknown>` inside the report behind a `::warning::` rather than escalating to `2`. Its one genuinely absent-evidence state is handled differently again: `stable` behind `main` with *no* open release PR is a `::warning::` on an exit `0`, because it is not release latency — it is release-please having taken its soft-failure path, or a tag cut without `promote-stable.yml` fast-forwarding `stable` ([#108](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/108)). A green run of this check is therefore weaker evidence than a green run of the other two. Read the report, not just the exit code.
 
 ## Agent skills
 

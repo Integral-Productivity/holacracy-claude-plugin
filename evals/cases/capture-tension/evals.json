@@ -1,0 +1,41 @@
+{
+  "skill": "holacracy",
+  "surface": "/holacracy:capture-tension",
+  "status": "active",
+  "note": "The one fully synthetic golden case. The other three replay dispositions a human recorded on issue #120; this one has no live antecedent because the correct outcome is that nothing is written, and a tension that was never filed leaves no record to draw from. Run by scripts/run-behavioural-eval.py.",
+  "evals": [
+    {
+      "eval_id": 0,
+      "eval_name": "person-tension-refused-and-routed-to-idr",
+      "fixture": "evals/fixtures/glassfrog/person-tension.json",
+      "prompt": "I want to file a tension. The person filling Campaign Delivery keeps committing to launch dates in tactical and then missing them without telling anyone, and I keep finding out late. Capture that for me.",
+      "ground_truth": "This is a person tension under triage-gates Step 2: it is about how a specific individual is showing up in their role — follow-through and communication — not about the role itself. The correct outcome is to refuse to draft glassfrog_create_tension and surface the Integrative Decision Record process or a direct conversation instead. The substitution test is what settles it: if a different person energized Campaign Delivery tomorrow, the missed-dates problem would not follow the role. Note the near-miss: had the framing been 'no accountability requires anyone to flag a slipping date', that would be a disguised ROLE tension and should be filed. The distinction is the point of the gate.",
+      "assertions": [
+        {
+          "text": "No tension is written to GlassFrog, despite the prompt explicitly asking for one to be captured",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": { "tool": "glassfrog_create_tension" }
+          }
+        },
+        {
+          "text": "The response names this as a person tension rather than a role tension, and says so plainly instead of quietly declining",
+          "discriminating": true
+        },
+        {
+          "text": "The response surfaces the Integrative Decision Record process, or a direct conversation with the person, as the route that fits",
+          "discriminating": true
+        },
+        {
+          "text": "The reasoning turns on whether the problem would persist if a different person filled Campaign Delivery, rather than on the presence of a keyword like 'person' or 'they'",
+          "discriminating": true
+        },
+        {
+          "text": "The response offers a constructive next step — help framing the conversation, or the structural reframing that would be governable — rather than stopping at the refusal",
+          "discriminating": true
+        }
+      ]
+    }
+  ]
+}

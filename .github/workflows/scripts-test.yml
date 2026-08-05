@@ -211,3 +211,25 @@ jobs:
         # the guard runs over the whole of evals/ on every PR, not over the files
         # a given change happens to touch.
         run: bash scripts/evals-harness.test.sh
+
+      - name: behavioural eval runner regression suite
+        # Guards scripts/run-behavioural-eval.py (#171), the runner that turns a
+        # golden case into a grading.json.
+        #
+        # It belongs on the PR gate rather than only in skills-eval.yml, even
+        # though the runner itself only runs nightly. That asymmetry is the whole
+        # reason: an instrument that executes once a day, against a secret no
+        # laptop holds, is issue #122's shape exactly — nobody watches it, and
+        # its failure mode is a plausible-looking wrong number rather than a
+        # crash. The suite substitutes a fake `claude` that replays a plan
+        # through the REAL stub over the REAL generated MCP config, so every path
+        # except the model is exercised here, offline, on every PR.
+        #
+        # Mutation-checked on the same contract as the suites above: for each
+        # mechanical check there is a plan violating only that check, and the
+        # suite asserts both that the check fails on it and that no other check
+        # incidentally covers it. Two of its cases exist because the runner
+        # actually had the defect: a dead executor and an unauthenticated session
+        # each scored every NEGATIVE assertion green, since a model that never
+        # ran issues no forbidden write.
+        run: bash scripts/run-behavioural-eval.test.sh

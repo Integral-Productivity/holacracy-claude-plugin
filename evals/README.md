@@ -18,11 +18,23 @@ See [ADR-0012](../docs/adr/0012-test-the-skills-not-just-the-scaffolding.md).
 ```
 evals/
   README.md                       this file
+  benchmark.json                  the baseline #173's regression alarm compares against
   lint-allow-paths.txt            check 1 allowlist  (citing-file, path, reason)
   forward-references.txt          check 5 allowlist  (command, issue, reason)
-  fixtures/glassfrog/*.json       recorded, REDACTED MCP responses
-  cases/<surface>/evals.json      prompts + assertions, skill-creator schema
+  scenarios/*.json                hand-authored synthetic orgs, one per case
+  fixtures/schema/*.json          captured API shapes; every scalar is a type name
+  fixtures/glassfrog/*.json       generated from scenarios/, validated against schema/
+  stub/glassfrog_stub.py          the MCP server that serves a fixture
+  cases/<surface>/evals.json      prompts + assertions, grouped by the surface they drive
 ```
+
+Cases are grouped by **surface**, not one file per case, so several golden cases
+that exercise the same command share a file. Three of the four live under
+`/holacracy:tension-triage`, because that is where the gates they test are
+specified — including successor-before-archive, which reads like a job for
+`/holacracy:supersession-sweep` and is not: that command handles supersession
+*between two tensions* and explicitly does not file new ones, while a tension
+superseded *structurally by a role* is Step 1 territory and triage's to act on.
 
 `lint-allow-paths.txt` and `forward-references.txt` live here rather than under
 `scripts/` because they are test data, not implementation — the same reason the
@@ -126,9 +138,36 @@ python3 scripts/glassfrog-schema-capture.py --tool list_my_roles < response.json
 # generate the synthetic org a case needs
 python3 scripts/glassfrog-fixture-gen.py evals/scenarios/authority-already-held.json
 
-# the whole harness, mutation-checked
+# the whole fixture harness, mutation-checked
 bash scripts/evals-harness.test.sh
 ```
+
+### Running the evals
+
+```bash
+# offline: validate every case and prove each fixture actually starts the stub
+python3 scripts/run-behavioural-eval.py --out /tmp/probe --validate-only \
+  --case evals/cases/tension-triage/evals.json \
+  --case evals/cases/capture-tension/evals.json
+
+# the runner's own suite — mutation-checked, no API key, gates every PR
+bash scripts/run-behavioural-eval.test.sh
+
+# a graded run. Needs ANTHROPIC_API_KEY: --bare reads that or an apiKeyHelper
+# and never an interactive OAuth login, so a signed-in operator without the
+# variable gets "Not logged in" and the runner reports it as an execution error
+# rather than scoring the run.
+ANTHROPIC_API_KEY=... python3 scripts/run-behavioural-eval.py \
+  --out benchmarks/local --runs 3 \
+  --case evals/cases/tension-triage/evals.json \
+  --case evals/cases/capture-tension/evals.json
+```
+
+Each run is hermetic by construction: `--bare` (no CLAUDE.md, no hooks, no
+plugin sync), `--plugin-dir` as the only route by which the plugin enters the
+session, and `--strict-mcp-config` so the stub is the only MCP server. That last
+one is not tidiness — without it the plugin's own `.mcp.json` loads too, and it
+points at the **production** GlassFrog connector.
 
 ### What is reusable from `skill-creator`, and what is not
 
@@ -160,10 +199,23 @@ stddev as a defect in the case, not a finding about the skill.
 | Tier 1 static lint | **ships** (#168) |
 | Schema capture, fixture generator, replay stub, harness tests | **ships** (#170) |
 | Write-response schemas | derived from the MCP tools' documented contracts, **not captured** — capturing them means creating and deleting throwaway records in a live org, and that was not done for a testing convenience |
-| The four golden cases + the runner + nightly workflow | #171 |
-| Circle-sweep case | #171 — the stub already reproduces the non-recursive traversal it needs |
+| The four golden cases, the runner, its suite, the nightly workflow | **ships** (#171) |
+| A measured `benchmark.json` | **blocked on `ANTHROPIC_API_KEY`**, which is a repository secret and a human action. The committed baseline is explicitly unmeasured and says so. |
+| Circle-sweep case (47 tensions, 18 circles) | deferred from #171 by design — the stub already reproduces the non-recursive traversal it needs, so it can follow without new harness work |
 | Triggering accuracy | #172 |
 | Eval-regression alarm | #173 |
 
-`cases/tension-triage/evals.json` is the worked template: assertions written, not
-yet wired to a runner, so it does not run in CI.
+### Reading a result before trusting it
+
+Prompts are natural language and **identical across `with_skill` and
+`without_skill`**, so the delta measures what the plugin changes rather than how
+the surface was invoked. The cost of that choice: a case can fail because the
+surface never engaged at all, which is a *triggering* finding (#172) wearing a
+behavioural finding's clothes. Read the transcript before reading the score.
+
+Three conditions make a run unscoreable rather than failing, and the runner
+records them as an execution error: the executor did not start, the session
+reported an error, or the model made no tool calls. Each exists because an empty
+write log satisfies every negative assertion — a session that never ran issues no
+forbidden write. Two of the three were live defects in the runner, and the second
+was found by its first real run against the CLI.

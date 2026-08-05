@@ -1,0 +1,214 @@
+name: Skills eval (behavioural)
+
+# Tier 2 of the testing model in docs/adr/0012: behavioural evals of the shipped
+# skills against synthetic GlassFrog fixtures. Nightly and on demand, never on a
+# PR — these cost model calls and wall-clock, and ADR-0012's whole argument is
+# that a per-PR gate must be deterministic, offline and sub-second. That gate is
+# scripts-test.yml; this is the other tier.
+#
+# TWO JOBS, AND THE SPLIT IS THE POINT
+# ------------------------------------
+# `offline` needs no credentials and always runs. It exercises every path in
+# scripts/run-behavioural-eval.py except the literal `claude` invocation, and it
+# probes each shipped fixture by starting the stub from the config a real run
+# would generate. So a broken runner is caught even on a night when the API key
+# is missing, rate-limited, or revoked.
+#
+# `graded` needs ANTHROPIC_API_KEY. When the secret is absent it reports that
+# plainly and succeeds. Issue #171 asks for exactly this: the secret is a
+# separate human action, and a workflow that goes red every night until someone
+# performs it trains people to ignore a red workflow. What it must NOT do is
+# report health it did not measure — hence the explicit notice, and hence
+# `offline` carrying the assertions that can run unconditionally.
+#
+# WHY NOT FAIL ON A REGRESSION
+# ----------------------------
+# The eval-regression alarm is #173, and it is deliberately a separate piece of
+# work with the three-layer idempotent shape release-latency-alarm.yml uses. This
+# workflow produces benchmark.json and prints the delta against the committed
+# baseline; deciding that a delta is a regression is that alarm's job. Wiring a
+# threshold in here before the variance of these cases is known is how a flaky
+# nightly gets muted.
+
+on:
+  schedule:
+    # 07:00 UTC — midnight PDT / 23:00 PST the previous evening, so a nightly
+    # result is waiting at the start of the operator's day rather than landing
+    # mid-morning. GitHub does not guarantee the minute; nothing here depends on
+    # it.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Runs per (eval, config). More runs shrink the stddev; the flakiness read in evals/README.md needs at least 3."
+        default: "3"
+      model:
+        description: "Model for both the executor and the grader (blank = the CLI default)"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: Runner suite and fixture probes (no credentials)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show interpreter versions
+        run: |
+          set -euo pipefail
+          bash --version | head -1
+          python3 --version
+
+      - name: run-behavioural-eval regression suite
+        # Mutation-checked, same contract as every other suite in this repo: for
+        # each mechanical check there is a plan violating only that check, and
+        # the suite asserts both that the check fails on it and that no other
+        # check incidentally covers it.
+        #
+        # It substitutes a fake `claude` that replays a plan through the REAL
+        # stub over the REAL generated MCP config, so the only thing not
+        # exercised here is the model itself.
+        run: bash scripts/run-behavioural-eval.test.sh
+
+      - name: Validate every shipped case and probe its fixture
+        # Catches the failure mode that would otherwise look like a skill
+        # declining to act: a generated MCP config that does not actually start
+        # the stub. A run broken this way still produces a transcript.
+        run: |
+          set -euo pipefail
+          args=()
+          for f in evals/cases/*/evals.json; do args+=(--case "$f"); done
+          python3 scripts/run-behavioural-eval.py --out "$RUNNER_TEMP/probe" \
+            --validate-only "${args[@]}"
+
+  graded:
+    name: Graded eval run
+    needs: offline
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for the API key
+        id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Behavioural evals skipped::ANTHROPIC_API_KEY is not set on this repository, so the graded tier did not run. The offline job still verified the runner and every fixture. Add the secret to enable the nightly graded run (issue #171)."
+            {
+              echo "## Graded evals skipped"
+              echo
+              echo "\`ANTHROPIC_API_KEY\` is not configured on this repository."
+              echo "The \`offline\` job verified the runner and probed every fixture;"
+              echo "nothing was measured about skill behaviour."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.present == 'true'
+        with:
+          node-version: "22"
+
+      - name: Install the Claude Code CLI
+        if: steps.key.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Fetch skill-creator's aggregator
+        if: steps.key.outputs.present == 'true'
+        # Cloned rather than vendored. ADR-0012 reuses aggregate_benchmark.py
+        # as-is; a copy in this repo would drift from it silently, and the
+        # mean ± stddev and with/without delta it computes are the reason the
+        # component was chosen over writing one.
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/anthropics/claude-plugins-official.git "$RUNNER_TEMP/spc"
+          git -C "$RUNNER_TEMP/spc" sparse-checkout set plugins/skill-creator/scripts
+          test -f "$RUNNER_TEMP/spc/plugins/skill-creator/scripts/aggregate_benchmark.py"
+
+      - name: Run the behavioural evals
+        if: steps.key.outputs.present == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RUNS: ${{ inputs.runs || '3' }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          # Both are workflow_dispatch inputs, so they reach the shell only as
+          # environment variables and are never interpolated into the command
+          # line. RUNS is additionally range-checked: it is passed to a loop that
+          # spends money.
+          case "$RUNS" in
+            ''|*[!0-9]*) echo "runs must be a positive integer, got '$RUNS'" >&2; exit 1 ;;
+          esac
+          if [ "$RUNS" -lt 1 ] || [ "$RUNS" -gt 10 ]; then
+            echo "runs must be between 1 and 10, got '$RUNS'" >&2; exit 1
+          fi
+          args=()
+          for f in evals/cases/*/evals.json; do args+=(--case "$f"); done
+          if [ -n "$MODEL" ]; then args+=(--model "$MODEL"); fi
+          python3 scripts/run-behavioural-eval.py \
+            --out "$RUNNER_TEMP/benchmark" --runs "$RUNS" "${args[@]}"
+
+      - name: Aggregate
+        if: steps.key.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/spc/plugins/skill-creator/scripts/aggregate_benchmark.py" \
+            "$RUNNER_TEMP/benchmark"
+          cp "$RUNNER_TEMP/benchmark/benchmark.json" "$RUNNER_TEMP/benchmark-current.json"
+
+      - name: Report against the committed baseline
+        if: steps.key.outputs.present == 'true'
+        # Informational only. #173 owns turning a delta into an alarm.
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os, pathlib
+          cur = json.loads(pathlib.Path(os.environ["RUNNER_TEMP"], "benchmark-current.json").read_text())
+          base_path = pathlib.Path("evals/benchmark.json")
+          base = json.loads(base_path.read_text()) if base_path.exists() else {}
+
+          print("## Behavioural eval results\n")
+          print("| config | pass rate | stddev | baseline | delta |")
+          print("|---|---|---|---|---|")
+          for config, stats in sorted((cur.get("run_summary") or {}).items()):
+              rate = stats.get("pass_rate", {})
+              b = ((base.get("run_summary") or {}).get(config) or {}).get("pass_rate", {})
+              bm = b.get("mean")
+              delta = f"{rate.get('mean', 0) - bm:+.3f}" if isinstance(bm, (int, float)) else "n/a"
+              print(f"| {config} | {rate.get('mean', 0):.3f} | "
+                    f"{rate.get('stddev', 0):.3f} | "
+                    f"{bm if bm is not None else 'n/a'} | {delta} |")
+
+          wide = [(c, s["pass_rate"]["stddev"]) for c, s in (cur.get("run_summary") or {}).items()
+                  if s.get("pass_rate", {}).get("stddev", 0) > 0.2]
+          if wide:
+              print("\n> **Wide variance.** Per `evals/README.md`, a high-stddev case is a "
+                    "defect in the case, not a finding about the skill: "
+                    + ", ".join(f"`{c}` ({s:.2f})" for c, s in wide))
+          PY
+
+      - name: Upload the benchmark
+        if: steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: behavioural-benchmark
+          path: |
+            ${{ runner.temp }}/benchmark/benchmark.json
+            ${{ runner.temp }}/benchmark/benchmark.md
+            ${{ runner.temp }}/benchmark/**/grading.json
+            ${{ runner.temp }}/benchmark/**/transcript.md
+          retention-days: 30
+          if-no-files-found: error

@@ -37,6 +37,28 @@ trap 'rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $1"; exit 1; }
 CASES=0
 
+# Portable in-place edit. `sed -i` is NOT portable: GNU takes the suffix as an
+# optional attached argument, BSD/macOS takes it as a mandatory separate one, so
+# `sed -i 's/a/b/' f` on BSD reads 's/a/b/' as the backup suffix and `f` as the
+# program. Writing to a temp file and moving it uses only the `sed` both agree
+# on (issue #185). Do not "simplify" this back to -i, and do not branch on
+# `uname` — the branch is what rots.
+#
+# It also FAILS LOUDLY when the expression matched nothing. Every caller here is
+# seeding a fixture defect, and a seeding step that silently no-ops leaves the
+# fixture pristine while the assertions still run — the mutation property would
+# report green having measured nothing. That is a worse defect than the
+# portability bug this helper fixes, so the no-op is an error, not a shrug.
+sedi() {  # sedi EXPR FILE
+  local expr="$1" f="$2"
+  sed "$expr" "$f" > "$f.sedi" || fail "sedi: sed failed on $f"
+  if cmp -s "$f" "$f.sedi"; then
+    rm -f "$f.sedi"
+    fail "sedi: '$expr' changed nothing in $f — the fixture defect was never seeded"
+  fi
+  mv "$f.sedi" "$f" || fail "sedi: could not replace $f"
+}
+
 # A fixture repo that passes every check. Each case copies it and breaks one
 # thing, so a case can only fail for the reason it is named after.
 _fixture() {  # $1 = destination dir
@@ -122,7 +144,7 @@ CASES=$((CASES + 1))
 # 2. A step citation naming a heading the target does not have. This is #166's
 #    renumber hazard: thing.md has Steps 1-2, the citation says Step 5.
 _fixture "$TMP/c2"
-sed -i 's|`skills/shared/thing.md` Step 2|`skills/shared/thing.md` Step 5|' "$TMP/c2/commands/demo-cmd.md"
+sedi 's|`skills/shared/thing.md` Step 2|`skills/shared/thing.md` Step 5|' "$TMP/c2/commands/demo-cmd.md"
 git -C "$TMP/c2" add -A && git -C "$TMP/c2" commit -qm c2
 _assert_load_bearing 2 "$TMP/c2" "citation to a nonexistent step"
 
@@ -142,17 +164,17 @@ CASES=$((CASES + 1))
 # 3. Frontmatter contract. A skill without `version` cannot be version-checked,
 #    and a non-semver version is how a hand-maintained number drifts to nonsense.
 _fixture "$TMP/c3"
-sed -i '/^version:/d' "$TMP/c3/skills/demo/SKILL.md"
+sedi '/^version:/d' "$TMP/c3/skills/demo/SKILL.md"
 git -C "$TMP/c3" add -A && git -C "$TMP/c3" commit -qm c3
 _assert_load_bearing 3 "$TMP/c3" "skill missing version"
 
 _fixture "$TMP/c3b"
-sed -i 's/^version: 1.0.0/version: v1.0/' "$TMP/c3b/skills/demo/SKILL.md"
+sedi 's/^version: 1.0.0/version: v1.0/' "$TMP/c3b/skills/demo/SKILL.md"
 git -C "$TMP/c3b" add -A && git -C "$TMP/c3b" commit -qm c3b
 _assert_load_bearing 3 "$TMP/c3b" "skill version not semver"
 
 _fixture "$TMP/c3c"
-sed -i '/^argument-hint:/d' "$TMP/c3c/commands/demo-cmd.md"
+sedi '/^argument-hint:/d' "$TMP/c3c/commands/demo-cmd.md"
 git -C "$TMP/c3c" add -A && git -C "$TMP/c3c" commit -qm c3c
 _assert_load_bearing 3 "$TMP/c3c" "command missing argument-hint"
 
@@ -169,13 +191,13 @@ CASES=$((CASES + 1))
 
 # 4b. Bumping the version clears it. And 4c: a frontmatter-only change (the bump
 #     itself) must not demand a further bump, or the rule would never terminate.
-sed -i 's/^version: 1.0.0/version: 1.1.0/' "$TMP/c4/skills/demo/SKILL.md"
+sedi 's/^version: 1.0.0/version: 1.1.0/' "$TMP/c4/skills/demo/SKILL.md"
 git -C "$TMP/c4" add -A && git -C "$TMP/c4" commit -qm c4b
 SKILLS_LINT_ROOT="$TMP/c4" bash "$LINT" --base "$BASE4" >/dev/null 2>&1 \
   || fail "check 4: a bumped version did not clear the finding"
 _fixture "$TMP/c4c"
 BASE4C="$(git -C "$TMP/c4c" rev-parse HEAD)"
-sed -i 's/^version: 1.0.0/version: 1.0.1/' "$TMP/c4c/skills/demo/SKILL.md"
+sedi 's/^version: 1.0.0/version: 1.0.1/' "$TMP/c4c/skills/demo/SKILL.md"
 git -C "$TMP/c4c" add -A && git -C "$TMP/c4c" commit -qm c4c
 SKILLS_LINT_ROOT="$TMP/c4c" bash "$LINT" --base "$BASE4C" >/dev/null 2>&1 \
   || fail "check 4: a frontmatter-only bump demanded a further bump"
@@ -194,7 +216,7 @@ printf 'A materially different instruction.\n' >> "$TMP/c4d/skills/demo/referenc
 git -C "$TMP/c4d" add -A && git -C "$TMP/c4d" commit -qm c4d
 SKILLS_LINT_ROOT="$TMP/c4d" bash "$LINT" --base "$BASE4D" >/dev/null 2>&1 \
   && fail "check 4: a references/ change with no version bump was accepted"
-sed -i 's/^version: 1.0.0/version: 1.0.1/' "$TMP/c4d/skills/demo/SKILL.md"
+sedi 's/^version: 1.0.0/version: 1.0.1/' "$TMP/c4d/skills/demo/SKILL.md"
 git -C "$TMP/c4d" add -A && git -C "$TMP/c4d" commit -qm c4d-bump
 SKILLS_LINT_ROOT="$TMP/c4d" bash "$LINT" --base "$BASE4D" >/dev/null 2>&1 \
   || fail "check 4: bumping SKILL.md did not clear a references/ change"
@@ -212,7 +234,7 @@ _assert_load_bearing 5 "$TMP/c5" "reference to a nonexistent command"
 printf '/holacracy:ghost-command planned\n' >> "$TMP/c5/evals/forward-references.txt"
 SKILLS_LINT_ROOT="$TMP/c5" bash "$LINT" >/dev/null 2>&1 \
   && fail "check 5: a forward reference with no tracking issue was accepted"
-sed -i 's|/holacracy:ghost-command planned|/holacracy:ghost-command #999 planned|' "$TMP/c5/evals/forward-references.txt"
+sedi 's|/holacracy:ghost-command planned|/holacracy:ghost-command #999 planned|' "$TMP/c5/evals/forward-references.txt"
 SKILLS_LINT_ROOT="$TMP/c5" bash "$LINT" >/dev/null 2>&1 \
   || fail "check 5: a forward reference declared against an issue was still flagged"
 CASES=$((CASES + 1))

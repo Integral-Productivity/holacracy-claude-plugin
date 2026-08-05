@@ -13,6 +13,11 @@ node_modules/
 # Claude Code per-machine overrides (permissions etc.); .claude/settings.json is committed
 .claude/settings.local.json
 
+# Reclaim session state, written per-machine by the reclaim-assistant plugin's
+# SessionStart hook. Same class as the line above: machine-local, and it shows up
+# untracked in `git status` on every session otherwise.
+.claude/.reclaim-session.json
+
 # holacracy-coach draft output — governance/personnel content, never committed
 # (the coach defaults to a temp path outside the tree; this is the backstop)
 docs/drafts/

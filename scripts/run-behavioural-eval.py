@@ -7,10 +7,15 @@
 Produces the directory tree `scripts/aggregate_benchmark.py` (from the
 skill-creator plugin) consumes:
 
-    <out>/eval-<id>/eval_metadata.json
-    <out>/eval-<id>/<config>/run-<k>/grading.json
-    <out>/eval-<id>/<config>/run-<k>/timing.json
-    <out>/eval-<id>/<config>/run-<k>/outputs/{transcript.md,writes.jsonl,metrics.json}
+    <out>/eval-<suite>-<id>/eval_metadata.json
+    <out>/eval-<suite>-<id>/<config>/run-<k>/grading.json
+    <out>/eval-<suite>-<id>/<config>/run-<k>/timing.json
+    <out>/eval-<suite>-<id>/<config>/run-<k>/outputs/{transcript.md,writes.jsonl,metrics.json}
+
+`<suite>` is the case file's directory name. It is part of the key because
+`eval_id` is unique only within one case file, and without it two suites'
+eval 0 land in the same directory (#201). The tree stays FLAT — the
+aggregator globs `eval-*` directly under `<out>`.
 
 WHY THIS EXISTS RATHER THAN `run_eval.py`
 -----------------------------------------
@@ -654,6 +659,18 @@ def main() -> int:
 
     for case_path in args.case:
         doc = load_case_file(Path(case_path))
+        # `eval_id` is unique only WITHIN a case file — every file numbers its
+        # evals from 0 — so keying the output directory on it alone made two
+        # cases from different files collide, and the second silently
+        # overwrote the first. A whole surface vanished from a green benchmark
+        # that reported the remainder as the complete suite (#201).
+        #
+        # The case file's directory name is the natural qualifier. The name
+        # must stay FLAT and keep the `eval-` prefix: aggregate_benchmark.py
+        # discovers results with `benchmark_dir.glob("eval-*")` directly under
+        # the benchmark dir, so a nested <suite>/eval-<id> layout would make
+        # every eval invisible to aggregation instead.
+        suite = Path(case_path).parent.name
         for case in doc["evals"]:
             if args.eval_name and case["eval_name"] != args.eval_name:
                 continue
@@ -666,7 +683,7 @@ def main() -> int:
                 continue
 
             if args.validate_only:
-                log = out_root / f"probe-{case['eval_id']}.jsonl"
+                log = out_root / f"probe-{suite}-{case['eval_id']}.jsonl"
                 log.parent.mkdir(parents=True, exist_ok=True)
                 ok, detail = probe_stub(fixture, log)
                 log.unlink(missing_ok=True)
@@ -674,7 +691,7 @@ def main() -> int:
                 failures += 0 if ok else 1
                 continue
 
-            eval_dir = out_root / f"eval-{case['eval_id']}"
+            eval_dir = out_root / f"eval-{suite}-{case['eval_id']}"
             eval_dir.mkdir(parents=True, exist_ok=True)
             (eval_dir / "eval_metadata.json").write_text(json.dumps({
                 "eval_id": case["eval_id"],

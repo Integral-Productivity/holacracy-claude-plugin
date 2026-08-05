@@ -149,10 +149,26 @@ fi
 # Parse an ISO-8601 Zulu timestamp to a Unix epoch, on either BSD or GNU date.
 #
 # BSD is tried FIRST and with an explicit format string, because it is strict:
-# it fails cleanly on input it cannot parse, and it has no `-d "<datestring>"`
-# mode (on BSD, -d sets daylight-saving time, so `date -d "<iso>"` would be
-# accepted-and-wrong rather than rejected). GNU has no `-j`, so the BSD attempt
-# fails there and the GNU form runs. Never collapse these into one call.
+# it fails cleanly on input it cannot parse, and it has no GNU-style
+# `-d "<datestring>"` parsing mode. What BSD does with `-d` instead differs by
+# variant, and both are why the ordering is load-bearing:
+#
+#   macOS        `-d` is not an option at all. Probed on macOS 27 (2026-08-05),
+#                `date -u -d '2026-08-01T00:00:00Z' +%s` is
+#                `date: illegal option -- d`, rc 1. A GNU-shaped call fails
+#                cleanly here, so the damage from a wrong order would be a
+#                false alarm, not a silent one.
+#
+#   FreeBSD-style  `-d` sets daylight-saving time rather than parsing a
+#                datestring, so `date -d "<iso>"` is accepted-and-WRONG: it
+#                answers "now". Try GNU first on such a platform and every PR
+#                silently reads as zero days old and this alarm never fires
+#                again.
+#
+# GNU has no `-j`, so the BSD attempt fails there and the GNU form runs. Never
+# collapse these into one call. Both BSD variants are pinned by the `bsd-bin`
+# and `bsd-legacy-bin` stubs in scripts/release-pr-age-check.test.sh, so the
+# behaviour above is enforced rather than merely asserted here.
 iso_to_epoch() {
   local iso="$1" out
   if out="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$iso" +%s 2>/dev/null)"; then

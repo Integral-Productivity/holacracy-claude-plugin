@@ -10,6 +10,9 @@ node_modules/
 # Compound Engineering local config (per-machine, not committed)
 .compound-engineering/*.local.yaml
 
+# Claude Code per-machine overrides (permissions etc.); .claude/settings.json is committed
+.claude/settings.local.json
+
 # holacracy-coach draft output — governance/personnel content, never committed
 # (the coach defaults to a temp path outside the tree; this is the backstop)
 docs/drafts/

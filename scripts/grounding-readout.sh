@@ -177,11 +177,14 @@ fi
 # ~2.4x and deflating every rate (issue #123 defect 2).
 files=()
 self_files=()
+subagent_files=()
 subagent_excluded=0
 self_excluded=0
 while IFS= read -r -d '' f; do
   case "$f" in
-    */subagents/*) subagent_excluded=$((subagent_excluded + 1)); continue ;;
+    # Kept, not merely counted, so the reported exclusion figure can be
+    # narrowed to the window like every other number in the report.
+    */subagents/*) subagent_excluded=$((subagent_excluded + 1)); subagent_files+=("$f"); continue ;;
   esac
   if [[ -n "$self_slug" ]]; then
     parent="$(basename "$(dirname "$f")")"
@@ -205,15 +208,19 @@ done < <(find "${roots[@]}" -type f -name '*.jsonl' "${newer_pred[@]+"${newer_pr
 # with spaces or newlines survive and stdin stays free for the script heredoc.
 list="$(mktemp)"
 self_list="$(mktemp)"
-trap 'rm -f "$list" "$self_list"' EXIT
+sub_list="$(mktemp)"
+trap 'rm -f "$list" "$self_list" "$sub_list"' EXIT
 if [[ ${#files[@]} -gt 0 ]]; then
   printf '%s\0' "${files[@]}" > "$list"
 fi
 if [[ ${#self_files[@]} -gt 0 ]]; then
   printf '%s\0' "${self_files[@]}" > "$self_list"
 fi
+if [[ ${#subagent_files[@]} -gt 0 ]]; then
+  printf '%s\0' "${subagent_files[@]}" > "$sub_list"
+fi
 
-python3 - "$list" "$HOOK_SOURCE" "$since" "$subagent_excluded" "$self_excluded" "$json" "$BASELINE_NOTE" "$self_list" "$since_start" <<'PY'
+python3 - "$list" "$HOOK_SOURCE" "$since" "$subagent_excluded" "$self_excluded" "$json" "$BASELINE_NOTE" "$self_list" "$since_start" "$sub_list" <<'PY'
 import datetime as _dt
 import json as _json
 import os
@@ -223,6 +230,7 @@ import sys
 list_path, hook_path, since, sub_excl, self_excl, want_json, baseline = sys.argv[1:8]
 self_list_path = sys.argv[8] if len(sys.argv) > 8 else ""
 since_start = sys.argv[9] if len(sys.argv) > 9 else ""
+sub_list_path = sys.argv[10] if len(sys.argv) > 10 else ""
 sub_excl, self_excl, want_json = int(sub_excl), int(self_excl), int(want_json)
 
 
@@ -458,22 +466,49 @@ def scan(path):
 
 # --- Run -------------------------------------------------------------------
 
+# How far into a transcript to look for the session's start time. Bounded so a
+# huge transcript is not read end-to-end just to date it, but far enough past
+# the leading metadata records that carry no timestamp.
+_START_SCAN_LIMIT = 50
+
+
 def _session_start(path):
-    """Timestamp of the FIRST record in a transcript, i.e. when the session
-    began. Returns None if it cannot be read."""
+    """Timestamp of the first record that CARRIES one, i.e. when the session
+    began. Returns None if no dated record is found in the opening records.
+
+    Scans forward rather than reading only record #1. Claude Code transcripts
+    routinely open with a summary or meta record that has no `timestamp`, and
+    giving up on it dropped the whole session from every windowed run --
+    silently, because a dropped session is simply absent from the denominator.
+
+    Measured on 2026-08-04: a 2-hour window holding seven sessions reported
+    ONE. The six it dropped were exactly the sessions carrying the v0.12.0
+    stamp that proved a delivery fix had landed, so the readout showed
+    `plugin versions seen: no version stamp` while the fix was working. That is
+    the #122 failure shape in the instrument rather than the hook: absence of
+    evidence rendered as evidence of absence.
+
+    A malformed line is skipped rather than fatal, for the same reason -- one
+    unparseable record must not disqualify a session from being counted.
+    """
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
-            for line in fh:
+            for i, line in enumerate(fh):
+                if i >= _START_SCAN_LIMIT:
+                    break
                 if not line.strip():
                     continue
                 try:
                     ts = _json.loads(line).get("timestamp")
                 except ValueError:
-                    return None
+                    continue
                 if not ts:
-                    return None
-                return _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except (OSError, ValueError):
+                    continue
+                try:
+                    return _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                except (TypeError, ValueError):
+                    continue
+    except OSError:
         return None
     return None
 
@@ -568,6 +603,16 @@ main = tally(paths)
 # clean while making the in-repo evidence visible instead of silently zero.
 self_paths = read_list(self_list_path)
 selfies = tally(self_paths)
+
+# Narrow the reported exclusions to the window, like every other figure here.
+# They were counted while gathering files, BEFORE --since-start was applied, so
+# a 2-hour report could announce "excluded: 705 subagent file(s), 27 self
+# session(s)" when the window held none of them -- numbers that invite exactly
+# the misreading they caused on 2026-08-04, where "27 self sessions excluded"
+# was taken as "27 in-repo sessions we are not showing you" and the true
+# windowed figure was zero.
+sub_excl = len(read_list(sub_list_path))
+self_excl = len(self_paths)
 
 total = main["total"]
 n_fired, n_announce = main["fired"], main["announce"]

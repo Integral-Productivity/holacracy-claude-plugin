@@ -180,8 +180,16 @@ fi
 # ---------------------------------------------------------------------------
 
 # BSD first with explicit flags, then GNU — same reasoning as
-# release-pr-age-check.sh's iso_to_epoch: BSD `date -d` means daylight-saving
-# time, so a GNU-shaped call there is accepted-and-wrong rather than rejected.
+# release-pr-age-check.sh's iso_to_epoch, and the same two BSD variants. On
+# macOS `-d` is not an option at all: probed on macOS 27 (2026-08-05),
+# `date -u -d '2026-08-01T00:00:00Z' +%s` is `date: illegal option -- d`, rc 1,
+# so a GNU-shaped call fails cleanly there. On FreeBSD-style BSD `-d` sets
+# daylight-saving time instead of parsing a datestring, so the same call is
+# accepted-and-wrong — it answers "now", and a window computed GNU-first would
+# silently collapse to zero days. BSD-first is correct on both; that is why the
+# ordering is load-bearing rather than incidental. Both variants are pinned by
+# the `bsd-bin` and `bsd-legacy-bin` stubs in
+# scripts/release-pr-age-check.test.sh.
 days_ago() {
   local n="$1" out
   if out="$(date -v-"${n}"d '+%Y-%m-%dT%H:%M' 2>/dev/null)"; then

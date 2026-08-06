@@ -554,9 +554,14 @@ rm -rf "$TMP/out-collide"
 FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
   python3 "$RUNNER" --case "$TMP/suite-a/evals.json" --case "$TMP/suite-b/evals.json" \
     --out "$TMP/out-collide" --configs with_skill --no-grade >/dev/null 2>&1
-[ -f "$TMP/out-collide/eval-suite-a-0/with_skill/run-1/grading.json" ] \
-  && [ -f "$TMP/out-collide/eval-suite-b-0/with_skill/run-1/grading.json" ] \
-  || fail "two case files sharing eval_id 0 did not both produce results"
+# Spelled as an explicit `if` rather than `A && B || fail`: that form is not
+# if-then-else (shellcheck SC2015 — the fail arm also runs when A holds and B
+# does not), and shellcheck 0.9.0 on the CI image rejects it at info severity
+# while 0.11.0 locally does not.
+if [ ! -f "$TMP/out-collide/eval-suite-a-0/with_skill/run-1/grading.json" ] \
+   || [ ! -f "$TMP/out-collide/eval-suite-b-0/with_skill/run-1/grading.json" ]; then
+  fail "two case files sharing eval_id 0 did not both produce results"
+fi
 pass
 
 # Mutation: revert to the flat eval-<id> key and the collision must return,

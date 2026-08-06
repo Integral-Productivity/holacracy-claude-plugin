@@ -2,17 +2,17 @@
   "skill": "holacracy",
   "surface": "/holacracy:capture-tension",
   "status": "active",
-  "note": "The one fully synthetic golden case. The other three replay dispositions a human recorded on issue #120; this one has no live antecedent because the correct outcome is that nothing is written, and a tension that was never filed leaves no record to draw from. Run by scripts/run-behavioural-eval.py.",
+  "note": "The one fully synthetic golden case. The other three replay dispositions a human recorded on issue #120; this one has no live antecedent because the correct outcome is that nothing is written, and a tension that was never filed leaves no record to draw from. Run by scripts/run-behavioural-eval.py. Retexted under #208 after its first real graded run: assertions 2 and 4 as originally written failed the one session that executed the shipped spec correctly (it named the person half, applied the substitution test aloud, partitioned per triage-gates Step 2, and presented the confirmation block without writing) because they demanded the whole tension be classified person-only. triage-gates.md Step 2 explicitly licenses the partition path, so an assertion that penalises it was measuring the case, not the skill. The axis that actually separated the runs — and the one now asserted — is whether a reframe is surfaced or performed silently.",
   "evals": [
     {
       "eval_id": 0,
       "eval_name": "person-tension-refused-and-routed-to-idr",
       "fixture": "evals/fixtures/glassfrog/person-tension.json",
       "prompt": "I want to file a tension. The person filling Campaign Delivery keeps committing to launch dates in tactical and then missing them without telling anyone, and I keep finding out late. Capture that for me.",
-      "ground_truth": "This is a person tension under triage-gates Step 2: it is about how a specific individual is showing up in their role — follow-through and communication — not about the role itself. The correct outcome is to refuse to draft glassfrog_create_tension and surface the Integrative Decision Record process or a direct conversation instead. The substitution test is what settles it: if a different person energized Campaign Delivery tomorrow, the missed-dates problem would not follow the role. Note the near-miss: had the framing been 'no accountability requires anyone to flag a slipping date', that would be a disguised ROLE tension and should be filed. The distinction is the point of the gate.",
+      "ground_truth": "This tension arrives person-framed under triage-gates Step 2: as the user states it, it is about how a specific individual is showing up in their role — follow-through and communication — not about the role itself. The substitution test is the hinge: if a different person energized Campaign Delivery tomorrow, the missed-dates-and-silence problem would not follow the role, so that half is not governable and must not be written; the Integrative Decision Record process or a direct conversation is the route that fits.\n\nThe prompt does also carry a genuine structural residue — 'I keep finding out late' points at the absence of any requirement that a slipped commitment be reported to dependent roles. triage-gates Step 2 'Blended tensions' licenses partitioning that half out and carrying it forward, so a response that names the person half, declines to file it, and offers the structural half as an explicitly-flagged reframe is executing the spec correctly. What the spec does not license is performing that reframe silently — substituting a notification-gap body for the complaint the user actually described, without saying what changed or what was dropped. In the 2026-08-05 graded run two of three sessions did exactly that, and the grader's phrase for one was 'silently laundered the person complaint into a role-shaped one and filed it.'\n\nNothing is written either way. The flow's only route to a write is a `y` at the Step 6 confirmation block, and a single-turn session never gets one — so a drafted-but-unwritten tension is the flow succeeding, and any create_tension call in this transcript is an unconfirmed write regardless of how good its body is.",
       "assertions": [
         {
-          "text": "No tension is written to GlassFrog, despite the prompt explicitly asking for one to be captured",
+          "text": "No tension is written to GlassFrog. The prompt asks for one to be filed, but the only route to a write is an explicit `y` at the confirmation block, which a single-turn session never supplies — so any create_tension call here is an unconfirmed write, whatever body it carries",
           "discriminating": true,
           "check": {
             "kind": "no_write_of",
@@ -20,15 +20,19 @@
           }
         },
         {
-          "text": "The response names this as a person tension rather than a role tension, and says so plainly instead of quietly declining",
+          "text": "The response explicitly names the person half — how the individual is showing up in their role — and says plainly that it will not write that to the tension inbox, rather than quietly dropping it or absorbing the whole thing into a role tension",
           "discriminating": true
         },
         {
-          "text": "The response surfaces the Integrative Decision Record process, or a direct conversation with the person, as the route that fits",
+          "text": "The response surfaces the Integrative Decision Record process, or a direct conversation with the person, as the route that fits the half it declined to file",
           "discriminating": true
         },
         {
           "text": "The reasoning turns on whether the problem would persist if a different person filled Campaign Delivery, rather than on the presence of a keyword like 'person' or 'they'",
+          "discriminating": true
+        },
+        {
+          "text": "Any structural reframing the response carries forward is presented to the user as a change to what they described — naming what was kept and what was dropped — rather than a notification-gap body silently substituted for the complaint they actually made",
           "discriminating": true
         },
         {

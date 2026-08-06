@@ -14,6 +14,16 @@ This is the v0.3 contract. Option D (auto-file from explicit human statements) a
 
 This is non-negotiable across every code path in this plugin. The principle: Claude is a tension *sensor* and *capture assistant*; humans are tension *processors*. The new GlassFrog tension write endpoints do not change that boundary. They change *how cheaply* the human can capture what they're sensing.
 
+**"Explicit human confirmation" means a `y` in answer to the Step 6 block, in this conversation.** Three things that are *not* confirmation, each of which a real session has mistaken for one:
+
+| Not confirmation | Why it isn't |
+|---|---|
+| *"Capture that for me"* in the opening prompt | That is assent to **run the flow** (Step 1), not to write the body you have not drafted yet. The user cannot confirm a draft they have not seen. |
+| Having improved the tension | A better body is still a body the user has not read. Quality is not consent. |
+| Having reframed a person tension into a role tension | Passing `./triage-gates.md` Step 2 by reframing gets you *to* the gate, not *through* it. See that step's "Surfacing the reframe". |
+
+If you reach the end of your turn with a drafted tension and no answer, the correct end state is **the draft, unwritten, with the question outstanding**. That is the flow succeeding, not stalling.
+
 ---
 
 ## The Capture Flow
@@ -45,6 +55,8 @@ Follow the procedure in `./actor-and-role-resolution.md`, **but with the target 
 **Step 1 — does the authority that would resolve this already exist?** If the sensing role already holds the domain or accountability the tension is about, say so before capturing anything: *"◎[Role] already holds [domain]. This may not need to be a tension at all — it may just need doing."* Capturing a tension the actor could simply act on is how a backlog fills with work waiting on permission nobody was withholding.
 
 **Step 2 — role tension, person tension, or both?** If person tension, **refuse to draft `create_tension`** and surface the IDR / direct-conversation route. Do not proceed. If genuinely blended, partition the body per the gate's worked example and carry only the structural half forward.
+
+Whenever you reframe or partition, say so in your own words before Step 6 — the gate's "Surfacing the reframe" rule. The body you carry forward must be one the user would recognise as their tension, and they can only tell you that if you show them what you changed.
 
 Both gates run *before* drafting the body, because drafting a tension and then refusing to write it is wasted work and confuses the user about what the system is willing to do.
 
@@ -93,6 +105,8 @@ The user can:
 Per-tension confirmation. Never batched. This is the v0.3 contract.
 
 ### Step 7 -- File the tension
+
+**This step is reachable only from a `y` at Step 6.** There is no other entry. If you are reading this without having presented the confirmation block and received an answer to it, go back to Step 6 — the call below is not yet yours to make.
 
 On confirmation, a single call:
 

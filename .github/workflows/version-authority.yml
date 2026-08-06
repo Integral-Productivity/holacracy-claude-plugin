@@ -66,7 +66,7 @@ jobs:
     name: No hand-edits to version-authority files
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history: this job resolves the true fork point with
           # `git merge-base "$BASE_SHA" "$HEAD_SHA"`, so BOTH commits and their
@@ -277,7 +277,7 @@ jobs:
     name: Version files agree
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # No fetch-depth: this is a state check on the checked-out tree, not a
         # diff against a merge base. On pull_request that tree is the merge
         # commit (base + head), which is the state that would land on main.

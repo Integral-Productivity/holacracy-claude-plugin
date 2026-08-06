@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.13.0...v0.13.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* **ci:** correct the aggregator path so the graded eval tier can run ([#198](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/198)) ([15040e3](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/15040e3f6b185163cf52a2a9a746d977b231a0af))
+* **ci:** stop an informational step from destroying a graded eval run ([#200](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/200)) ([1086df0](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/1086df0d06397159f09c6c88cfed103c71c0c33a))
+* **evals:** record the skill and the model that actually ran in benchmark.json ([#218](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/218)) ([833f7a9](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/833f7a906c4a547a2a17d7caf686445aff4676c6)), closes [#203](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/203)
+* **evals:** stop dropping a case to eval_id collision, and repair the dead one ([#207](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/207)) ([62f1d8b](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/62f1d8b65201024c84827d4391f370527ce3215f))
+* replace GNU-only `sed -i` in skills-lint.test.sh with a portable helper ([#191](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/191)) ([a358db8](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/a358db80fb7a2ee95d4a529e43118013529ad49b))
+* **skills:** require a reframe to be surfaced, and pin it in the capture-tension eval ([#214](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/214)) ([41d8085](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/41d8085b00c65ac607a3407a259b52f5680a638d)), closes [#208](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/208)
+
 ## [0.13.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.12.0...v0.13.0) (2026-08-05)
 
 

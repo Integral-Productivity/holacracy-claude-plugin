@@ -96,17 +96,75 @@ jobs:
           git --version
 
       - name: Shellcheck scripts/*.sh
-        # shellcheck ships on the ubuntu-latest image; install it if a future
-        # image drops it rather than failing with an opaque exit 127.
+        # PINNED, and both halves of the pin are deliberate (issue #209).
+        #
+        # WHICH VERSION. Until #209 this step ran whatever shellcheck the
+        # ubuntu-latest image happened to ship -- 0.9.0 at the time -- while the
+        # operator's Homebrew ran 0.11.0. The two disagreed, and because
+        # shellcheck exits non-zero on ANY finding, the disagreement decided
+        # whether the build was red: PR #207 passed this command locally and
+        # failed it in CI on an `info`-severity SC2015. The direction that bit
+        # was the benign one (CI stricter, defect caught); the same mechanism in
+        # reverse -- a runner-image bump relaxing a check -- is silent. Either
+        # way a green local run carried no information about CI, which guts the
+        # fast offline gate ADR-0012 puts at the centre of the testing model.
+        # So the version is downloaded from the upstream release and its digest
+        # verified, rather than inherited from someone else's schedule.
+        #
+        # WHAT COUNTS AS FAILURE. `--severity` is stated rather than defaulted.
+        # The default is `style`, i.e. fail on any finding at all -- which is
+        # the policy this repo wants, but it was never chosen, it was inherited.
+        # Written down, it is now one visible token to change if that stops
+        # being true, instead of a property of shellcheck's defaults.
+        #
+        # TO BUMP: change SHELLCHECK_VERSION, run the `shasum -a 256` line below
+        # against the new tarball and paste the result into SHELLCHECK_SHA256,
+        # then re-run this workflow. The digest is not optional -- without it the
+        # "pin" is a URL upstream can re-point. Tell contributors to install the
+        # matching version locally too (`brew install shellcheck` tracks latest;
+        # check `shellcheck --version` against the pin), or the local gate goes
+        # back to meaning nothing.
+        #
+        #   curl -sSL --fail -o sc.tar.xz \
+        #     https://github.com/koalaman/shellcheck/releases/download/vX.Y.Z/shellcheck-vX.Y.Z.linux.x86_64.tar.xz
+        #   shasum -a 256 sc.tar.xz
+        #
+        # x86_64 is hard-coded because ubuntu-latest is x86_64. If that changes,
+        # the download 404s and this step fails loudly, which is the intended
+        # outcome -- a wrong-architecture binary must not be silently skipped.
+        env:
+          SHELLCHECK_VERSION: "0.11.0"
+          SHELLCHECK_SHA256: "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
+          # style = every finding, including info and style notes. See above.
+          SHELLCHECK_SEVERITY: style
         run: |
           set -euo pipefail
-          if ! command -v shellcheck >/dev/null 2>&1; then
-            echo "shellcheck not on the runner image; installing from apt"
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq shellcheck
+          tarball="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          url="https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${tarball}"
+
+          curl -sSL --fail -o "$RUNNER_TEMP/$tarball" "$url"
+          echo "${SHELLCHECK_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          tar -xJf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" \
+            "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          sc="$RUNNER_TEMP/shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+
+          # Assert the binary is the pinned one rather than trusting the path.
+          # A stale extraction or a shadowed name would otherwise run some other
+          # shellcheck while this step reported the pin -- the fail-silent shape
+          # the whole pin exists to remove.
+          #
+          # Captured to a variable rather than piped to `grep -q`, which exits on
+          # first match and SIGPIPEs the writer; under `pipefail` that turns a
+          # SUCCESSFUL match into a failed pipeline whenever the output is large
+          # enough not to fit the pipe buffer.
+          version_output=$("$sc" --version)
+          printf '%s\n' "$version_output"
+          if ! printf '%s\n' "$version_output" | grep -qx "version: ${SHELLCHECK_VERSION}"; then
+            echo "::error::shellcheck is not the pinned ${SHELLCHECK_VERSION}"
+            exit 1
           fi
-          shellcheck --version | head -2
-          shellcheck scripts/*.sh
+
+          "$sc" --severity="${SHELLCHECK_SEVERITY}" scripts/*.sh
 
       - name: test-wiring regression suite
         # Mutation-checked, same contract as the suites below: for each defense

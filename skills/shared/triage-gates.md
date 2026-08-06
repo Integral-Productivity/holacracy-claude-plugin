@@ -63,8 +63,9 @@ This is the constitutional gate. The Constitution distinguishes structural matte
 
 **Decision:**
 
-- **Role tension** -> continue to Step 3.
+- **Role tension, as the user framed it** -> continue to Step 3.
 - **Person tension** -> **Refuse to draft `create_tension`.** Surface the IDR / direct-conversation route instead. *"That reads like a tension about how someone is showing up in their role, not about the role itself. The Integrative Decision Record process is the right path for that -- I can help you frame the conversation, but I won't write this to the GlassFrog tension inbox."*
+- **Person tension you can reframe as structural** -> continue to Step 3, but only after surfacing the reframe (see "Surfacing the reframe" below). Reaching a role tension by rewriting the user's framing is not the same as receiving one.
 - **Genuinely both** -> partition it. See below.
 
 ### Disguised role tensions
@@ -74,6 +75,18 @@ Sometimes what presents as a person tension is structural in disguise. Apply the
 > "If a different person energized this role tomorrow, would the same problem exist?"
 
 If yes -- the problem is structural; reframe as a role tension and continue. If the issue is that *no governance holds the person accountable* for the missing behavior, the structural framing is: "the role's accountabilities don't require X" -- that is a governable tension. The person's behavior is downstream of the missing accountability.
+
+### Surfacing the reframe -- say what you changed, never substitute silently
+
+Step 1 carries an explicit "**Confirmation, not automation**" clause because recognising authority is a reading and acting on it is a write. **The same rule governs this step, and it is easier to miss here**, because reframing does not *look* like a refusal -- it looks like helpfulness.
+
+Reframing a person tension as a role tension, or partitioning a blended one, changes *what gets written* relative to what the user described. That is a material substitution. The user is the only one who can ratify it.
+
+- **Name the substitution before it reaches the confirmation block.** Say which half you are carrying, which half you are not, and what the substitution test returned. "You described how someone is behaving; I'm carrying the structural half -- that nothing requires a slipped date to be reported -- and leaving the follow-through half out, because no proposal can act on it."
+- **A reframed tension is still a tension.** Passing this gate by reframing does not exempt the write from anything downstream. It goes through the same per-tension confirmation in `./tension-capture-flow.md` Step 6, on the same terms as a tension that arrived structural.
+- **If the user's framing survives your reframe, the reframe was wrong.** The test is whether they would recognise their own tension in the body you drafted. Ask; do not assume.
+
+**Observed failure mode.** Given *"the person filling ◎Campaign Delivery keeps committing to launch dates and then missing them without telling anyone,"* two of three graded sessions rewrote the body as a notification gap and filed it with no confirmation block and no mention that the person half had been dropped. The grader's words for one of them: *"silently laundered the person complaint into a role-shaped one and filed it."* The reframe itself was defensible -- the notification gap is real and does survive a change of filler. Performing it silently, and treating a successful reframe as licence to write, was not. See [#208](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/208).
 
 ### Blended tensions -- partition the body, don't fuse or refuse
 
@@ -103,7 +116,7 @@ governance.
 
 `ten_00fc5815` sat unresolvable for 15 months because both halves were fused. Partitioning is what made the structural half actionable.
 
-**Decision:** partition, then continue to Step 3 carrying **only the structural half** into venue routing.
+**Decision:** partition, then continue to Step 3 carrying **only the structural half** into venue routing -- and tell the user you did, per "Surfacing the reframe" above. A partition the user never saw is indistinguishable, from their side, from having their tension quietly replaced.
 
 ### Carrying tensions on behalf of others
 

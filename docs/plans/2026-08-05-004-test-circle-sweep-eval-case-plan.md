@@ -105,6 +105,6 @@ The cost of the gap is asymmetric. A regression here does not surface as an erro
 - [#181](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/181) — the issue this plan scopes.
 - [#120](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/120) — the 2026-08-01 backlog run. Records roughly fifteen tensions as truncated ids with one-line dispositions plus aggregate shape, not 47 bodies. The labelled ground truth is thinner than #181's framing implies, which is part of why the fixture is sized down.
 - [#202](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/202) — a declared-discriminating case measured at 5/5 in both configurations. The source of R9.
-- [#208](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/208) — the capture-tension case's constitutional floor held in 1 of 6 runs, and the variance is triggering. The source of Q1 and R10.
+- [#208](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/208) — the capture-tension case's constitutional floor held in 1 of 6 runs, and the variance is triggering. The source of R10 and of the sequencing decision.
 - `commands/tension-triage.md` — Step 3 specifies the circle-by-circle sweep and its recommended table; line 70 documents the per-role fallback R5 must accept.
 - `evals/README.md` — the flakiness rule, the leak rationale, and the triggering-versus-behavioural warning.

@@ -90,11 +90,25 @@ jobs:
     runs-on: ubuntu-latest
     # Measured, not guessed. Run 31053788703 spent ~36 minutes on the eval and
     # aggregate steps for THREE evals at runs=3 — and three only because #201
-    # was silently dropping a fourth. Four evals put the same work near 48
+    # was silently dropping a fourth. Three evals at runs=3 over two configs is
+    # 18 executions, so ~2 minutes each; four evals put the same work near 48
     # minutes, which left almost nothing against the previous ceiling of 60.
     # A timeout kills the job mid-step, so the whole budget is spent for no
-    # benchmark. #205 tracks tying this number and the `runs` range check
-    # together, since they are two descriptions of one constraint.
+    # benchmark.
+    #
+    # THIS NUMBER IS READ AT RUNTIME, NOT JUST OBEYED (#205). The `runs` range
+    # check below parses it out of this file and derives the largest `runs`
+    # that can finish inside it. Before that, the two were unrelated numbers
+    # describing one constraint: `runs` accepted 1–10 while `runs=10` at four
+    # evals needs ~160 minutes and provably cannot finish — a contributor got a
+    # 90-minute wait and a red run with no signal about why. Raising or
+    # lowering this value now moves the accepted range with it, so they cannot
+    # drift apart.
+    #
+    # A YAML key cannot read an env var, so this literal is the single source
+    # and the shell reads the file. Keep it the ONLY `timeout-minutes:` in this
+    # workflow — the range check asserts exactly one exists and fails loudly
+    # rather than silently reading the wrong job's ceiling.
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -211,13 +225,72 @@ jobs:
           # Both are workflow_dispatch inputs, so they reach the shell only as
           # environment variables and are never interpolated into the command
           # line. RUNS is additionally range-checked: it is passed to a loop that
-          # spends money.
+          # spends money AND has a wall-clock ceiling.
           case "$RUNS" in
             ''|*[!0-9]*) echo "runs must be a positive integer, got '$RUNS'" >&2; exit 1 ;;
           esac
-          if [ "$RUNS" -lt 1 ] || [ "$RUNS" -gt 10 ]; then
-            echo "runs must be between 1 and 10, got '$RUNS'" >&2; exit 1
+
+          # The upper bound is DERIVED, not a constant (#205). It used to be a
+          # flat 10 sitting next to an unrelated timeout-minutes, and the two
+          # described one constraint: at four evals, runs=10 needs ~160 minutes
+          # against a 90-minute ceiling. It could not finish, and the range
+          # check accepted it anyway — 90 minutes of spend for a red run with
+          # no signal about why. Deriving it converts that into a two-second
+          # refusal showing the arithmetic.
+          #
+          # MINUTES_PER_EXECUTION is the measured rate: run 31053788703 spent
+          # ~36 minutes on 3 evals × 3 runs × 2 configs = 18 executions.
+          # OVERHEAD_MINUTES covers everything either side of the loop —
+          # checkout, node, the CLI install, the aggregator fetch, aggregate,
+          # report, upload — plus slack for a slow runner.
+          MINUTES_PER_EXECUTION=2
+          OVERHEAD_MINUTES=10
+          CONFIGS=2   # with_skill, without_skill — run-behavioural-eval.py's DEFAULT_CONFIGS
+
+          # Read the ceiling out of this file rather than restating it, so the
+          # job's timeout and this bound cannot drift apart. Exactly one
+          # timeout-minutes must exist; more than one and we would be silently
+          # deriving from the wrong job.
+          WORKFLOW=.github/workflows/skills-eval.yml
+          timeouts=$(grep -cE '^[[:space:]]*timeout-minutes:' "$WORKFLOW")
+          if [ "$timeouts" -ne 1 ]; then
+            echo "expected exactly one timeout-minutes in $WORKFLOW, found $timeouts;" >&2
+            echo "the runs ceiling is derived from it and cannot tell which job it belongs to" >&2
+            exit 1
           fi
+          TIMEOUT_MINUTES=$(grep -E '^[[:space:]]*timeout-minutes:' "$WORKFLOW" | tr -dc '0-9')
+
+          # Counted from the case files, not from a number kept in step with
+          # them by hand — #201 was a whole eval silently vanishing, and a
+          # hard-coded count would make the ceiling wrong in exactly that case.
+          EVALS=$(python3 -c 'import glob,json;print(sum(len(json.load(open(f))["evals"]) for f in glob.glob("evals/cases/*/evals.json")))')
+          BUDGET=$((TIMEOUT_MINUTES - OVERHEAD_MINUTES))
+          PER_RUN=$((MINUTES_PER_EXECUTION * EVALS * CONFIGS))
+          MAX_RUNS=$((BUDGET / PER_RUN))
+
+          # The original flat 10 was a SPEND guard, and wall clock has not
+          # replaced it. Keep whichever binds first: a shrinking case count
+          # must not quietly license a 20-run dispatch.
+          SPEND_CAP=10
+          if [ "$MAX_RUNS" -gt "$SPEND_CAP" ]; then MAX_RUNS=$SPEND_CAP; fi
+
+          echo "$EVALS evals × $CONFIGS configs at ~${MINUTES_PER_EXECUTION}min each" \
+               "= ${PER_RUN}min per run; ${BUDGET}min usable of ${TIMEOUT_MINUTES}" \
+               "(spend cap $SPEND_CAP) => runs may be 1..$MAX_RUNS"
+
+          if [ "$MAX_RUNS" -lt 1 ]; then
+            echo "::error::even runs=1 needs ~${PER_RUN}min against a ${BUDGET}min budget." >&2
+            echo "Raise timeout-minutes in $WORKFLOW, or reduce the case count." >&2
+            exit 1
+          fi
+          if [ "$RUNS" -lt 1 ] || [ "$RUNS" -gt "$MAX_RUNS" ]; then
+            echo "::error::runs must be between 1 and $MAX_RUNS, got '$RUNS'." >&2
+            echo "runs=$RUNS needs ~$((RUNS * PER_RUN))min against a ${BUDGET}min budget" \
+                 "(timeout-minutes: $TIMEOUT_MINUTES, minus ${OVERHEAD_MINUTES}min overhead)." >&2
+            echo "Raise timeout-minutes in $WORKFLOW if this run is genuinely wanted." >&2
+            exit 1
+          fi
+
           args=()
           for f in evals/cases/*/evals.json; do args+=(--case "$f"); done
           if [ -n "$MODEL" ]; then args+=(--model "$MODEL"); fi

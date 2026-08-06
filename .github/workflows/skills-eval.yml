@@ -226,9 +226,80 @@ jobs:
 
       - name: Aggregate
         if: steps.key.outputs.present == 'true'
+        # The aggregator defaults every metadata field to a literal placeholder
+        # — `<skill-name>`, `<path/to/skill>`, `<model-name>` — and run
+        # 31053788703 shipped all four (#203). A committed baseline that names
+        # no skill is untidy; one that names no MODEL is a defect, because
+        # #173's regression alarm compares a benchmark against a baseline and,
+        # without the model, cannot tell a model upgrade from a skill
+        # regression. It would misattribute the cause.
+        #
+        # `--skill-name`/`--skill-path` the aggregator accepts. The two model
+        # fields it does NOT: they are hard-coded at its line 267, with no flag,
+        # so they are stamped afterwards from what the runner observed. That is
+        # also why the value comes from run_metadata.json rather than from the
+        # `model` dispatch input — the input is blank on a default-model run,
+        # which is precisely the run whose model a reader cannot otherwise name.
         run: |
           set -euo pipefail
-          python3 "$AGGREGATOR" "$RUNNER_TEMP/benchmark"
+          # Derived from the plugin manifest rather than hard-coded, so a rename
+          # cannot leave the baseline describing something that no longer exists.
+          SKILL_NAME=$(python3 -c \
+            'import json;print(json.load(open(".claude-plugin/plugin.json"))["name"])')
+          python3 "$AGGREGATOR" "$RUNNER_TEMP/benchmark" \
+            --skill-name "$SKILL_NAME" --skill-path "$GITHUB_REPOSITORY"
+          python3 - <<'PY'
+          import importlib.util, json, os, pathlib
+          bench = pathlib.Path(os.environ["RUNNER_TEMP"], "benchmark")
+          data = json.loads((bench / "benchmark.json").read_text())
+          run_meta = json.loads((bench / "run_metadata.json").read_text())
+          meta = data["metadata"]
+
+          def stamp(field, names):
+              # None, never a placeholder or a guess, when nothing was observed.
+              # A null says "unknown" to #173's alarm, which is true and
+              # actionable; "<model-name>" says nothing while looking like data.
+              if not names:
+                  print(f"::warning::no {field} could be read off the event "
+                        "streams; recording null")
+                  meta[field] = None
+              else:
+                  # Joined rather than truncated: a benchmark that spanned two
+                  # models must say so instead of picking one.
+                  meta[field] = ", ".join(names)
+                  if len(names) > 1:
+                      print(f"::warning::{field} varied across this run: {meta[field]}")
+
+          stamp("executor_model", run_meta.get("executor_models") or [])
+          stamp("analyzer_model", run_meta.get("analyzer_models") or [])
+
+          # The aggregator hard-codes this to 3 regardless of what ran, so a
+          # runs=1 dispatch would otherwise produce a benchmark claiming 3.
+          meta["runs_per_configuration"] = run_meta["runs_per_config"]
+          meta["model_requested"] = run_meta.get("model") or None
+
+          (bench / "benchmark.json").write_text(json.dumps(data, indent=2))
+
+          # benchmark.md is rendered FROM this metadata, so stamping the JSON
+          # alone would leave the human-readable half reading "**Model**:
+          # <model-name>" — the artifact a person opens first. Re-rendered
+          # through the aggregator's own function rather than a string
+          # substitution, so the two files cannot drift.
+          spec = importlib.util.spec_from_file_location(
+              "aggregate_benchmark", os.environ["AGGREGATOR"])
+          agg = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(agg)
+          (bench / "benchmark.md").write_text(agg.generate_markdown(data))
+
+          placeholders = sorted(
+              k for k, v in meta.items()
+              if isinstance(v, str) and v.startswith("<") and v.endswith(">"))
+          if placeholders:
+              raise SystemExit(
+                  "benchmark.json still carries placeholder metadata: "
+                  + ", ".join(placeholders))
+          print("benchmark metadata:", json.dumps(meta, indent=2))
+          PY
           cp "$RUNNER_TEMP/benchmark/benchmark.json" "$RUNNER_TEMP/benchmark-current.json"
 
       - name: Report against the committed baseline

@@ -335,6 +335,42 @@ def usage_tokens(events: list) -> int:
     return 0
 
 
+def observed_model(events: list) -> str | None:
+    """Which model actually answered, read off the stream rather than requested.
+
+    `--model` is a workflow_dispatch input that is usually BLANK, meaning "the
+    CLI default". Recording the request therefore records an empty string on
+    exactly the runs a reader most needs to identify, and a benchmark that
+    cannot name its model makes a model upgrade indistinguishable from a skill
+    regression -- which is what #173's alarm would then misattribute (#203).
+
+    Three independent places in a real stream carry it. They are tried in order
+    of how directly they report what the API actually billed:
+
+      1. the result event's `modelUsage`, keyed by model name
+      2. an assistant event's `message.model`
+      3. the system init event's `model`
+
+    Returns None when none of them is present, and the caller records that as
+    JSON null. An unresolvable model must stay legibly absent: substituting a
+    guess is the same defect as the `<model-name>` placeholder, one layer down.
+    """
+    for event in reversed(events):
+        if event.get("type") == "result":
+            for name in (event.get("modelUsage") or {}):
+                if name:
+                    return str(name)
+    for event in events:
+        if event.get("type") == "assistant":
+            name = (event.get("message") or {}).get("model")
+            if name:
+                return str(name)
+    for event in events:
+        if event.get("type") == "system" and event.get("model"):
+            return str(event["model"])
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Mechanical checks over the write log
 # ---------------------------------------------------------------------------
@@ -477,9 +513,16 @@ Return one entry per expectation, in the order given.
 
 
 def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
-                 ground_truth: str, model: str | None, timeout: int) -> list[dict]:
+                 ground_truth: str, model: str | None,
+                 timeout: int) -> tuple[list[dict], str | None]:
+    """Returns (verdicts, the model that actually graded them).
+
+    The analyzer model is reported separately from the executor's because they
+    are separately substitutable -- `--model` sets both today, but a benchmark
+    that names only one cannot say which half of a delta moved.
+    """
     if not assertions:
-        return []
+        return [], None
 
     prompt = GRADER_PROMPT.format(
         ground_truth=ground_truth or "(none recorded)",
@@ -511,8 +554,14 @@ def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
             KeyError, TypeError) as exc:
         # A grader that cannot be reached must not silently pass the run. Every
         # judged assertion fails with the reason attached.
-        return [{"text": a["text"], "passed": False,
-                 "evidence": f"grader unavailable: {exc}"} for a in assertions]
+        return ([{"text": a["text"], "passed": False,
+                  "evidence": f"grader unavailable: {exc}"} for a in assertions],
+                None)
+
+    # `--output-format json` emits the result object itself rather than a
+    # stream, so it is handed to observed_model as a one-event stream.
+    analyzer = observed_model([dict(payload, type="result")]) \
+        if isinstance(payload, dict) else None
 
     out = []
     for i, assertion in enumerate(assertions):
@@ -522,7 +571,7 @@ def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
             "passed": bool(entry.get("passed", False)),
             "evidence": str(entry.get("evidence", "grader returned no entry for this expectation")),
         })
-    return out
+    return out, analyzer
 
 
 # ---------------------------------------------------------------------------
@@ -565,13 +614,14 @@ def run_once(case: dict, config: str, run_dir: Path, model: str | None,
         else:
             judged_specs.append(assertion)
 
+    analyzer_model = None
     if outcome["error"]:
         judged = [{"text": a["text"], "passed": False,
                    "evidence": f"not graded — the run did not execute: {outcome['error']}"}
                   for a in judged_specs]
     elif grade:
-        judged = grade_judged(judged_specs, transcript, writes,
-                              case.get("ground_truth", ""), model, timeout)
+        judged, analyzer_model = grade_judged(judged_specs, transcript, writes,
+                                              case.get("ground_truth", ""), model, timeout)
     else:
         judged = [{"text": a["text"], "passed": False,
                    "evidence": "grading disabled (--no-grade)"} for a in judged_specs]
@@ -595,6 +645,19 @@ def run_once(case: dict, config: str, run_dir: Path, model: str | None,
     grading = {
         "eval_name": case["eval_name"],
         "config": config,
+        # What actually answered, not what was asked for. `model` below is the
+        # request and is null on every default-model run; these two are read off
+        # the streams. Recorded per run rather than only in the manifest so a
+        # single run's grading.json stays self-describing when it is read alone.
+        # Derived from the events rather than returned by execute(), because
+        # execute() has six exit paths and three of them carry a real event
+        # stream: a session that errored, or made no tool calls, still ran a
+        # model, and a failed run is exactly when knowing which one matters.
+        "models": {
+            "requested": model,
+            "executor": observed_model(outcome["events"]),
+            "analyzer": analyzer_model,
+        },
         "expectations": expectations,
         "summary": {
             "passed": passed,
@@ -656,6 +719,11 @@ def main() -> int:
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
     out_root = Path(args.out)
     failures = 0
+    # Sets, not single values. One benchmark spanning two models is a real
+    # condition -- a mid-run default change, or a fallback -- and collapsing it
+    # to one name would hide exactly the thing the recording exists to expose.
+    executors: set[str] = set()
+    analyzers: set[str] = set()
 
     for case_path in args.case:
         doc = load_case_file(Path(case_path))
@@ -709,6 +777,11 @@ def main() -> int:
                     run_dir.mkdir(parents=True)
                     grading = run_once(case, config, run_dir, args.model,
                                        args.timeout, not args.no_grade)
+                    for which, seen in (("executor", executors),
+                                        ("analyzer", analyzers)):
+                        name = grading["models"].get(which)
+                        if name:
+                            seen.add(name)
                     summary = grading["summary"]
                     note = f"  [{grading['execution_error']}]" if grading["execution_error"] else ""
                     print(f"{case['eval_name']} / {config} / run-{run}: "
@@ -720,7 +793,15 @@ def main() -> int:
             "cases": args.case,
             "configs": configs,
             "runs_per_config": args.runs,
+            # `model` is what was ASKED for and is null on every run that took
+            # the CLI default, which is most of them. The two lists below are
+            # what actually answered, read off the event streams. The Aggregate
+            # step in skills-eval.yml stamps them into benchmark.json, where
+            # aggregate_benchmark.py otherwise writes the literal string
+            # "<model-name>" and has no flag to override it (#203).
             "model": args.model,
+            "executor_models": sorted(executors),
+            "analyzer_models": sorted(analyzers),
             "graded": not args.no_grade,
         }, indent=2))
 

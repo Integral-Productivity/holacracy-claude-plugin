@@ -63,6 +63,12 @@ argv = sys.argv[1:]
 def opt(name):
     return argv[argv.index(name) + 1] if name in argv else None
 
+# Deliberately NOT whatever --model asked for. The runner must record what
+# answered, not what was requested, and identical strings would let a runner
+# that echoed the request pass § 10.
+EXECUTOR_MODEL = "fake-executor-model"
+ANALYZER_MODEL = "fake-analyzer-model"
+
 if os.environ.get("FAKE_CLAUDE_DIE"):
     sys.stderr.write("simulated executor failure\n")
     sys.exit(3)
@@ -84,7 +90,9 @@ if "--json-schema" in argv:
         sys.exit(4)
     plan = json.load(open(os.environ["FAKE_PLAN"]))
     verdicts = plan.get("grader", [])
-    print(json.dumps({"type": "result", "result": json.dumps({"expectations": verdicts})}))
+    print(json.dumps({"type": "result",
+                      "modelUsage": {ANALYZER_MODEL: {"inputTokens": 10}},
+                      "result": json.dumps({"expectations": verdicts})}))
     sys.exit(0)
 
 plan = json.load(open(os.environ["FAKE_PLAN"]))
@@ -118,11 +126,13 @@ for i, call in enumerate(leg.get("calls", []), start=2):
 proc.stdin.close()
 proc.wait(timeout=10)
 
-print(json.dumps({"type": "assistant", "message": {"content": content}}))
+print(json.dumps({"type": "assistant",
+                  "message": {"model": EXECUTOR_MODEL, "content": content}}))
 if results:
     print(json.dumps({"type": "user", "message": {"content": results}}))
 print(json.dumps({"type": "result", "is_error": False,
                   "result": leg.get("final", "done"),
+                  "modelUsage": {EXECUTOR_MODEL: {"inputTokens": 100}},
                   "usage": {"input_tokens": 100, "output_tokens": 200}}))
 PY
 chmod +x "$TMP/fake-claude.py"
@@ -588,6 +598,78 @@ FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" 
 mut_dirs="$(find "$TMP/out-collide-mut" -maxdepth 1 -type d -name 'eval-*' | wc -l | tr -d ' ')"
 [ "$mut_dirs" = "1" ] \
   || fail "the flat-key mutant produced $mut_dirs eval dirs; expected 1 collided dir, so this case no longer proves the fix is load-bearing"
+pass
+
+# ---------------------------------------------------------------------------
+# 9. The model recorded is the one that ANSWERED, not the one requested.
+# ---------------------------------------------------------------------------
+# `--model` is a workflow_dispatch input and is blank on most runs, meaning
+# "the CLI default". Recording the request therefore records nothing on exactly
+# the runs whose model a reader most needs to name — and run 31053788703
+# shipped a benchmark whose executor_model was the literal string
+# "<model-name>" (#203). Without it, #173's regression alarm cannot tell a
+# model upgrade from a skill regression: it would misattribute the cause.
+#
+# The fake reports models that deliberately differ from what --model asks for,
+# so "observed" and "requested" cannot be confused by coincidence.
+mkdir -p "$TMP/case-model"
+cat > "$TMP/case-model/evals.json" <<EOF
+{ "evals": [ { "eval_id": 0, "eval_name": "judged", "fixture": "$FIXTURE",
+  "prompt": "p", "ground_truth": "g",
+  "assertions": [ { "text": "a judged claim", "discriminating": true } ] } ] }
+EOF
+cat > "$TMP/plan-model.json" <<EOF
+{ "with_skill": { "calls": [
+    { "tool": "glassfrog_create_tension",
+      "args": { "role_id": "$SEC_ROLE", "body": "any write at all" } } ] },
+  "grader": [ { "passed": true, "evidence": "fixture" } ] }
+EOF
+
+record_models() {  # $1 = runner path, $2 = out dir
+  rm -rf "$2"
+  FAKE_PLAN="$TMP/plan-model.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+    python3 "$1" --case "$TMP/case-model/evals.json" --out "$2" \
+      --configs with_skill --model requested-model-not-used >/dev/null 2>&1
+}
+
+record_models "$RUNNER" "$TMP/out-model"
+python3 -c "
+import json
+g=json.load(open('$TMP/out-model/eval-case-model-0/with_skill/run-1/grading.json'))
+m=g['models']
+assert m['requested']=='requested-model-not-used', m
+assert m['executor']=='fake-executor-model', m
+assert m['analyzer']=='fake-analyzer-model', m
+r=json.load(open('$TMP/out-model/run_metadata.json'))
+assert r['executor_models']==['fake-executor-model'], r
+assert r['analyzer_models']==['fake-analyzer-model'], r
+assert r['model']=='requested-model-not-used', r
+" || fail "the runner did not record the models that actually answered"
+pass
+
+# Mutation: record the REQUESTED model instead of the observed one. This is the
+# defect the assertion above exists to catch, and it is invisible on any run
+# where --model happens to be set to what actually answers -- which is why the
+# fake reports a different name. Nothing else in this suite touches the models
+# block, so without this case the recording could regress to echoing the
+# request and every other section would stay green.
+mkdir -p "$TMP/mut-model/scripts"
+ln -s "$REPO/evals" "$TMP/mut-model/evals"
+python3 - "$RUNNER" "$TMP/mut-model/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace('"executor": observed_model(outcome["events"]),',
+                       '"executor": model,')
+assert mutated != text, "mutation target not found: the executor model recording moved"
+dst.write_text(mutated)
+PY
+record_models "$TMP/mut-model/scripts/run-behavioural-eval.py" "$TMP/out-model-mut"
+python3 -c "
+import json
+g=json.load(open('$TMP/out-model-mut/eval-case-model-0/with_skill/run-1/grading.json'))
+assert g['models']['executor']=='requested-model-not-used', g['models']
+" || fail "the request-echoing mutant did not reproduce the defect, so § 9 no longer proves the recording reads the stream"
 pass
 
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

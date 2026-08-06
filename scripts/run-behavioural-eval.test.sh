@@ -185,7 +185,7 @@ verdicts() {  # $1 = plan json path, $2 = out dir, rest = extra runner args
       --configs with_skill "$@" >/dev/null 2>&1
   python3 -c "
 import json,sys
-g=json.load(open('$out/eval-0/with_skill/run-1/grading.json'))
+g=json.load(open('$out/eval-case-0/with_skill/run-1/grading.json'))
 for e in g['expectations']: print(f\"{e['text']}={e['passed']}\")"
 }
 
@@ -218,7 +218,7 @@ pass
 # Writes really travelled through the stub, not around it.
 python3 -c "
 import json
-rows=[json.loads(l) for l in open('$TMP/out-clean/eval-0/with_skill/run-1/outputs/writes.jsonl')]
+rows=[json.loads(l) for l in open('$TMP/out-clean/eval-case-0/with_skill/run-1/outputs/writes.jsonl')]
 assert [r['seq'] for r in rows]==[1,2], rows
 assert rows[0]['tool']=='glassfrog_create_tension', rows[0]
 " || fail "the fake executor did not drive the real stub"
@@ -358,7 +358,7 @@ FAKE_PLAN="$TMP/plan-clean.json" FAKE_GRADER_DIE=1 \
     --configs with_skill >/dev/null 2>&1
 python3 -c "
 import json
-g=json.load(open('$TMP/out-nograder/eval-0/with_skill/run-1/grading.json'))
+g=json.load(open('$TMP/out-nograder/eval-case-judged-0/with_skill/run-1/grading.json'))
 e=g['expectations'][0]
 assert e['passed'] is False, e
 assert 'grader unavailable' in e['evidence'], e
@@ -375,7 +375,7 @@ FAKE_PLAN="$TMP/plan-clean.json" FAKE_CLAUDE_DIE=1 \
     --configs with_skill --no-grade >/dev/null 2>&1
 python3 -c "
 import json
-g=json.load(open('$TMP/out-dead/eval-0/with_skill/run-1/grading.json'))
+g=json.load(open('$TMP/out-dead/eval-case-0/with_skill/run-1/grading.json'))
 assert g['execution_error'], g
 assert g['summary']['pass_rate']==0.0, g['summary']
 assert all('did not execute' in e['evidence'] for e in g['expectations']), g['expectations']
@@ -394,7 +394,7 @@ FAKE_PLAN="$TMP/plan-clean.json" FAKE_CLAUDE_AUTH_FAIL=1 \
     --configs with_skill --no-grade >/dev/null 2>&1
 python3 -c "
 import json
-g=json.load(open('$TMP/out-auth/eval-0/with_skill/run-1/grading.json'))
+g=json.load(open('$TMP/out-auth/eval-case-0/with_skill/run-1/grading.json'))
 assert g['execution_error'], 'an is_error result event was not treated as a failure'
 assert 'Not logged in' in g['execution_error'], g['execution_error']
 assert 'ANTHROPIC_API_KEY' in g['execution_error'], \
@@ -414,7 +414,7 @@ FAKE_PLAN="$TMP/plan-no-calls.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claud
     --configs with_skill --no-grade >/dev/null 2>&1
 python3 -c "
 import json
-g=json.load(open('$TMP/out-nocalls/eval-0/with_skill/run-1/grading.json'))
+g=json.load(open('$TMP/out-nocalls/eval-case-0/with_skill/run-1/grading.json'))
 assert g['execution_error'], 'a run with zero tool calls was treated as valid'
 assert 'no tool calls' in g['execution_error'], g['execution_error']
 assert g['summary']['pass_rate']==0.0, g['summary']
@@ -509,7 +509,7 @@ pass
 python3 -c "
 import json, pathlib
 root = pathlib.Path('$TMP/out-clean')
-eval_dir = root / 'eval-0'
+eval_dir = root / 'eval-case-0'
 assert (eval_dir / 'eval_metadata.json').exists()
 assert json.loads((eval_dir / 'eval_metadata.json').read_text())['eval_id'] == 0
 run = eval_dir / 'with_skill' / 'run-1'
@@ -529,10 +529,65 @@ pass
 # The transcript has to carry tool calls with their arguments, because the
 # grader reads it. A transcript of assistant prose alone would let "which tool
 # was called with what" be graded on the model's own account of what it did.
-grep -q "glassfrog_create_tension" "$TMP/out-clean/eval-0/with_skill/run-1/outputs/transcript.md" \
+grep -q "glassfrog_create_tension" "$TMP/out-clean/eval-case-0/with_skill/run-1/outputs/transcript.md" \
   || fail "the transcript did not record the tool calls the grader needs"
-grep -q "$SEC_ROLE" "$TMP/out-clean/eval-0/with_skill/run-1/outputs/transcript.md" \
+grep -q "$SEC_ROLE" "$TMP/out-clean/eval-case-0/with_skill/run-1/outputs/transcript.md" \
   || fail "the transcript recorded a tool call without its arguments"
+pass
+
+
+# ---------------------------------------------------------------------------
+# 8. Two case files sharing an eval_id do not collide.
+# ---------------------------------------------------------------------------
+# `eval_id` is unique only WITHIN a case file, and every file numbers from 0.
+# Keyed on it alone, the second suite's eval 0 overwrote the first's and a
+# whole surface vanished from a green benchmark that reported the remainder as
+# the complete suite (#201).
+#
+# The mutation half carries more weight here than usual: the defect is SILENT.
+# The run succeeds, the aggregate is plausible, and nothing errors. An
+# assertion that only checked "the run exited 0" would have passed throughout
+# the entire period the bug was live.
+write_case "$TMP/suite-a/evals.json"
+write_case "$TMP/suite-b/evals.json"
+rm -rf "$TMP/out-collide"
+FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/suite-a/evals.json" --case "$TMP/suite-b/evals.json" \
+    --out "$TMP/out-collide" --configs with_skill --no-grade >/dev/null 2>&1
+# Spelled as an explicit `if` rather than `A && B || fail`: that form is not
+# if-then-else (shellcheck SC2015 — the fail arm also runs when A holds and B
+# does not), and shellcheck 0.9.0 on the CI image rejects it at info severity
+# while 0.11.0 locally does not.
+if [ ! -f "$TMP/out-collide/eval-suite-a-0/with_skill/run-1/grading.json" ] \
+   || [ ! -f "$TMP/out-collide/eval-suite-b-0/with_skill/run-1/grading.json" ]; then
+  fail "two case files sharing eval_id 0 did not both produce results"
+fi
+pass
+
+# Mutation: revert to the flat eval-<id> key and the collision must return,
+# proving the suite qualifier is what prevents it rather than some incidental
+# property of the run. The runner resolves REPO from its own location and
+# fixtures relative to it, so the mutant needs a shadow root with evals/.
+mkdir -p "$TMP/mut/scripts"
+ln -s "$REPO/evals" "$TMP/mut/evals"
+python3 - "$RUNNER" "$TMP/mut/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace("eval-{suite}-{", "eval-{")
+# If the fix is refactored, this mutation stops reproducing the defect and the
+# case below would pass while testing nothing. Fail loudly instead.
+assert mutated != text, "mutation target not found: the eval dir naming moved"
+dst.write_text(mutated)
+PY
+rm -rf "$TMP/out-collide-mut"
+FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$TMP/mut/scripts/run-behavioural-eval.py" \
+    --case "$TMP/suite-a/evals.json" --case "$TMP/suite-b/evals.json" \
+    --out "$TMP/out-collide-mut" --configs with_skill --no-grade >/dev/null 2>&1
+mut_dirs="$(find "$TMP/out-collide-mut" -maxdepth 1 -type d -name 'eval-*' | wc -l | tr -d ' ')"
+[ "$mut_dirs" = "1" ] \
+  || fail "the flat-key mutant produced $mut_dirs eval dirs; expected 1 collided dir, so this case no longer proves the fix is load-bearing"
 pass
 
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

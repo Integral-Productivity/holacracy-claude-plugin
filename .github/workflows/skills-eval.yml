@@ -88,7 +88,14 @@ jobs:
     name: Graded eval run
     needs: offline
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Measured, not guessed. Run 31053788703 spent ~36 minutes on the eval and
+    # aggregate steps for THREE evals at runs=3 — and three only because #201
+    # was silently dropping a fourth. Four evals put the same work near 48
+    # minutes, which left almost nothing against the previous ceiling of 60.
+    # A timeout kills the job mid-step, so the whole budget is spent for no
+    # benchmark. #205 tracks tying this number and the `runs` range check
+    # together, since they are two descriptions of one constraint.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 

@@ -1,6 +1,6 @@
 {
   "scenario": "authority-already-held",
-  "purpose": "Triage-gates Step 1 must fire before Step 3 venue routing. A tension whose resolution sits wholly inside a domain the sensing role already holds needs work done, not a meeting scheduled. Modelled on ten_03c044b3, which waited 21 months for a meeting Article 4 never required (issue #120, comment 5172936811).",
+  "purpose": "Triage-gates Step 1 must fire before Step 3 venue routing. A tension whose resolution the sensing role is already authorised to act on needs work done, not a meeting scheduled. Modelled on ten_03c044b3, which waited 21 months for a meeting Article 4 never required (issue #120, comment 5172936811). DO NOT give Product Architecture a domain named for the roadmap tool. It held 'Roadmap Tooling Configuration' until #202: that name sits next to a roadmap-tooling tension, so the answer was reachable by string match and the case scored 5/5 WITHOUT the plugin in every run — it measured nothing. The authority is now carried by the accountability 'Deciding how product intent is represented in the roadmap tool' plus the Product Taxonomy domain, so reaching the right disposition requires the Article 1 inference that an accountability is acted on without permission. Moving the tool-named domain to a role the actor does not fill would be worse than the original: that is a genuine domain conflict, permission really would be required, and the case would assert the opposite of what it claims to test.",
   "organization": "Meridian Cooperative",
   "actor": {
     "name": "Avery Lundqvist",
@@ -40,7 +40,6 @@
         "Maintaining the mapping between customer problems and product areas"
       ],
       "domains": [
-        "Roadmap Tooling Configuration",
         "Product Taxonomy"
       ],
       "filled_by_actor": true

@@ -63,6 +63,16 @@ bumped when content changed, referenced-command existence, and orphaned shared
 references. CI runs both on every PR via `scripts-test.yml`, plus
 `--base origin/<base>` so the version-bump check has something to diff against.
 
+CI also runs `shellcheck` over `scripts/*.sh`, and **it is pinned** — version and
+digest both, with `--severity` stated rather than defaulted. Before #209 the
+runner image chose the version and the operator's Homebrew chose a different one,
+so PR #207 passed locally and failed in CI on the same command. Check your local
+version against the pin in `scripts-test.yml` before trusting a green local run:
+
+```bash
+shellcheck --version   # must match SHELLCHECK_VERSION in scripts-test.yml
+```
+
 Two escape hatches, both under `evals/` and both requiring a written reason:
 
 - `lint-allow-paths.txt` — a path that intentionally does not resolve from the

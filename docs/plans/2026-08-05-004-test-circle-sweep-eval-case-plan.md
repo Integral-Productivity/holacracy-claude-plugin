@@ -16,7 +16,7 @@ issue: 181
 
 - **Objective:** A behavioural eval case proving `/holacracy:tension-triage` sweeps circle by circle and loses nothing, against a fixture sized so a root-only sweep provably misses more than half the backlog.
 - **Product authority:** Kraig Parkinson (founder). Three design decisions settled by picker on 2026-08-05 (see Key Decisions).
-- **Open blockers:** One, and it is real. The suite's measured stddev is 0.332 (`with_skill`) and 0.410 (`without_skill`), both past the 0.2 bar, and [#208](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/208) traces the source to inconsistent surface engagement rather than behaviour. This case is the most triggering-exposed of any yet written — its central claim is that the surface engaged and swept — so building it before [#172](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/172) lands adds a fifth case whose failures are ambiguous by construction. See Outstanding Questions Q1.
+- **Open blockers:** None. The sequencing is settled (see Key Decisions): the fixture and both check kinds are built now, and the case's entry into the graded suite waits on [#172](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/172).
 
 ## Product Contract
 
@@ -37,6 +37,7 @@ The cost of the gap is asymmetric. A regression here does not surface as an erro
 - **Size the fixture for the smallest org that makes the loss stark, not for the real run's headcount.** (session-settled: user-directed — chosen over reproducing 47 tensions across 18 circles: hand-authoring every body is the only way the not-filler bar is met, and a fixture mirroring an 80-role org edges into structural resemblance the leak guard cannot see.) *Governs R1, R2, R4.*
 - **Assert mechanism and outcome separately.** (session-settled: user-directed — chosen over either alone: a run can sweep every circle correctly and still drop tensions from its own summary, which is the more realistic regression.) *Governs R5, R6.*
 - **Compose bodies from the four shipped scenarios, then author the remainder.** (session-settled: user-directed — chosen over deliberately unremarkable bodies, one-per-disposition-class, and generated bulk: seven bodies already exist at the required standard.) *Governs R3.*
+- **Build the offline half now; hold the graded entry until #172.** (session-settled: user-directed — chosen over holding the issue entirely, shipping it all now, or fixing #172 first: the fixture and check kinds do not depend on triggering, while the case's score does.) The suite's measured stddev is 0.332 (`with_skill`) and 0.410 (`without_skill`), and [#208](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/208) traces it to inconsistent surface engagement rather than behaviour. A case whose central claim is that the surface engaged and swept cannot separate the two. *Governs R10.*
 - **Discriminating-ness is measured before the case is trusted, never declared.** [#202](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/202) measured a sibling case at 5/5 in both configurations while four of its assertions declared `discriminating: true`. The harness enforces that the field is present, not that it is true. *Governs R9, R10.*
 
 ### Requirements
@@ -58,7 +59,7 @@ The cost of the gap is asymmetric. A regression here does not surface as an erro
 **Trust in the result**
 
 - R9. Every assertion the case declares `discriminating: true` is demonstrated so by measurement — a with/without delta above zero across runs — before the case is treated as covering anything. An assertion measurement falsifies is cut or reclassified with a `why_kept`, per the rule `evals/README.md` already states.
-- R10. The case does not enter the committed baseline in `evals/benchmark.json` until its own pass-rate stddev is below 0.2. A flaky case in a baseline makes [#173](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/173)'s alarm fire on noise, and an alarm that fires on noise gets muted.
+- R10. The case ships offline-verified first — authored, fixture generated, both check kinds mutation-tested — with no entry in the graded suite. It joins a graded run only after #172 reports on triggering, and enters the committed baseline in `evals/benchmark.json` only once its own pass-rate stddev is below 0.2. A flaky case in a baseline makes [#173](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/173)'s alarm fire on noise, and an alarm that fires on noise gets muted.
 
 **Verification discipline**
 
@@ -82,6 +83,7 @@ The cost of the gap is asymmetric. A regression here does not surface as an erro
 - Reproducing the real run's 47 tensions across 18 circles.
 - Extending the scenario schema so counts can be declared and bodies generated.
 - Making the fixture a one-per-disposition-class corpus for future cases to draw on.
+- The case's entry into the graded suite and the nightly workflow, until #172 reports. The fixture and both check kinds are in scope now; the score is not (R10).
 - Repairing the triggering variance itself — that is #172, and this plan depends on it rather than absorbing it.
 - Any change to `evals/stub/glassfrog_stub.py`. Its non-recursive traversal is the thing under test and is already asserted by `scripts/evals-harness.test.sh` § 4a.
 
@@ -92,10 +94,6 @@ The cost of the gap is asymmetric. A regression here does not surface as an erro
 - **Assumes the graded tier's timeout has headroom.** A fourth eval already pushed the run near 48 minutes against a 90-minute ceiling; a fifth adds to that. [#205](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/205) tracks tying the timeout and the `runs` range check together.
 
 ### Outstanding Questions
-
-**Resolve Before Planning**
-
-- Q1. Does this case land before, alongside, or after #172? Building it now adds a fifth case to a suite whose variance already blocks [#183](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/183)'s baseline, and this case is the most triggering-exposed of the five. The alternative is to build the fixture and the two check kinds now — both offline-testable and neither dependent on triggering — and hold the case's entry into the graded suite until #172 reports.
 
 **Deferred to Planning**
 

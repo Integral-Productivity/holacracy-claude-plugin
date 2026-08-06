@@ -105,17 +105,44 @@ Three things about the runner are worth knowing before you change it:
 
 - **A run that did not really happen must fail every assertion, not pass the
   negative ones.** An empty write log contains no forbidden write, so
-  `no_write_of` passes on a session that never ran. Three conditions are treated
+  `no_write_of` passes on a session that never ran. Five conditions are treated
   as execution failures for exactly this reason: the executor did not start, the
-  result event carried `is_error`, or the model made no tool calls at all. Two of
-  those were live defects — the second was found by the first real run, where
-  `--bare` refused an OAuth login and the eval scored green on the safeguard it
-  was meant to be testing.
-- **`--bare`, `--plugin-dir` and `--strict-mcp-config` are load-bearing, not
-  tidying.** `--plugin-dir` is the only route by which the plugin enters the
-  session, which is what makes `without_skill` a real absence rather than a hope.
+  result event carried `is_error`, the session had the wrong *shape*, a control
+  leg reached the checkout on disk, or the model made no tool calls at all. Four
+  of the five were live defects, not hypotheticals.
+- **The session's shape is checked, not assumed.** Read off the `system/init`
+  event: the session must offer a `Skill` tool, `with_skill` must have at least
+  one `holacracy:` command registered, and the control must have none. Before
+  [#226](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/226)
+  the harness could not tell "the plugin did not load" from "the plugin loaded
+  and changed nothing" — both produce a healthy transcript and a scoreable
+  grading — and four graded runs reported deltas between two configurations that
+  were both the base model.
+- **`--bare` is gone, and must not come back.** It bought hermeticity in one flag
+  and clamped the built-in tool set to `Bash, Edit, Read`. There is no `Skill`
+  tool in that set, so no skill could be invoked in either leg, whatever
+  `--plugin-dir` loaded; `--tools default` does not undo it. Hermeticity now comes
+  from `CLAUDE_CONFIG_DIR` pointed at an empty per-run directory, a cwd outside
+  this checkout, and a withheld `Bash`/`Glob`/`Grep`/`Write`. One consequence is
+  deliberate: the plugin's own SessionStart hook is now live in `with_skill`, so
+  read a delta as *what installing this plugin does*, not *what a skill's prose
+  does*.
+- **`--plugin-dir` and `--strict-mcp-config` are load-bearing, not tidying.**
+  `--plugin-dir` is the only route by which the plugin enters the session —
+  a claim the `--validate-only` preflight now checks rather than asserts.
   `--strict-mcp-config` is what stops the plugin's own `.mcp.json` — which points
   at the **production** GlassFrog connector — from loading alongside the stub.
+- **The cheapest tier is a session that never authenticates.** The CLI emits its
+  `system/init` event *before* it checks credentials, so `--validate-only` starts
+  a real session per config, reads the tool list and the registered commands, and
+  kills it. No API key, no model turn, no cost. Every fact needed to spot #226 was
+  available this way from the first day; it took four paid runs and an artifact
+  download instead. Run it before you touch the runner:
+
+  ```bash
+  python3 scripts/run-behavioural-eval.py --out /tmp/probe --validate-only \
+    --case evals/cases/tension-triage/evals.json
+  ```
 - **Ordering claims are checked in Python, not judged.** "Successor before
   archive" and "no write without confirmation" are read off the stub's write log.
   Deterministic, free, and the cheapest available reduction in the variance that

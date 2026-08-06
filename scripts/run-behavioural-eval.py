@@ -32,20 +32,53 @@ simulation of it.
 HERMETIC BY CONSTRUCTION
 ------------------------
 The `with_skill` / `without_skill` delta is worthless if the operator's own
-globally-installed copy of this plugin leaks into the `without_skill` leg. Three
-flags close that off, and all three are load-bearing:
+globally-installed copy of this plugin leaks into the `without_skill` leg. Four
+things close that off, and all four are load-bearing:
 
-    --bare                  no CLAUDE.md discovery, no hooks, no auto-memory, no
-                            plugin sync; context comes only from what is passed
-    --plugin-dir <repo>     the ONLY way the plugin enters the session, so
-                            omitting it is a real absence rather than a hope
-    --strict-mcp-config     the stub is the only MCP server; the plugin's own
-                            .mcp.json (which points at the live production
-                            connector) is ignored
+    CLAUDE_CONFIG_DIR=<empty>  a fresh empty directory per run, so no installed
+                               plugin, user setting, hook or memory is visible
+    cwd=<sandbox>              a temp directory OUTSIDE this checkout, so
+                               CLAUDE.md auto-discovery finds nothing to walk up to
+    --plugin-dir <repo>        the only route by which the plugin enters the
+                               session, given the three neighbours above
+    --strict-mcp-config        the stub is the only MCP server; the plugin's own
+                               .mcp.json (which points at the live production
+                               connector) is ignored
 
 Without `--strict-mcp-config` an eval could reach the real GlassFrog. That is not
 a performance concern; it is the reason evals do not run against the live org at
 all (see evals/README.md).
+
+WHY NOT `--bare`, WHICH THIS USED TO PASS
+-----------------------------------------
+`--bare` bought the hermeticity above in one flag, and it also collapsed the
+built-in tool set to `Bash, Edit, Read`. **There is no `Skill` tool in that set**,
+so no skill could ever be invoked, in either configuration, whatever
+`--plugin-dir` loaded. Graded run 31058151548 recorded zero `Skill` invocations
+across all three `with_skill` runs; the one run that scored reached the shared
+spec by `find /` and `cat` instead, because `Bash` was the only instrument it had
+(#226). `--tools default` does not undo it — under `--bare` the set is clamped
+regardless. Every with/without delta produced before this change was two runs of
+the base model.
+
+`--bare` also skipped the plugin's own SessionStart hook. It is now live in
+`with_skill`, and that is deliberate: the eval measures the plugin as a user
+installs it, hook included. Read a with/without delta as "what installing this
+plugin does", not "what a skill's prose does".
+
+WHAT THE CONTROL CAN AND CANNOT REACH
+-------------------------------------
+`without_skill` used to be reachable anyway: the checkout sits at a discoverable
+absolute path on the same disk in both configurations, and a `find /` gets to it.
+`EVAL_TOOLS` therefore withholds `Bash`, `Glob`, `Grep` and `Write`, and
+`contamination_error` fails any control run whose visible tool calls name the
+checkout.
+
+That is a reduction, not a proof. `Task` is offered — `/holacracy:capture-tension`
+dispatches a subagent and withholding it would measure a crippled plugin — and a
+subagent's own tool calls do not surface in the parent event stream, so a control
+run that delegated a filesystem search would not be caught. Stated rather than
+papered over: an unverifiable claim in this docstring is what let #226 sit.
 
 MECHANICAL VERSUS JUDGED ASSERTIONS
 -----------------------------------
@@ -71,15 +104,30 @@ import argparse
 import json
 import os
 import re
+import select
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 STUB = REPO / "evals" / "stub" / "glassfrog_stub.py"
+
+# The namespace every command and skill this plugin ships is registered under.
+# Read from the manifest rather than hard-coded, so a rename cannot leave the
+# plugin-loaded check silently asserting a namespace nobody publishes.
+PLUGIN_NAME = json.loads(
+    (REPO / ".claude-plugin" / "plugin.json").read_text())["name"]
+
+# The built-in tools an eval session may use. `Skill` is the point of the list:
+# without it the plugin's skills are unreachable however they are loaded (#226).
+# `Task` is here because /holacracy:capture-tension dispatches a subagent.
+# `Bash`, `Glob`, `Grep` and `Write` are deliberately absent — see the module
+# docstring's note on what the control can reach.
+EVAL_TOOLS = "Skill,Task,Read"
 
 # The stub must register under the same server name as the real connector in
 # .mcp.json, or every `mcp__glassfrog__*` tool name the skills were written
@@ -161,7 +209,7 @@ def build_command(prompt: str, config: str, cfg_path: Path, model: str | None) -
     cmd = [
         CLAUDE_BIN,
         "-p", prompt,
-        "--bare",
+        "--tools", EVAL_TOOLS,
         "--output-format", "stream-json",
         "--verbose",
         "--strict-mcp-config",
@@ -173,6 +221,161 @@ def build_command(prompt: str, config: str, cfg_path: Path, model: str | None) -
     if model:
         cmd += ["--model", model]
     return cmd
+
+
+def session_env(config_dir: Path) -> dict:
+    """The environment one eval session runs under.
+
+    CLAUDECODE is stripped for the same reason run_eval.py strips it: the guard
+    exists to stop two interactive terminals fighting, and a subprocess is not
+    that. CLAUDE_CODE_SIMPLE was what `--bare` set; it is stripped so an
+    inherited value cannot reimpose the mode this runner just stopped using.
+
+    CLAUDE_CONFIG_DIR is the hermeticity lever. Pointed at an empty directory it
+    hides every installed plugin, user setting, hook and memory file — the job
+    `--bare` used to do, without also taking the `Skill` tool away with it.
+    """
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("CLAUDECODE", "CLAUDE_CODE_SIMPLE")}
+    env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+    return env
+
+
+def init_event(events: list) -> dict | None:
+    for event in events:
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            return event
+    return None
+
+
+def session_shape_error(events: list, config: str) -> str | None:
+    """Did this session have the shape its configuration claims?
+
+    The harness could not previously tell "the plugin did not load" from "the
+    plugin loaded and changed nothing" — both produce a plausible transcript and
+    a scoreable grading. That is how #226 survived four graded runs. These three
+    conditions are read off the `system/init` event, cost nothing, and fail the
+    run rather than scoring it.
+    """
+    init = init_event(events)
+    if init is None:
+        return ("the session emitted no init event, so neither its tool set nor "
+                "its plugin state could be verified")
+
+    if "Skill" not in set(init.get("tools") or []):
+        return ("the session had no Skill tool, so no skill could be invoked no "
+                "matter what --plugin-dir loaded (#226). Tools offered: "
+                + ", ".join(sorted(t for t in (init.get("tools") or [])
+                                   if not t.startswith("mcp__"))))
+
+    registered = [c for c in (init.get("slash_commands") or [])
+                  if c.startswith(PLUGIN_NAME + ":")]
+    if config == "with_skill":
+        if not registered:
+            return (f"--plugin-dir registered no {PLUGIN_NAME}: command, so "
+                    f"with_skill is behaviourally the base model and its delta "
+                    f"against the control measures nothing (#226)")
+    elif registered:
+        return (f"the {PLUGIN_NAME} plugin leaked into {config}: "
+                f"{', '.join(registered[:3])} … — the control is not a real absence")
+    return None
+
+
+def probe_session(config: str, timeout: int = 120) -> tuple[bool, str]:
+    """Start a real session and read its init event, then stop it.
+
+    The CLI emits `system/init` BEFORE it authenticates — the session that
+    exposed #226 reported its full tool set and command list and only then said
+    "Not logged in". So the two conditions that made the graded tier meaningless
+    are observable for free, on any laptop, with no API key and no model turn:
+    whether a `Skill` tool exists at all, and whether `--plugin-dir` registers
+    anything. That is the whole reason this is wired into `--validate-only`
+    rather than left to the nightly job — #226 needed four paid runs and an
+    artifact download to notice, and it did not have to.
+
+    The process is killed the moment init arrives, so a machine that DOES hold
+    ANTHROPIC_API_KEY is not billed for a turn either.
+    """
+    sandbox = Path(tempfile.mkdtemp(prefix="holacracy-probe-"))
+    config_dir = sandbox / "claude-config"
+    workdir = sandbox / "work"
+    config_dir.mkdir()
+    workdir.mkdir()
+    cfg_path = sandbox / "mcp-config.json"
+    cfg_path.write_text(json.dumps({"mcpServers": {}}))
+
+    try:
+        proc = subprocess.Popen(
+            build_command("probe", config, cfg_path, None),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            cwd=str(workdir), env=session_env(config_dir))
+    except OSError as exc:
+        shutil.rmtree(sandbox, ignore_errors=True)
+        return False, f"could not run {CLAUDE_BIN}: {exc}"
+
+    init = None
+    deadline = time.time() + timeout
+    try:
+        while init is None:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            # select rather than a plain read loop: a CLI that emitted nothing
+            # would otherwise hang the probe, and a hung preflight in CI is
+            # worse than the defect it looks for.
+            if not select.select([proc.stdout], [], [], remaining)[0]:
+                break
+            line = proc.stdout.readline()
+            if not line:
+                break
+            try:
+                event = json.loads(line.strip())
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") == "system" and event.get("subtype") == "init":
+                init = event
+    finally:
+        proc.kill()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+    if init is None:
+        return False, f"no init event arrived within {timeout}s, so the session shape is unknown"
+    problem = session_shape_error([init], config)
+    if problem:
+        return False, problem
+    builtins = sorted(t for t in (init.get("tools") or []) if not t.startswith("mcp__"))
+    registered = [c for c in (init.get("slash_commands") or [])
+                  if c.startswith(PLUGIN_NAME + ":")]
+    return True, (f"tools: {', '.join(builtins)}; "
+                  f"{PLUGIN_NAME} commands registered: {len(registered)}")
+
+
+def contamination_error(events: list, config: str) -> str | None:
+    """Did a control run reach the plugin's content on disk?
+
+    Reading the checkout is how with_skill's skills load their `references/`,
+    so this applies to the control legs only. Run-1 of graded run 31058151548
+    did exactly this: `find /` located the checkout and `cat` supplied the
+    shared spec, which made that leg's score a fact about the filesystem rather
+    than about the plugin.
+    """
+    if config == "with_skill":
+        return None
+    for event in events:
+        if event.get("type") != "assistant":
+            continue
+        for block in (event.get("message", {}).get("content") or []):
+            if block.get("type") != "tool_use":
+                continue
+            if str(REPO) in json.dumps(block.get("input", {})):
+                return (f"{config} reached the plugin checkout on disk via "
+                        f"{block.get('name')}, so it measured 'was --plugin-dir "
+                        f"passed' rather than 'was the content unavailable'")
+    return None
 
 
 def execute(prompt: str, config: str, run_dir: Path, fixture: Path,
@@ -193,19 +396,28 @@ def execute(prompt: str, config: str, run_dir: Path, fixture: Path,
     # empty. Truncate anyway rather than assume it.
     write_log.write_text("")
 
-    # CLAUDECODE is stripped for the same reason run_eval.py strips it: the guard
-    # exists to stop two interactive terminals fighting, and a subprocess is not
-    # that. CLAUDE_CODE_SIMPLE is what --bare sets; leaving an inherited value
-    # would let the parent session's mode leak into the child.
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("CLAUDECODE", "CLAUDE_CODE_SIMPLE")}
+    # The session runs in a throwaway sandbox rather than in run_dir, because
+    # run_dir lives under --out and --out lives inside this checkout on CI. A cwd
+    # inside the repo would hand every run the repo's own CLAUDE.md through
+    # auto-discovery, and hand the control a path to the plugin it is supposed
+    # not to have.
+    sandbox = Path(tempfile.mkdtemp(prefix="holacracy-eval-"))
+    if REPO == sandbox or REPO in sandbox.parents:
+        shutil.rmtree(sandbox, ignore_errors=True)
+        return {"error": f"the sandbox {sandbox} is inside the checkout; set TMPDIR "
+                         f"outside {REPO} or the run is not hermetic",
+                "events": [], "duration": 0.0}
+    config_dir = sandbox / "claude-config"
+    workdir = sandbox / "work"
+    config_dir.mkdir()
+    workdir.mkdir()
 
     started = time.time()
     try:
         proc = subprocess.run(
             build_command(prompt, config, cfg_path, model),
             capture_output=True, text=True, timeout=timeout,
-            cwd=str(run_dir), env=env,
+            cwd=str(workdir), env=session_env(config_dir),
         )
     except subprocess.TimeoutExpired:
         return {"error": f"timed out after {timeout}s", "events": [],
@@ -213,6 +425,8 @@ def execute(prompt: str, config: str, run_dir: Path, fixture: Path,
     except OSError as exc:
         return {"error": f"could not run {CLAUDE_BIN}: {exc}", "events": [],
                 "duration": time.time() - started}
+    finally:
+        shutil.rmtree(sandbox, ignore_errors=True)
 
     duration = time.time() - started
     events = []
@@ -231,11 +445,10 @@ def execute(prompt: str, config: str, run_dir: Path, fixture: Path,
                 "events": [], "duration": duration}
 
     # A session that ended in error still emits a well-formed event stream. The
-    # most common one is auth: `--bare` reads ANTHROPIC_API_KEY or an
-    # apiKeyHelper and never OAuth or the keychain, so an operator signed in
-    # interactively gets a single "Not logged in" turn with is_error set. Left
-    # unread, that run scores a green pass on every NEGATIVE assertion, because
-    # a model that never ran issued no forbidden write.
+    # most common one is auth: CI supplies ANTHROPIC_API_KEY, and a run whose
+    # environment lacks it gets a single "Not logged in" turn with is_error set.
+    # Left unread, that run scores a green pass on every NEGATIVE assertion,
+    # because a model that never ran issued no forbidden write.
     for event in reversed(events):
         if event.get("type") != "result":
             continue
@@ -243,11 +456,24 @@ def execute(prompt: str, config: str, run_dir: Path, fixture: Path,
             detail = str(event.get("result") or event.get("subtype") or "unknown").strip()
             hint = ""
             if "not logged in" in detail.lower() or "login" in detail.lower():
-                hint = (" — `--bare` accepts only ANTHROPIC_API_KEY or an apiKeyHelper; "
-                        "an interactive OAuth login is not read")
+                hint = (" — the session authenticates with ANTHROPIC_API_KEY; note that "
+                        "CLAUDE_CONFIG_DIR is redirected to an empty sandbox, so a login "
+                        "stored in the operator's own config dir is not visible")
             return {"error": f"the session reported an error: {detail[:300]}{hint}",
                     "events": events, "duration": duration}
         break
+
+    # Did the session have the shape its configuration claims? Checked before
+    # the tool-call condition below, because a with_skill leg that never loaded
+    # the plugin can still make plenty of tool calls and score — which is
+    # exactly the state that went unnoticed for four graded runs (#226).
+    shape = session_shape_error(events, config)
+    if shape:
+        return {"error": shape, "events": events, "duration": duration}
+
+    reached = contamination_error(events, config)
+    if reached:
+        return {"error": reached, "events": events, "duration": duration}
 
     # Every case in this tier drives a GlassFrog-backed surface, and none of them
     # can be answered without at least resolving the actor's roles. A run that
@@ -532,19 +758,27 @@ def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
     )
     cmd = [
         CLAUDE_BIN, "-p", prompt,
-        "--bare",
         "--output-format", "json",
         "--json-schema", json.dumps(GRADER_SCHEMA),
         "--tools", "",
     ]
     if model:
         cmd += ["--model", model]
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("CLAUDECODE", "CLAUDE_CODE_SIMPLE")}
+
+    # The grader gets the same empty-config sandbox as the executor. It has no
+    # tools and no plugin, but it would otherwise inherit the operator's global
+    # CLAUDE.md and hooks — and a grader reading this repo's own CLAUDE.md would
+    # be told what the runner is supposed to conclude.
+    sandbox = Path(tempfile.mkdtemp(prefix="holacracy-grader-"))
+    config_dir = sandbox / "claude-config"
+    workdir = sandbox / "work"
+    config_dir.mkdir()
+    workdir.mkdir()
 
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=timeout, env=env)
+                              timeout=timeout, env=session_env(config_dir),
+                              cwd=str(workdir))
         payload = json.loads(proc.stdout)
         result = payload.get("result", payload)
         if isinstance(result, str):
@@ -557,6 +791,8 @@ def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
         return ([{"text": a["text"], "passed": False,
                   "evidence": f"grader unavailable: {exc}"} for a in assertions],
                 None)
+    finally:
+        shutil.rmtree(sandbox, ignore_errors=True)
 
     # `--output-format json` emits the result object itself rather than a
     # stream, so it is handed to observed_model as a one-event stream.
@@ -713,12 +949,25 @@ def main() -> int:
     parser.add_argument("--no-grade", action="store_true",
                         help="skip the judged pass; mechanical checks still run")
     parser.add_argument("--validate-only", action="store_true",
-                        help="validate the case files and probe each fixture, then exit")
+                        help="validate the case files, probe each fixture, and probe "
+                             "each config's session shape, then exit")
+    parser.add_argument("--no-session-probe", action="store_true",
+                        help="skip the session-shape probe under --validate-only "
+                             "(it needs the real `claude` binary on PATH)")
     args = parser.parse_args()
 
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
     out_root = Path(args.out)
     failures = 0
+
+    # The session-shape preflight. Free, keyless, and the thing that would have
+    # caught #226 before four graded runs were spent on a harness measuring the
+    # base model against itself.
+    if args.validate_only and not args.no_session_probe:
+        for config in configs:
+            ok, detail = probe_session(config)
+            print(f"{'ok  ' if ok else 'FAIL'} session shape [{config}]: {detail}")
+            failures += 0 if ok else 1
     # Sets, not single values. One benchmark spanning two models is a real
     # condition -- a mid-run default change, or a fallback -- and collapsing it
     # to one name would hide exactly the thing the recording exists to expose.

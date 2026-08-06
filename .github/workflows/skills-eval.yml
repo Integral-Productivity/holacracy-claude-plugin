@@ -384,55 +384,21 @@ jobs:
         # skipped the upload below — discarding a complete, successful, paid-for
         # graded run (#199). A step that cannot change the result must not be
         # able to destroy it.
+        #
+        # The rendering lives in scripts/eval-report.py rather than a heredoc
+        # here (#204). Being a file is what lets scripts/eval-report.test.sh run
+        # it against the aggregator's real shape — `delta` as a preformatted
+        # string, the unmeasured baseline's nulls, a config the baseline has
+        # never seen, an empty run_summary — offline, on every PR. Embedded
+        # here, none of that was reachable by any test, and the crash was
+        # discovered by a paid nightly instead. `continue-on-error` above limits
+        # the damage of a crash; the suite is what stops it happening.
         continue-on-error: true
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json, os, pathlib
-          cur = json.loads(pathlib.Path(os.environ["RUNNER_TEMP"], "benchmark-current.json").read_text())
-          base_path = pathlib.Path("evals/benchmark.json")
-          base = json.loads(base_path.read_text()) if base_path.exists() else {}
-
-          # aggregate_benchmark.py stores a "delta" key INSIDE run_summary,
-          # as a sibling of the config keys, and its pass_rate is a
-          # preformatted string rather than a stats dict. Upstream excludes it
-          # by name everywhere it iterates (`k != "delta"`, its lines 287/389)
-          # and so must we — otherwise .get("mean") lands on a str and the
-          # whole step dies. That is exactly what #199 was.
-          def configs_only(summary):
-              return {k: v for k, v in (summary or {}).items() if k != "delta"}
-
-          cur_summary = configs_only(cur.get("run_summary"))
-          base_summary = configs_only(base.get("run_summary"))
-
-          def stats_of(entry):
-              # Tolerates a null pass_rate, which the unmeasured baseline has.
-              return (entry or {}).get("pass_rate") or {}
-
-          print("## Behavioural eval results\n")
-          print("| config | pass rate | stddev | baseline | delta |")
-          print("|---|---|---|---|---|")
-          for config, entry in sorted(cur_summary.items()):
-              rate = stats_of(entry)
-              bm = stats_of(base_summary.get(config)).get("mean")
-              mean = rate.get("mean") or 0
-              stddev = rate.get("stddev") or 0
-              delta = f"{mean - bm:+.3f}" if isinstance(bm, (int, float)) else "n/a"
-              print(f"| {config} | {mean:.3f} | {stddev:.3f} | "
-                    f"{bm if bm is not None else 'n/a'} | {delta} |")
-
-          # The aggregator's own with/without delta, which the loop above skips.
-          headline = ((cur.get("run_summary") or {}).get("delta") or {}).get("pass_rate")
-          if headline:
-              print(f"\nwith_skill − without_skill pass rate: **{headline}**")
-
-          wide = [(c, stats_of(e).get("stddev") or 0) for c, e in cur_summary.items()
-                  if (stats_of(e).get("stddev") or 0) > 0.2]
-          if wide:
-              print("\n> **Wide variance.** Per `evals/README.md`, a high-stddev case is a "
-                    "defect in the case, not a finding about the skill: "
-                    + ", ".join(f"`{c}` ({s:.2f})" for c, s in wide))
-          PY
+          python3 scripts/eval-report.py \
+            --current "$RUNNER_TEMP/benchmark-current.json" \
+            --baseline evals/benchmark.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the benchmark
         # always(), because a failed run is exactly when this matters. A graded

@@ -299,6 +299,31 @@ jobs:
         # a given change happens to touch.
         run: bash scripts/evals-harness.test.sh
 
+      - name: eval-report regression suite
+        # Guards scripts/eval-report.py (#204), which renders the graded run's
+        # summary against the committed baseline.
+        #
+        # That block crashed once and took a complete, paid-for graded run with
+        # it (#199): it called .get("mean") on run_summary["delta"]["pass_rate"],
+        # which aggregate_benchmark.py stores as a preformatted STRING. The step
+        # died, the artifact upload gated below it was skipped, and ~25 minutes
+        # of paid execution was discarded. The fix was verified by hand, and
+        # until this suite nothing in the repo would have caught it again.
+        #
+        # It is here rather than only in skills-eval.yml for the same reason the
+        # runner's suite is: the code parses a schema owned by an EXTERNAL
+        # repository pinned at a commit we bump deliberately (#195), and it runs
+        # only in the graded tier — nightly at best, real money to exercise.
+        # Extracting it from a heredoc is what made any of it reachable by a
+        # test at all.
+        #
+        # Mutation-checked on the same contract as the suites around it: four
+        # defenses, four mutants removing exactly one each, and both halves
+        # asserted. Three of the four are one-token differences — `.get(k)` vs
+        # `[k]`, `or {}` vs nothing — which is precisely the kind of defense a
+        # naive suite would leave unproven.
+        run: bash scripts/eval-report.test.sh
+
       - name: behavioural eval runner regression suite
         # Guards scripts/run-behavioural-eval.py (#171), the runner that turns a
         # golden case into a grading.json.

@@ -77,12 +77,16 @@ jobs:
         # Catches the failure mode that would otherwise look like a skill
         # declining to act: a generated MCP config that does not actually start
         # the stub. A run broken this way still produces a transcript.
+        #
+        # --no-session-probe: this job has no `claude` binary, by design — it is
+        # the keyless tier. The session-shape probe runs in the graded job, right
+        # after the CLI is installed.
         run: |
           set -euo pipefail
           args=()
           for f in evals/cases/*/evals.json; do args+=(--case "$f"); done
           python3 scripts/run-behavioural-eval.py --out "$RUNNER_TEMP/probe" \
-            --validate-only "${args[@]}"
+            --validate-only --no-session-probe "${args[@]}"
 
   graded:
     name: Graded eval run
@@ -144,6 +148,24 @@ jobs:
           set -euo pipefail
           npm install -g @anthropic-ai/claude-code
           claude --version
+
+      - name: Probe the session shape
+        if: steps.key.outputs.present == 'true'
+        # The check that #226 needed and did not have. `--plugin-dir` used to
+        # load the plugin into a session with no `Skill` tool, so no skill could
+        # be invoked and both configurations were the base model — for four
+        # graded runs, each ~40 minutes and each billed. This starts one real
+        # session per config, reads the `system/init` event the CLI emits BEFORE
+        # it authenticates, and kills it: seconds, and no model turn.
+        #
+        # It runs here rather than in `offline` for one reason only: this is
+        # where the `claude` binary exists. It needs no API key of its own.
+        run: |
+          set -euo pipefail
+          args=()
+          for f in evals/cases/*/evals.json; do args+=(--case "$f"); done
+          python3 scripts/run-behavioural-eval.py --out "$RUNNER_TEMP/shape" \
+            --validate-only "${args[@]}"
 
       - name: Fetch skill-creator's aggregator
         if: steps.key.outputs.present == 'true'

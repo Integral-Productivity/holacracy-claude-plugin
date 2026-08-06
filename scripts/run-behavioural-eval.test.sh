@@ -370,7 +370,8 @@ _reject() {  # $1 = case json body, $2 = expected stderr fragment, $3 = label
   printf '%s\n' "$1" > "$TMP/bad-case.json"
   local out
   if out="$(BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" python3 "$RUNNER" \
-             --case "$TMP/bad-case.json" --out "$TMP/out-bad" --validate-only 2>&1)"; then
+             --case "$TMP/bad-case.json" --out "$TMP/out-bad" \
+             --validate-only --no-session-probe 2>&1)"; then
     fail "$3: the runner accepted a malformed case file"
   fi
   echo "$out" | grep -qF "$2" || fail "$3: expected '$2', got: $out"
@@ -475,7 +476,8 @@ pass
 sed "s|$FIXTURE|evals/fixtures/glassfrog/does-not-exist.json|" \
   "$TMP/case/evals.json" > "$TMP/case-missing.json"
 BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" python3 "$RUNNER" \
-  --case "$TMP/case-missing.json" --out "$TMP/out-missing" --validate-only >/dev/null 2>&1 \
+  --case "$TMP/case-missing.json" --out "$TMP/out-missing" \
+  --validate-only --no-session-probe >/dev/null 2>&1 \
   && fail "a missing fixture did not fail the run"
 pass
 
@@ -562,8 +564,12 @@ pass
 SHIPPED=()
 for f in "$REPO"/evals/cases/*/evals.json; do SHIPPED+=(--case "$f"); done
 [ "${#SHIPPED[@]}" -gt 0 ] || fail "no shipped case files were found to validate"
-python3 "$RUNNER" --out "$TMP/out-shipped" --validate-only "${SHIPPED[@]}" \
-  >/dev/null 2>&1 || fail "a shipped case file failed validation or its fixture probe"
+# --no-session-probe because this case is about the CASE FILES and their
+# fixtures. The session probe needs the real `claude` binary, which a CI runner
+# does not have — and § 11 covers the probe against the fake instead.
+python3 "$RUNNER" --out "$TMP/out-shipped" --validate-only --no-session-probe \
+  "${SHIPPED[@]}" >/dev/null 2>&1 \
+  || fail "a shipped case file failed validation or its fixture probe"
 pass
 
 # ---------------------------------------------------------------------------

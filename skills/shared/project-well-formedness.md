@@ -3,8 +3,8 @@
 This is the canonical rubric for judging whether a GlassFrog **project** is well-formed and well-placed. It is the project-side analog of `triage-gates.md`. Loaded by:
 
 - `/holacracy:review-project` -- the adversarial project-review panel (via `project-review-critics.md`, which turns each dimension below into a critic lens).
-- *(Planned)* `/holacracy:capture-project` -- the capture-time guardrail ([#75](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/75)).
-- *(Planned)* the stalled-project sweep ([#76](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/76)).
+- `/holacracy:capture-project` -- the capture-time guardrail, which loads Family A only (via the `project-capture` subagent).
+- `/holacracy:stalled-project-sweep` -- the stalled/blocked sweep, which owns the detection logic emitting this rubric's reserved `stale` and `blocked` states.
 
 Every project surface loads this file so "done enough" means one thing across the plugin. The rubric **describes**; it never auto-acts. Any fix it implies is drafted for a human to confirm.
 

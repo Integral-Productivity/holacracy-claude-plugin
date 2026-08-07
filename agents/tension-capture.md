@@ -40,8 +40,8 @@ Follow `skills/shared/tension-capture-flow.md` Steps 2–8 in sequence:
 
 ### Step 2 -- Resolve sensing role
 
-1. Confirm actor identity via `glassfrog_get_me`. If unavailable, name the constraint and ask the user to declare the actor.
-2. Load the actor's role roster via `glassfrog_list_my_roles`.
+1. **Resolve actor + role roster** -- follow `skills/shared/actor-and-role-resolution.md` Steps 1-2. Do not restate the call shape here; Step 2 is bounded and paged for a reason. If the actor cannot be resolved, name the constraint and ask the user to declare it.
+2. Map each role's `parent_role_id` to its circle name, per the same Step 2 -- the roster carries no circle name of its own.
 3. Narrow to the circle the tension's content implies. If the dispatcher passed a circle hint, validate it against the roster. If conversation context names a circle, use it. If neither, ask.
 4. Within that circle, identify the role(s) the actor fills that the tension content most plausibly attaches to. Apply the silent-when-one + ask-when-multiple + name-the-constraint-when-zero policy from `actor-and-role-resolution.md`.
 

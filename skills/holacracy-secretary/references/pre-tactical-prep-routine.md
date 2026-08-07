@@ -8,7 +8,7 @@ Loaded as `../../shared/agentic-routines.md` defines the mechanism; this file de
 
 The registered prompt opens with the canonical scheduled-work preamble from `../../shared/actor-and-role-resolution.md` (acting Secretary agent + ids, circle, accountability, output channel, and the **"Draft only"** safeguard), then:
 
-1. **Resolve scope.** Confirm the acting Secretary agent and the target circle (`glassfrog_get_me`, `glassfrog_list_my_roles`), scoped to the one circle. Never bulk-load the roster (see `docs/solutions/tooling-decisions/glassfrog-v5-inherited-context-single-call.md`).
+1. **Resolve scope.** Confirm the acting Secretary agent and the target circle per `../../shared/actor-and-role-resolution.md` Steps 1-2, scoped to the one circle. Never bulk-load the roster (see `docs/solutions/tooling-decisions/glassfrog-v5-inherited-context-single-call.md`).
 2. **Read circle state** (the readable tools only):
    - `glassfrog_list_checklist_items` — items and their status.
    - `glassfrog_list_metrics` — metrics due or out of range.

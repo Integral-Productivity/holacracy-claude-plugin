@@ -399,12 +399,55 @@ check_orphans() {
   done
 }
 
+# ---------------------------------------------------------------------------
+# Check 7 -- a file that names the role-roster call also cites the procedure.
+#
+# `skills/shared/actor-and-role-resolution.md` Step 2 is the ONLY place allowed
+# to say how the roster is loaded, because loading it wrong costs the turn:
+# `glassfrog_list_my_roles` defaults to per_page 100 at ~1.5 KB per role, and
+# `glassfrog_get_me(include_roles: true)` returned 124,801 characters for one
+# real actor and was rejected outright (#148).
+#
+# This is the THIRD recurrence of one pattern -- a constraint documented
+# ADJACENT to where it is needed rather than IN it. Before #148 the roster's
+# size was recorded in ADR-0004, in a solutions doc, and in
+# inherited-context-procedure.md, and still not in the procedure anyone
+# follows, so every session rediscovered the limit by hitting it. #155 then
+# found twelve files carrying the unbounded two-step inline. Prose in CLAUDE.md
+# asking people to remember is the weakest enforcement that exists, which is
+# the argument this script's own header makes.
+#
+# The rule is deliberately weaker than "only the canonical file may mention the
+# tool". Naming both calls beside a pointer is the established house style --
+# `commands/review-project.md` reads "Follow ... Steps 1-2: `glassfrog_get_me`,
+# then `glassfrog_list_my_roles`" and that is good writing, not a violation.
+# What must not exist is a file that prescribes the load with no pointer at all,
+# because that is the copy that drifts. So: mention the tool, cite the
+# procedure. A frontmatter `tools:` line is exempt -- it grants a capability
+# rather than describing a call.
+# ---------------------------------------------------------------------------
+check_roster_delegation() {
+  skipped 7 && return 0
+  local f canon body
+  canon="skills/shared/actor-and-role-resolution.md"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ "$f" = "$canon" ] && continue
+    # Drop frontmatter tools: lines before looking for the call.
+    body="$(grep -n 'glassfrog_list_my_roles' "$ROOT/$f" 2>/dev/null | grep -v '^[0-9]*:tools:')"
+    [ -n "$body" ] || continue
+    grep -q 'actor-and-role-resolution' "$ROOT/$f" 2>/dev/null && continue
+    finding 7 "$f" "names glassfrog_list_my_roles but never cites $canon -- delegate to its Steps 1-2 instead of restating the call shape"
+  done <<< "$(_live_md)"
+}
+
 check_links
 check_step_citations
 check_frontmatter
 check_version_bump
 check_command_refs
 check_orphans
+check_roster_delegation
 
 if [ "$FINDINGS" -gt 0 ]; then
   printf '\nskills-lint: %d finding(s)\n' "$FINDINGS"

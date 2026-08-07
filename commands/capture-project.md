@@ -13,7 +13,7 @@ This is the **capture-time guardrail** for GlassFrog projects: it helps a role-f
 
 1. **Parse $ARGUMENTS.** If the user passed project text inline, use it as the seed. If not, the subagent will ask for the outcome (*"What outcome do you want this role to move toward?"*).
 2. **Dispatch the `project-capture` subagent** with the project text and the dispatch source (`explicit command`). Let the subagent handle Steps 2–8 of `skills/shared/project-capture-flow.md`:
-   - Resolve the owner role via `glassfrog_get_me` + `glassfrog_list_my_roles` (with circle narrowing per conversation context). The target is *any role the actor fills* in the relevant circle.
+   - Resolve the owner role per `skills/shared/actor-and-role-resolution.md` Steps 1-2 (with circle narrowing per conversation context). The target is *any role the actor fills* in the relevant circle.
    - Soft-gate on the well-formedness rubric's **Family A** (A1 outcome-framed, A2 has a first next-action, A3 clear owner). For each missing element, present a drafted fix plus a one-line teaching of why it matters — never a hard block.
    - Draft the outcome-framed project description and a concrete first next-action.
    - Present the single per-project confirmation block.

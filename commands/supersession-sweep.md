@@ -12,14 +12,14 @@ This command is also offered implicitly by the `holacratic-ai-governance` skill 
 ## What this command does
 
 1. **Resolve scope from $ARGUMENTS.** Default is `session`: tensions filed during the current Claude session via the session-tension cache populated by the `tension-capture` subagent at Step 7 of `skills/shared/tension-capture-flow.md`. Alternatives:
-   - `recent` -> tensions with `status: "unprocessed"` on any role the actor fills (resolved via `glassfrog_list_my_roles` then per-role `glassfrog_list_role_tensions`).
+   - `recent` -> tensions with `status: "unprocessed"` on any role the actor fills (roster resolved per `skills/shared/actor-and-role-resolution.md` Steps 1-2, then per-role `glassfrog_list_role_tensions`).
    - A circle name -> unprocessed tensions on roles the actor fills in that circle, via `list_role_tensions`.
 
    **Why the default is `session`:** `glassfrog_list_role_tensions` is unreliable for same-session reads (propagation/scoping). Tensions filed earlier in this Claude session may not appear in a fresh `list_role_tensions` call. The session-tension cache is the only reliable source for fresh tensions; using it for the default sweep is what lets the implicit session-close offer actually find the tensions it just filed.
 
 2. **Load the in-scope tensions.**
    - For `session`: read the in-conversation session-tension cache. Each cache entry has `{ tension_id, role_id, role_name, circle_name, body, suggested_venue, filed_at }`.
-   - For `recent` or a named circle: call `glassfrog_list_my_roles`, then `glassfrog_list_role_tensions(role_id, status: "unprocessed")` per role, and aggregate.
+   - For `recent` or a named circle: resolve the roster per `skills/shared/actor-and-role-resolution.md` Steps 1-2, then `glassfrog_list_role_tensions(role_id, status: "unprocessed")` per role, and aggregate.
 
 3. **Apply the supersession test** (`skills/shared/triage-gates.md` Step 4) across all candidate pairs:
    - For each pair (A, B), ask: "Would Tension A still be a felt gap if Tension B were resolved?"

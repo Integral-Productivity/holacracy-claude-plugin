@@ -245,7 +245,59 @@ printf '# Orphan\n' > "$TMP/c6/skills/shared/orphan.md"
 git -C "$TMP/c6" add -A && git -C "$TMP/c6" commit -qm c6
 _assert_load_bearing 6 "$TMP/c6" "orphaned shared reference"
 
-# 7. The real repository is clean. Fixtures prove the checks work; this proves
+# 7. A file that prescribes the role-roster load without citing the procedure.
+#    The third recurrence of one pattern -- the bound documented adjacent to
+#    where it is needed rather than in it (#148, then twelve files in #155).
+_fixture "$TMP/c7"
+cat > "$TMP/c7/commands/rogue.md" <<'EOF'
+---
+description: rogue
+argument-hint: [thing, optional]
+---
+1. Confirm the actor via `glassfrog_get_me`.
+2. Load the roster via `glassfrog_list_my_roles`.
+EOF
+git -C "$TMP/c7" add -A && git -C "$TMP/c7" commit -qm c7
+_assert_load_bearing 7 "$TMP/c7" "roster load prescribed with no pointer to the procedure"
+
+# 7b. The house style must NOT trip it. Naming both calls beside a pointer is
+#     how commands/review-project.md is written, and that is good prose, not a
+#     violation -- a check that flagged it would be reverted within a week.
+_fixture "$TMP/c7b"
+cat > "$TMP/c7b/commands/wellformed.md" <<'EOF'
+---
+description: wellformed
+argument-hint: [thing, optional]
+---
+1. **Resolve actor + role roster.** Follow `skills/shared/actor-and-role-resolution.md`
+   Steps 1-2: `glassfrog_get_me`, then `glassfrog_list_my_roles`.
+EOF
+mkdir -p "$TMP/c7b/skills/shared"
+printf '# Actor and Role Resolution\n\n## Step 1 -- a\n\n## Step 2 -- b\n' \
+  > "$TMP/c7b/skills/shared/actor-and-role-resolution.md"
+git -C "$TMP/c7b" add -A && git -C "$TMP/c7b" commit -qm c7b
+SKILLS_LINT_ROOT="$TMP/c7b" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c7b" bash "$LINT"; fail "check 7 flagged the established house style (pointer + both call names)"; }
+CASES=$((CASES + 1))
+
+# 7c. A frontmatter `tools:` grant is a capability, not a call description, and
+#     agents/holacracy-coach.md legitimately lists the tool there.
+_fixture "$TMP/c7c"
+cat > "$TMP/c7c/agents/granted.md" <<'EOF'
+---
+name: granted
+description: agent with a tools grant
+model: inherit
+tools: Read, mcp__plugin_holacracy_glassfrog__glassfrog_list_my_roles
+---
+Body that never mentions the roster call.
+EOF
+git -C "$TMP/c7c" add -A && git -C "$TMP/c7c" commit -qm c7c
+SKILLS_LINT_ROOT="$TMP/c7c" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c7c" bash "$LINT"; fail "check 7 flagged a frontmatter tools: grant" ; }
+CASES=$((CASES + 1))
+
+# 8. The real repository is clean. Fixtures prove the checks work; this proves
 #    they are actually pointed at the plugin.
 bash "$LINT" >/dev/null 2>&1 || { bash "$LINT"; fail "the live repository does not pass its own lint"; }
 CASES=$((CASES + 1))

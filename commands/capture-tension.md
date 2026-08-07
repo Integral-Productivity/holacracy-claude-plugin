@@ -13,7 +13,7 @@ This is the **cross-role, out-of-meeting** capture surface. For in-tactical-meet
 
 1. **Parse $ARGUMENTS.** If the user passed tension text inline, use it as the seed. If not, ask: *"What tension would you like to capture?"* and wait for input.
 2. **Dispatch the `tension-capture` subagent** with the tension text and the dispatch source (`explicit command`). Let the subagent handle Steps 2–8 of `skills/shared/tension-capture-flow.md`:
-   - Resolve sensing role via `glassfrog_get_me` + `glassfrog_list_my_roles` (with circle narrowing per conversation context). The target is *any role the actor fills* in the relevant circle — not Core Four only.
+   - Resolve sensing role per `skills/shared/actor-and-role-resolution.md` Steps 1-2 (with circle narrowing per conversation context). The target is *any role the actor fills* in the relevant circle — not Core Four only.
    - Apply `skills/shared/triage-gates.md` Step 1 (does the sensing role already hold the authority to resolve this?) and Step 2 (role vs. person). Surface already-held authority before capturing; refuse to write person tensions and offer the IDR / direct-conversation route instead; partition a genuinely blended tension.
    - Draft the body, preserving the user's own words and front-loading the topic in the first sentence (no `label` field on the API, so the body is the only scannable surface).
    - Annotate a suggested meeting venue (governance vs. tactical) per `skills/shared/triage-gates.md` Step 3. This is a user-facing annotation only — `meeting_type` is rejected on write with 422 ([glassfrog-mcp-server#123 (comment)](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/123#issuecomment-5149496749)) and settable in the GlassFrog UI only.

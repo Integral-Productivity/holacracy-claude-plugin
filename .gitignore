@@ -22,3 +22,11 @@ node_modules/
 # (the coach defaults to a temp path outside the tree; this is the backstop)
 docs/drafts/
 *.draft.md
+
+# Python bytecode caches. scripts/run-behavioural-eval.py is imported by
+# scripts/run-behavioural-eval.test.sh, so every run of the suite writes one --
+# and the filename carries the interpreter version, so a cpython-313 artifact
+# was committed while a contributor on 3.11 saw an untracked cpython-311 one.
+# Build output, never source.
+__pycache__/
+*.py[cod]

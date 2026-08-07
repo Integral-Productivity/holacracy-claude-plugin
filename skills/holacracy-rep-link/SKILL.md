@@ -1,7 +1,7 @@
 ---
 name: holacracy-rep-link
 status: draft
-version: 1.1.1
+version: 1.1.2
 description: >
   AI co-Rep Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Rep Link role in a Holacracy organization, wants help surfacing tensions to the enclosing circle, needs to prepare for an enclosing circle tactical or governance meeting, wants to triage which member tensions belong in the enclosing circle vs. staying local, needs help identifying or drafting proposals to remove constraints the broader organization is imposing on their sub-circle, or says things like "help me prep for the enclosing circle meeting," "should I escalate this tension?", "help me remove this constraint," or "what tensions should I carry?" Also trigger when someone asks what a Rep Link does, how to energize the Rep Link role, or wants to understand what crosses the circle boundary. Load GlassFrog context before beginning Rep Link work when the GlassFrog MCP is available.
 ---
@@ -58,8 +58,8 @@ When this skill activates, establish context before diving into specific tasks:
 
 0. **Resolve actor and Rep Link scope.** Rep Link is per-sub-circle -- a person can be Rep Link for multiple sub-circles to multiple enclosing circles. Run the procedure in `../shared/actor-and-role-resolution.md`:
 
-   - `glassfrog_get_me` -- confirm the acting person or AI agent.
-   - `glassfrog_list_my_roles` -- find which sub-circles the actor fills Rep Link in.
+   - **Resolve actor + role roster** -- follow `../shared/actor-and-role-resolution.md` Steps 1-2. Do not restate the call shape here; Step 2 is bounded and paged for a reason.
+   - From that roster, find which sub-circles the actor fills Rep Link in.
    - If exactly one match, proceed silently and announce: "Operating as **Rep Link of [Sub-Circle] to [Enclosing Circle]**." If multiple, ask which. If none, switch to Observer mode (explaining the role) or Advisor mode (helping someone else's Rep Link).
 
    For scheduled routines, the routine's prompt declares the acting AI agent and sub-circle at creation time.

@@ -208,7 +208,7 @@ Tensions are written *on a role*. The API requires `role_id`. The role must be o
 
 **Procedure:**
 
-1. Confirm the actor's role roster via `glassfrog_list_my_roles` (or the resolution procedure in `./actor-and-role-resolution.md`).
+1. Confirm the actor's role roster per `./actor-and-role-resolution.md` Steps 1-2 (bounded and paged -- never load it unbounded).
 2. If the actor fills exactly one plausible sensing role for this tension's content, use it silently.
 3. If multiple plausible roles, ask. Do not guess.
 4. If the actor fills no role in the relevant circle, name the constraint honestly: *"You don't currently fill a role in [Circle X]. To write this to GlassFrog the tension must be attributed to a role you do fill, or escalated via someone who does (e.g., the Rep Link, or a circle member who fills the relevant role)."*

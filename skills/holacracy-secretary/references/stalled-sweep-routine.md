@@ -10,7 +10,7 @@ This is the second routine to ride the shared substrate, after Secretary pre-tac
 
 The registered prompt opens with the canonical scheduled-work preamble from `../../shared/actor-and-role-resolution.md` (acting agent + GlassFrog ids, circle, accountability, output channel, and the **"Draft only"** safeguard), then:
 
-1. **Resolve scope.** Confirm the acting agent and the target circle (`glassfrog_get_me`, `glassfrog_list_my_roles`), scoped to the one circle. Never bulk-load the roster (see `docs/solutions/tooling-decisions/glassfrog-v5-inherited-context-single-call.md`).
+1. **Resolve scope.** Confirm the acting agent and the target circle per `../../shared/actor-and-role-resolution.md` Steps 1-2, scoped to the one circle. Never bulk-load the roster (see `docs/solutions/tooling-decisions/glassfrog-v5-inherited-context-single-call.md`).
 2. **Read the circle's projects with actions:** for each role in the circle, `glassfrog_list_role_projects(role_id, status: "current", include: ["actions"])`, plus a `status: "waiting"` read for the `blocked` signal. Read only what the resolved circle needs.
 3. **Apply the staleness heuristic** — the same detection defined in `commands/stalled-project-sweep.md` step 4; do not re-derive or drift it:
    - `stale` primary: a `current` project with **zero attached actions** (rubric A2).

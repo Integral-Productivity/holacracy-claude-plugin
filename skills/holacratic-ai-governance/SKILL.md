@@ -3,7 +3,7 @@ name: holacratic-ai-governance
 description: >
   Governance-aware AI operating skill for organizations using Holacracy and GlassFrog. Use this skill whenever the user mentions GlassFrog, Holacracy, circles, roles (in a Holacratic context), accountabilities, domains, governance meetings, tactical meetings, tensions, lead link, rep link, facilitator, secretary, or any organizational governance topic. Also trigger when the user asks for help with work and GlassFrog MCP tools are connected -- this skill teaches how to ground AI responses in actual governance structure rather than operating generically. Trigger even for adjacent requests like "help me think about my role," "what should I focus on," "draft a governance proposal," or "what tensions exist in my organization." This skill is essential for any AI interaction where organizational context from GlassFrog would improve the quality, authority-awareness, or developmental sophistication of the response.
 status: draft
-version: 1.3.0
+version: 1.3.1
 ---
 # Holacratic AI Governance
 
@@ -54,8 +54,8 @@ Before producing organizational work, resolve **who** is operating and **which r
 
 **Quick procedure** (see `../shared/actor-and-role-resolution.md` for the full spec):
 
-1. Resolve the actor via `glassfrog_get_me` (default: the human; otherwise the AI agent declared in the routine's prompt).
-2. Load the actor's role roster via `glassfrog_list_my_roles`.
+1. **Resolve actor + role roster** -- follow `../shared/actor-and-role-resolution.md` Steps 1-2. Do not restate the call shape here; Step 2 is bounded and paged for a reason. Default actor is the human; otherwise the AI agent declared in the routine's prompt.
+2. Map each role's `parent_role_id` to its circle name, per the same Step 2 -- the roster carries no circle name of its own.
 3. Resolve to a single role + circle: silent when there's only one match; ask when there are multiple; offer Advisor/Observer mode when zero.
 4. **Always announce the resolved context** in the opening lines of your first response: e.g., "Operating as **Lead Link of Operations Circle (Advisor)**."
 5. Re-validate if the conversation pivots significantly -- governance can change between turns.

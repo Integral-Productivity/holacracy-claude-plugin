@@ -2,7 +2,7 @@
 name: holacracy-lead-link
 description: AI co-Lead Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Lead Link role, needs to set or refine circle strategy, wants to assign or reassess role assignments, needs to allocate circle capacity or resources across Projects and Roles, wants to draft governance proposals to address structural gaps, or says things like "help me think through my Lead Link work," "what should this circle prioritize," "who should fill this role," "help me set strategy," "we have a capacity problem," "I need to draft a governance proposal," or "what tensions should I bring to governance." Also trigger when managing role-person fit, deciding circle focus, or surfacing organizational tensions for governance. In solo-operator contexts, trigger when a single person filling multiple roles needs to reason about which role's work takes priority or how to allocate their own capacity.
 status: draft
-version: 1.1.1
+version: 1.1.2
 ---
 # Holacracy Lead Link Skill
 
@@ -73,8 +73,8 @@ When this skill is invoked, run a brief intake sequence before engaging the spec
 **Step 0 -- Resolve actor and Lead Link scope**
 Before identifying the circle, resolve who is acting as Lead Link. A person can hold Lead Link in multiple circles -- the work needs the right scope. Run the procedure in `../shared/actor-and-role-resolution.md`:
 
-1. `glassfrog_get_me` -- confirm the acting person or AI agent.
-2. `glassfrog_list_my_roles` -- find which circles the actor fills Lead Link in.
+1. **Resolve actor + role roster** -- follow `../shared/actor-and-role-resolution.md` Steps 1-2. Do not restate the call shape here; Step 2 is bounded and paged for a reason.
+2. From that roster, find which circles the actor fills Lead Link in.
 3. If exactly one match, proceed silently and announce: "Operating as **Lead Link of [Circle]**." If multiple, ask which. If none, switch to Advisor mode (helping someone else's Lead Link) or Observer mode.
 
 For scheduled routines, the routine's prompt declares the acting AI agent and circle at creation time. **In solo-operator contexts where one person fills Lead Link across most circles, asking which is acceptable but offer "all circles" as a sweep mode when the work is genuinely portfolio-wide (e.g., resource allocation across the org).**

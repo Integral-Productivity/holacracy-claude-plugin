@@ -45,8 +45,8 @@ Never proceed past Step 1 without the user's clear assent to capture.
 
 Follow the procedure in `./actor-and-role-resolution.md`, **with the target = any role the actor fills in the relevant circle** (not a single named target role).
 
-1. Confirm actor identity via `glassfrog_get_me`.
-2. Load the actor's role roster via `glassfrog_list_my_roles`.
+1. **Resolve actor + role roster** -- follow `./actor-and-role-resolution.md` Steps 1-2. Do not restate the call shape here; Step 2 is bounded and paged for a reason.
+2. Map each role's `parent_role_id` to its circle name, per the same Step 2 -- the roster carries no circle name of its own.
 3. Narrow to the circle the project's content implies (use conversation context, or ask).
 4. Within that circle, identify the role(s) the actor fills that the project's outcome most plausibly attaches to.
 5. If exactly one plausible owner role -> use silently.

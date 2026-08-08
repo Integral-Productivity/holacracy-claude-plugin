@@ -81,7 +81,7 @@ jobs:
     name: Run scripts test suites
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Show interpreter versions
         # The suite needs bash, python3 (JSONL parsing in the readout) and git

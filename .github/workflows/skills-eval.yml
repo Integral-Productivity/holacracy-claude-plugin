@@ -54,7 +54,7 @@ jobs:
     name: Runner suite and fixture probes (no credentials)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Show interpreter versions
         run: |
@@ -115,7 +115,7 @@ jobs:
     # rather than silently reading the wrong job's ceiling.
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check for the API key
         id: key

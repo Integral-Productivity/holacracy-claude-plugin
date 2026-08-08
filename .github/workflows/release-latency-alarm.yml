@@ -93,7 +93,7 @@ jobs:
     name: Release PR age
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check release PR age
         shell: bash # gives -eo pipefail, so `tee` below cannot mask a failure

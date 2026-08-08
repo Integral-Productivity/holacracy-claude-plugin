@@ -145,7 +145,12 @@ bash scripts/evals-harness.test.sh
 ### Running the evals
 
 ```bash
-# offline: validate every case and prove each fixture actually starts the stub
+# offline: validate every case, prove each fixture actually starts the stub, and
+# prove each config's SESSION SHAPE — that a Skill tool exists at all, and that
+# --plugin-dir registers the plugin in with_skill and nothing in without_skill.
+# The session-shape probe starts a real `claude` and kills it at the init event,
+# which the CLI emits before it authenticates: no API key, no model turn, no cost.
+# Add --no-session-probe where `claude` is not on PATH.
 python3 scripts/run-behavioural-eval.py --out /tmp/probe --validate-only \
   --case evals/cases/tension-triage/evals.json \
   --case evals/cases/capture-tension/evals.json
@@ -153,21 +158,32 @@ python3 scripts/run-behavioural-eval.py --out /tmp/probe --validate-only \
 # the runner's own suite — mutation-checked, no API key, gates every PR
 bash scripts/run-behavioural-eval.test.sh
 
-# a graded run. Needs ANTHROPIC_API_KEY: --bare reads that or an apiKeyHelper
-# and never an interactive OAuth login, so a signed-in operator without the
-# variable gets "Not logged in" and the runner reports it as an execution error
-# rather than scoring the run.
+# a graded run. Needs ANTHROPIC_API_KEY: each session runs under a redirected
+# CLAUDE_CONFIG_DIR, so a login stored in the operator's own config dir is not
+# visible to it. A signed-in operator without the variable gets "Not logged in",
+# and the runner reports that as an execution error rather than scoring the run.
 ANTHROPIC_API_KEY=... python3 scripts/run-behavioural-eval.py \
   --out benchmarks/local --runs 3 \
   --case evals/cases/tension-triage/evals.json \
   --case evals/cases/capture-tension/evals.json
 ```
 
-Each run is hermetic by construction: `--bare` (no CLAUDE.md, no hooks, no
-plugin sync), `--plugin-dir` as the only route by which the plugin enters the
-session, and `--strict-mcp-config` so the stub is the only MCP server. That last
-one is not tidiness — without it the plugin's own `.mcp.json` loads too, and it
-points at the **production** GlassFrog connector.
+Each run is hermetic by construction: `CLAUDE_CONFIG_DIR` pointed at an empty
+per-run directory (no installed plugin, setting, hook or memory), a cwd in a temp
+sandbox outside this checkout (nothing for `CLAUDE.md` discovery to walk up to),
+`--plugin-dir` as the only route by which the plugin enters the session, and
+`--strict-mcp-config` so the stub is the only MCP server. That last one is not
+tidiness — without it the plugin's own `.mcp.json` loads too, and it points at
+the **production** GlassFrog connector.
+
+This used to be one flag, `--bare`. It also removed the `Skill` tool, which made
+every with/without delta the graded tier produced a comparison of the base model
+against itself ([#226](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/226)).
+Two consequences of the replacement are worth carrying: the eval session's
+built-in tools are restricted to `Skill,Task,Read` — no shell, because a control
+leg with one reaches this checkout by `find /` — and the plugin's SessionStart
+hook is now live in `with_skill`, so a delta measures the plugin as installed
+rather than a skill's prose in isolation.
 
 ### What is reusable from `skill-creator`, and what is not
 

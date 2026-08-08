@@ -44,6 +44,11 @@ CASES=0
 pass() { CASES=$((CASES + 1)); }
 
 FIXTURE="evals/fixtures/glassfrog/structural-supersession.json"
+# Exported for the fake executor, which builds its init event's slash_commands
+# from it. Read from the manifest, the same source the runner reads.
+PLUGIN_NS="$(python3 -c "
+import json;print(json.load(open('$REPO/.claude-plugin/plugin.json'))['name'])")"
+export PLUGIN_NS
 SEC_ROLE="$(python3 -c "
 import json;print(json.load(open('$REPO/$FIXTURE'))['key_map']['role:security-officer'])")"
 OPS_ROLE="$(python3 -c "
@@ -65,16 +70,44 @@ def opt(name):
 
 # Deliberately NOT whatever --model asked for. The runner must record what
 # answered, not what was requested, and identical strings would let a runner
-# that echoed the request pass § 10.
+# that echoed the request pass § 9.
 EXECUTOR_MODEL = "fake-executor-model"
 ANALYZER_MODEL = "fake-analyzer-model"
+
+# The namespace the plugin registers under, read from the manifest by the shell
+# and handed in. Hard-coding it here would let a rename turn the plugin-loaded
+# assertions into vacuous ones without anything going red.
+PLUGIN_NS = os.environ["PLUGIN_NS"]
 
 if os.environ.get("FAKE_CLAUDE_DIE"):
     sys.stderr.write("simulated executor failure\n")
     sys.exit(3)
 
+# The session/init event, emitted first exactly as the real CLI emits it. Its
+# `tools` and `slash_commands` are what session_shape_error reads, and the fake
+# has to model the real dependency: --plugin-dir is what registers the plugin's
+# namespace, and nothing else does. Each env knob below reproduces one live
+# failure mode rather than a hypothetical one.
+if "--json-schema" not in argv:
+    has_plugin = "--plugin-dir" in argv
+    # What `--bare` actually offered: no Skill, so no skill could ever fire.
+    tools = (["Bash", "Edit", "Read"] if os.environ.get("FAKE_NO_SKILL_TOOL")
+             else ["Task", "Read", "Skill"])
+    commands = ["deep-research", "code-review"]
+    plugin_cmds = [f"{PLUGIN_NS}:capture-tension", f"{PLUGIN_NS}:tension-triage"]
+    if has_plugin and not os.environ.get("FAKE_PLUGIN_NOT_LOADED"):
+        commands += plugin_cmds
+    if not has_plugin and os.environ.get("FAKE_PLUGIN_LEAK"):
+        commands += plugin_cmds
+    if not os.environ.get("FAKE_NO_INIT"):
+        print(json.dumps({"type": "system", "subtype": "init",
+                          "tools": tools + [f"mcp__glassfrog__{t}" for t in
+                                            ("glassfrog_get_me", "glassfrog_create_tension")],
+                          "mcp_servers": [{"name": "glassfrog", "status": "connected"}],
+                          "slash_commands": commands}))
+
 # A well-formed event stream that reports an error. This is what the real CLI
-# emits when `--bare` cannot authenticate, and it is NOT an empty stream.
+# emits when it cannot authenticate, and it is NOT an empty stream.
 if os.environ.get("FAKE_CLAUDE_AUTH_FAIL") and "--json-schema" not in argv:
     print(json.dumps({"type": "assistant",
                       "message": {"content": [{"type": "text",
@@ -113,6 +146,12 @@ rpc(1, "initialize")
 content = []
 if leg.get("text"):
     content.append({"type": "text", "text": leg["text"]})
+# A filesystem read of the checkout, which is how run-1 of graded run
+# 31058151548 reached the shared spec in a leg that had no plugin.
+if os.environ.get("FAKE_READ_PATH"):
+    content.append({"type": "tool_use", "id": "t-read", "name": "Read",
+                    "input": {"file_path": os.environ["FAKE_READ_PATH"]
+                              + "/skills/shared/triage-gates.md"}})
 results = []
 for i, call in enumerate(leg.get("calls", []), start=2):
     reply = rpc(i, "tools/call",
@@ -331,7 +370,8 @@ _reject() {  # $1 = case json body, $2 = expected stderr fragment, $3 = label
   printf '%s\n' "$1" > "$TMP/bad-case.json"
   local out
   if out="$(BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" python3 "$RUNNER" \
-             --case "$TMP/bad-case.json" --out "$TMP/out-bad" --validate-only 2>&1)"; then
+             --case "$TMP/bad-case.json" --out "$TMP/out-bad" \
+             --validate-only --no-session-probe 2>&1)"; then
     fail "$3: the runner accepted a malformed case file"
   fi
   echo "$out" | grep -qF "$2" || fail "$3: expected '$2', got: $out"
@@ -394,10 +434,11 @@ pass
 
 # 4c. A session that ERRORS while emitting a well-formed event stream must not
 #     score green. This is not hypothetical: the first live run of this runner
-#     hit it. `--bare` reads only ANTHROPIC_API_KEY or an apiKeyHelper, so an
-#     operator signed in interactively gets one "Not logged in" turn with
-#     is_error set — and every negative assertion passed, because a model that
-#     never ran issues no forbidden write.
+#     hit it. The session authenticates with ANTHROPIC_API_KEY and runs under a
+#     redirected CLAUDE_CONFIG_DIR, so an operator whose login lives in their own
+#     config dir gets one "Not logged in" turn with is_error set — and every
+#     negative assertion passed, because a model that never ran issues no
+#     forbidden write.
 FAKE_PLAN="$TMP/plan-clean.json" FAKE_CLAUDE_AUTH_FAIL=1 \
   BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
   python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-auth" \
@@ -435,7 +476,8 @@ pass
 sed "s|$FIXTURE|evals/fixtures/glassfrog/does-not-exist.json|" \
   "$TMP/case/evals.json" > "$TMP/case-missing.json"
 BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" python3 "$RUNNER" \
-  --case "$TMP/case-missing.json" --out "$TMP/out-missing" --validate-only >/dev/null 2>&1 \
+  --case "$TMP/case-missing.json" --out "$TMP/out-missing" \
+  --validate-only --no-session-probe >/dev/null 2>&1 \
   && fail "a missing fixture did not fail the run"
 pass
 
@@ -443,7 +485,7 @@ pass
 # 5. HERMETICITY — the flags that keep an eval away from the live org and away
 #    from the operator's own installed copy of this plugin.
 # ---------------------------------------------------------------------------
-python3 - "$RUNNER" <<'PY' || fail "the executor command lost a hermeticity flag"
+python3 - "$RUNNER" <<'PY' || fail "the executor command or environment lost a hermeticity property"
 import importlib.util, pathlib, sys
 spec = importlib.util.spec_from_file_location("runner", sys.argv[1])
 runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
@@ -456,13 +498,29 @@ without = runner.build_command("p", "without_skill", cfg, None)
 # the PRODUCTION GlassFrog connector -- from being loaded alongside the stub.
 for cmd, label in ((with_skill, "with_skill"), (without, "without_skill")):
     assert "--strict-mcp-config" in cmd, (label, cmd)
-    assert "--bare" in cmd, (label, cmd)
     assert "--mcp-config" in cmd, (label, cmd)
+    # --bare bought hermeticity by also removing the Skill tool, which made the
+    # whole tier measure the base model twice (#226). It must not come back.
+    assert "--bare" not in cmd, (label, cmd)
+    tools = cmd[cmd.index("--tools") + 1].split(",")
+    assert "Skill" in tools, (label, tools)
+    # The control reached the checkout with `find /` when it had a shell.
+    for withheld in ("Bash", "Glob", "Grep", "Write"):
+        assert withheld not in tools, (label, withheld, tools)
 
-# --plugin-dir is the ONLY route by which the plugin enters a session under
-# --bare. If without_skill ever carried it, the delta would be measuring noise.
+# --plugin-dir is the only route by which the plugin enters the session, given
+# the empty CLAUDE_CONFIG_DIR and the out-of-tree cwd. If without_skill ever
+# carried it, the delta would be measuring noise.
 assert "--plugin-dir" in with_skill, with_skill
 assert "--plugin-dir" not in without, without
+
+# CLAUDE_CONFIG_DIR is what now hides the operator's installed plugins, settings
+# and hooks. Inheriting the real one would put a globally-installed copy of this
+# very plugin into the control leg.
+env = runner.session_env(pathlib.Path("/sandbox/cfg"))
+assert env["CLAUDE_CONFIG_DIR"] == "/sandbox/cfg", env.get("CLAUDE_CONFIG_DIR")
+assert "CLAUDECODE" not in env
+assert "CLAUDE_CODE_SIMPLE" not in env
 PY
 pass
 
@@ -506,8 +564,12 @@ pass
 SHIPPED=()
 for f in "$REPO"/evals/cases/*/evals.json; do SHIPPED+=(--case "$f"); done
 [ "${#SHIPPED[@]}" -gt 0 ] || fail "no shipped case files were found to validate"
-python3 "$RUNNER" --out "$TMP/out-shipped" --validate-only "${SHIPPED[@]}" \
-  >/dev/null 2>&1 || fail "a shipped case file failed validation or its fixture probe"
+# --no-session-probe because this case is about the CASE FILES and their
+# fixtures. The session probe needs the real `claude` binary, which a CI runner
+# does not have — and § 11 covers the probe against the fake instead.
+python3 "$RUNNER" --out "$TMP/out-shipped" --validate-only --no-session-probe \
+  "${SHIPPED[@]}" >/dev/null 2>&1 \
+  || fail "a shipped case file failed validation or its fixture probe"
 pass
 
 # ---------------------------------------------------------------------------
@@ -580,6 +642,7 @@ pass
 # fixtures relative to it, so the mutant needs a shadow root with evals/.
 mkdir -p "$TMP/mut/scripts"
 ln -s "$REPO/evals" "$TMP/mut/evals"
+ln -s "$REPO/.claude-plugin" "$TMP/mut/.claude-plugin"
 python3 - "$RUNNER" "$TMP/mut/scripts/run-behavioural-eval.py" <<'PY'
 import pathlib, sys
 src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
@@ -655,6 +718,7 @@ pass
 # request and every other section would stay green.
 mkdir -p "$TMP/mut-model/scripts"
 ln -s "$REPO/evals" "$TMP/mut-model/evals"
+ln -s "$REPO/.claude-plugin" "$TMP/mut-model/.claude-plugin"
 python3 - "$RUNNER" "$TMP/mut-model/scripts/run-behavioural-eval.py" <<'PY'
 import pathlib, sys
 src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
@@ -670,6 +734,224 @@ import json
 g=json.load(open('$TMP/out-model-mut/eval-case-model-0/with_skill/run-1/grading.json'))
 assert g['models']['executor']=='requested-model-not-used', g['models']
 " || fail "the request-echoing mutant did not reproduce the defect, so § 9 no longer proves the recording reads the stream"
+pass
+
+# ---------------------------------------------------------------------------
+# 10. THE SESSION HAD THE SHAPE ITS CONFIGURATION CLAIMS.
+# ---------------------------------------------------------------------------
+# The defect these catch is the one this suite could not previously see: a
+# with_skill leg that never loaded the plugin still produces a well-formed
+# stream, makes tool calls, and scores. Four graded runs reported deltas between
+# two configurations that were both the base model (#226), and nothing here went
+# red, because "the plugin did not load" and "the plugin loaded and changed
+# nothing" were indistinguishable to the runner.
+#
+# Each check gets a seeded defect AND a mutant runner with only that check
+# removed, so a check that some other check incidentally covers cannot pass for
+# load-bearing.
+
+# A shadow root the runner will resolve REPO to. It needs evals/ for the
+# fixtures and .claude-plugin/ because PLUGIN_NAME is read from the manifest.
+make_mutant() {  # $1 = name, $2 = literal to replace, $3 = replacement
+  local d="$TMP/mut-$1"
+  rm -rf "$d"; mkdir -p "$d/scripts"
+  ln -s "$REPO/evals" "$d/evals"
+  ln -s "$REPO/.claude-plugin" "$d/.claude-plugin"
+  MUT_OLD="$2" MUT_NEW="$3" python3 - "$RUNNER" "$d/scripts/run-behavioural-eval.py" <<'PY'
+import os, pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace(os.environ["MUT_OLD"], os.environ["MUT_NEW"])
+# If the code is refactored the mutation stops reproducing the defect, and the
+# case would pass while testing nothing. Fail loudly instead.
+assert mutated != text, f"mutation target not found: {os.environ['MUT_OLD'][:70]!r}"
+dst.write_text(mutated)
+PY
+  echo "$d/scripts/run-behavioural-eval.py"
+}
+
+# Print the execution_error of one leg (empty string when the run was accepted).
+exec_error() {  # $1 = runner, $2 = plan, $3 = out dir, $4 = config
+  rm -rf "$3"
+  FAKE_PLAN="$2" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+    python3 "$1" --case "$TMP/case/evals.json" --out "$3" \
+      --configs "$4" --no-grade >/dev/null 2>&1
+  python3 -c "
+import json
+g=json.load(open('$3/eval-case-0/$4/run-1/grading.json'))
+print(g['execution_error'] or '')
+assert g['execution_error'] is None or g['summary']['pass_rate']==0.0, g['summary']"
+}
+
+# A plan whose control leg behaves identically to its treatment leg — the exact
+# null result the checks have to tell apart from a broken harness.
+cat > "$TMP/plan-both-legs.json" <<EOF
+{ "with_skill":    { "calls": [ { "tool": "glassfrog_create_tension",
+      "args": { "role_id": "$SEC_ROLE", "body": "successor" } } ] },
+  "without_skill": { "calls": [ { "tool": "glassfrog_create_tension",
+      "args": { "role_id": "$SEC_ROLE", "body": "successor" } } ] } }
+EOF
+
+# Baseline: a well-shaped run of either leg is accepted.
+for leg in with_skill without_skill; do
+  E="$(exec_error "$RUNNER" "$TMP/plan-both-legs.json" "$TMP/out-shape-$leg" "$leg")"
+  [ -z "$E" ] || fail "a well-shaped $leg run was rejected: $E"
+done
+pass
+
+# 10a. No Skill tool — what `--bare` produced, and the whole of #226. The run
+#      otherwise looks perfect: real tool calls, real writes, a scoreable
+#      transcript. Only the init event says no skill could ever have fired.
+export FAKE_NO_SKILL_TOOL=1
+E="$(exec_error "$RUNNER" "$TMP/plan-both-legs.json" "$TMP/out-noskill" with_skill)"
+case "$E" in
+  *"no Skill tool"*) : ;;
+  *) fail "a session with no Skill tool was accepted (error was: '$E')" ;;
+esac
+MUT="$(make_mutant noskill 'if "Skill" not in set(init.get("tools") or []):' 'if False:')"
+E="$(exec_error "$MUT" "$TMP/plan-both-legs.json" "$TMP/out-noskill-mut" with_skill)"
+[ -z "$E" ] || fail "the no-Skill-tool defect was caught by something other than its own check: $E"
+unset FAKE_NO_SKILL_TOOL
+pass
+
+# 10b. --plugin-dir was passed and registered nothing. This is what makes
+#      with_skill the base model while every artifact still looks healthy.
+export FAKE_PLUGIN_NOT_LOADED=1
+E="$(exec_error "$RUNNER" "$TMP/plan-both-legs.json" "$TMP/out-noload" with_skill)"
+case "$E" in
+  *"registered no ${PLUGIN_NS}:"*) : ;;
+  *) fail "a with_skill run that loaded no plugin was accepted (error was: '$E')" ;;
+esac
+MUT="$(make_mutant noload '        if not registered:' '        if False:')"
+E="$(exec_error "$MUT" "$TMP/plan-both-legs.json" "$TMP/out-noload-mut" with_skill)"
+[ -z "$E" ] || fail "the plugin-not-loaded defect was caught by another check: $E"
+unset FAKE_PLUGIN_NOT_LOADED
+pass
+
+# 10c. The mirror: the plugin present in a leg that is supposed to be without it.
+#      An operator's globally-installed copy is the live route for this, which is
+#      what --bare was originally protecting against and CLAUDE_CONFIG_DIR now does.
+export FAKE_PLUGIN_LEAK=1
+E="$(exec_error "$RUNNER" "$TMP/plan-both-legs.json" "$TMP/out-leak" without_skill)"
+case "$E" in
+  *"leaked into without_skill"*) : ;;
+  *) fail "a control leg carrying the plugin was accepted (error was: '$E')" ;;
+esac
+MUT="$(make_mutant leak '    elif registered:' '    elif False:')"
+E="$(exec_error "$MUT" "$TMP/plan-both-legs.json" "$TMP/out-leak-mut" without_skill)"
+[ -z "$E" ] || fail "the plugin-leak defect was caught by another check: $E"
+unset FAKE_PLUGIN_LEAK
+pass
+
+# 10d. No init event at all. Unlike the three above this one IS caught by 10a's
+#      check as a side effect — an absent init has no tools either — so the
+#      mutation proves something narrower and worth stating plainly: without
+#      this branch the run still fails, but it is misdiagnosed as a missing
+#      Skill tool rather than as an unverifiable session.
+export FAKE_NO_INIT=1
+E="$(exec_error "$RUNNER" "$TMP/plan-both-legs.json" "$TMP/out-noinit" with_skill)"
+case "$E" in
+  *"no init event"*) : ;;
+  *) fail "a session with no init event was accepted (error was: '$E')" ;;
+esac
+MUT="$(make_mutant noinit '    if init is None:
+        return ("the session emitted no init event' '    init = init or {}
+    if False:
+        return ("the session emitted no init event')"
+E="$(exec_error "$MUT" "$TMP/plan-both-legs.json" "$TMP/out-noinit-mut" with_skill)"
+case "$E" in
+  *"no init event"*) fail "the no-init branch was removed but its message survived; the mutation is not reproducing the defect" ;;
+  "") fail "with the no-init branch removed the run was accepted, so the message assertion above is the only thing standing between an unverifiable session and a green score" ;;
+  *) : ;;
+esac
+unset FAKE_NO_INIT
+pass
+
+# 10e. The control reached the checkout on disk. Run-1 of graded run
+#      31058151548 did exactly this — `find /` then `cat` — and scored 3/5 on
+#      content it read off the filesystem rather than received from the plugin.
+#      FAKE_READ_PATH is the runner's OWN repo root, so the mutant (whose REPO
+#      is its shadow root) is tested against its own path, not this one.
+export FAKE_READ_PATH="$REPO"
+E="$(exec_error "$RUNNER" "$TMP/plan-both-legs.json" "$TMP/out-reach" without_skill)"
+case "$E" in
+  *"reached the plugin checkout on disk"*) : ;;
+  *) fail "a control leg that read the checkout was accepted (error was: '$E')" ;;
+esac
+# Reading it in with_skill is how a skill loads its own references/ — legitimate.
+E="$(exec_error "$RUNNER" "$TMP/plan-both-legs.json" "$TMP/out-reach-ok" with_skill)"
+[ -z "$E" ] || fail "with_skill was penalised for reading the plugin's own files: $E"
+MUT="$(make_mutant reach '    reached = contamination_error(events, config)' '    reached = None')"
+# Point the fake at the MUTANT's own root: its REPO is the shadow dir, so a read
+# of this checkout would not be contamination from its point of view anyway.
+export FAKE_READ_PATH="$TMP/mut-reach"
+E="$(exec_error "$MUT" "$TMP/plan-both-legs.json" "$TMP/out-reach-mut" without_skill)"
+[ -z "$E" ] || fail "the filesystem-reach defect was caught by another check: $E"
+unset FAKE_READ_PATH
+pass
+
+# ---------------------------------------------------------------------------
+# 11. THE SESSION-SHAPE PREFLIGHT, under --validate-only.
+# ---------------------------------------------------------------------------
+# § 10's checks only fire once a graded run is under way. The preflight moves
+# the same three questions to the cheapest tier there is: the CLI emits its init
+# event BEFORE it authenticates, so an operator with no API key still learns
+# whether a Skill tool exists and whether --plugin-dir registered anything.
+# #226 cost four graded runs and an artifact download to notice, and every fact
+# needed to spot it was available for free, at session start, on any laptop.
+validate() {  # $1 = runner, rest = extra args; prints the session-shape lines
+  FAKE_PLAN="$TMP/plan-both-legs.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+    python3 "$1" --case "$TMP/case/evals.json" --out "$TMP/out-validate" \
+      --validate-only "${@:2}" 2>&1 | grep "session shape" || true
+}
+validate_rc() {  # $1 = runner, rest = extra args; prints the exit code
+  FAKE_PLAN="$TMP/plan-both-legs.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+    python3 "$1" --case "$TMP/case/evals.json" --out "$TMP/out-validate" \
+      --validate-only "${@:2}" >/dev/null 2>&1
+  echo $?
+}
+
+V="$(validate "$RUNNER")"
+echo "$V" | grep -q "ok   session shape \[with_skill\]" \
+  || { echo "$V"; fail "the preflight did not report a healthy with_skill session"; }
+echo "$V" | grep -q "ok   session shape \[without_skill\]" \
+  || { echo "$V"; fail "the preflight did not report a healthy without_skill session"; }
+[ "$(validate_rc "$RUNNER")" = "0" ] || fail "a healthy preflight did not exit 0"
+pass
+
+# 11a. The #226 configuration itself. This is the assertion that would have
+#      stopped the whole defect at the preflight, for free.
+export FAKE_NO_SKILL_TOOL=1
+V="$(validate "$RUNNER")"
+echo "$V" | grep -q "FAIL session shape" \
+  || { echo "$V"; fail "the preflight passed a session with no Skill tool"; }
+[ "$(validate_rc "$RUNNER")" = "1" ] || fail "a failed preflight did not exit non-zero"
+# Mutation: drop the preflight and the defect is invisible until a graded run.
+MUT="$(make_mutant preflight '    if args.validate_only and not args.no_session_probe:' '    if False:')"
+[ "$(validate_rc "$MUT")" = "0" ] \
+  || fail "the no-Skill-tool defect was caught under --validate-only by something other than the preflight"
+unset FAKE_NO_SKILL_TOOL
+pass
+
+# 11b. --plugin-dir registering nothing is the preflight's other question, and
+#      it is asymmetric: only the treatment leg can fail it.
+export FAKE_PLUGIN_NOT_LOADED=1
+V="$(validate "$RUNNER")"
+echo "$V" | grep -q "FAIL session shape \[with_skill\]" \
+  || { echo "$V"; fail "the preflight passed a with_skill session that loaded no plugin"; }
+echo "$V" | grep -q "ok   session shape \[without_skill\]" \
+  || { echo "$V"; fail "the control leg was failed for an absence that is its whole point"; }
+unset FAKE_PLUGIN_NOT_LOADED
+pass
+
+# 11c. The escape hatch has to actually skip it — a preflight that cannot be
+#      turned off is one that gets deleted the first time `claude` is not on PATH.
+export FAKE_NO_SKILL_TOOL=1
+V="$(validate "$RUNNER" --no-session-probe)"
+[ -z "$V" ] || { echo "$V"; fail "--no-session-probe still ran the session probe"; }
+[ "$(validate_rc "$RUNNER" --no-session-probe)" = "0" ] \
+  || fail "--no-session-probe did not skip the failing probe"
+unset FAKE_NO_SKILL_TOOL
 pass
 
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

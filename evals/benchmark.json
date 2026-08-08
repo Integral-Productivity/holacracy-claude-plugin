@@ -1,13 +1,15 @@
 {
-  "_note": "Baseline for the behavioural tier. UNMEASURED: no graded run has been performed, because the graded tier needs ANTHROPIC_API_KEY and that secret is a separate human action (issue #171). Every statistic below is null on purpose. Seeding it with a plausible number would give #173's regression alarm something to compare against that nobody measured, which is the failure mode CLAUDE.md's readout section spends a page on: reporting health from absent evidence. The shape is aggregate_benchmark.py's output so a real run drops straight in.",
+  "_note": "Baseline for the behavioural tier. UNMEASURED: every statistic below is null on purpose. ANTHROPIC_API_KEY is now configured (it was the blocker this note used to name, issue #171), and the first graded run taken after it -- 31229964963 -- still does not qualify: it answered all 12 with_skill executions with claude-opus-5[1m] and all 12 without_skill executions with claude-haiku-4-5, so its +0.13 delta measures the models rather than the plugin. The runner now refuses such a benchmark and skills-eval.yml pins --model, so the next run is seedable. Seeding this with a plausible number would give #173's regression alarm something to compare against that nobody measured, which is the failure mode CLAUDE.md's readout section spends a page on: reporting health from absent evidence. The shape is aggregate_benchmark.py's output so a real run drops straight in.",
   "measured": false,
-  "comparability": "A BASELINE IS ONLY COMPARABLE AGAINST RUNS OF THE SAME MODEL. metadata.executor_model and metadata.analyzer_model below record which model produced these numbers; the Aggregate step in skills-eval.yml stamps them from what the runner observed on the wire, because the `model` dispatch input is blank on any run that took the CLI default and aggregate_benchmark.py otherwise writes the literal string \"<model-name>\" (issue #203). Compare a run against this baseline only when those fields match. A model change moves the pass rate for reasons that have nothing to do with the skills, and #173's regression alarm reading a mismatched pair would report a skill regression that is really a model upgrade — attributing the delta to the wrong cause. When the models differ, the right move is to re-seed the baseline on the new model, not to interpret the delta.",
+  "comparability": "A BASELINE IS ONLY COMPARABLE AGAINST RUNS OF THE SAME MODEL. metadata.executor_model and metadata.analyzer_model below record which model produced these numbers; the Aggregate step in skills-eval.yml stamps them from what the runner observed on the wire, because the `model` dispatch input is blank on any run that took the CLI default and aggregate_benchmark.py otherwise writes the literal string \"<model-name>\" (issue #203). Compare a run against this baseline only when those fields match. A model change moves the pass rate for reasons that have nothing to do with the skills, and #173's regression alarm reading a mismatched pair would report a skill regression that is really a model upgrade \u2014 attributing the delta to the wrong cause. When the models differ, the right move is to re-seed the baseline on the new model, not to interpret the delta.",
   "how_to_seed": [
-    "1. Add ANTHROPIC_API_KEY as a repository secret.",
+    "1. Confirm ANTHROPIC_API_KEY is set on the repository. It is, as of 2026-08-08 -- the check is that the steps gated on steps.key.outputs.present in skills-eval.yml actually execute.",
     "2. Run the 'Skills eval (behavioural)' workflow via workflow_dispatch with runs=3. Three runs is the minimum that yields a stddev worth reading.",
-    "3. Download the behavioural-benchmark artifact and commit its benchmark.json over this file.",
-    "4. Read the stddev before trusting the mean. Per evals/README.md a wide-variance case is a defect in the case, not a finding about the skill — fix the case before it becomes a baseline.",
-    "5. Check that metadata.executor_model is a real model name and not null. A null means no model could be read off the event streams, and a baseline that cannot name its model cannot be compared against anything later."
+    "3. Leave the `model` input at its default. Blank lets each session choose, and in run 31229964963 that put the two arms on two different models; the runner refuses the resulting benchmark, so a blank run is a wasted 40 minutes rather than a bad baseline.",
+    "4. Read the 'Probe the session shape' step before anything else. It is the #226 guard: with_skill must register the plugin's commands and the control must register none, or the run measures nothing whatever its numbers say.",
+    "5. Download the behavioural-benchmark artifact and merge its measured fields over this file -- keep `comparability`, `how_to_seed` and this note, which the artifact does not carry.",
+    "6. Read the stddev before trusting the mean. Per evals/README.md a wide-variance case is a defect in the case, not a finding about the skill -- fix the case before it becomes a baseline.",
+    "7. Check that metadata.executor_model is a real model name, is not null, and names exactly ONE model. A comma-joined pair means the arms diverged and the delta is uninterpretable."
   ],
   "generated_at": null,
   "metadata": {
@@ -20,21 +22,67 @@
   },
   "run_summary": {
     "with_skill": {
-      "pass_rate": { "mean": null, "stddev": null, "min": null, "max": null },
-      "time_seconds": { "mean": null, "stddev": null, "min": null, "max": null },
-      "tokens": { "mean": null, "stddev": null, "min": null, "max": null }
+      "pass_rate": {
+        "mean": null,
+        "stddev": null,
+        "min": null,
+        "max": null
+      },
+      "time_seconds": {
+        "mean": null,
+        "stddev": null,
+        "min": null,
+        "max": null
+      },
+      "tokens": {
+        "mean": null,
+        "stddev": null,
+        "min": null,
+        "max": null
+      }
     },
     "without_skill": {
-      "pass_rate": { "mean": null, "stddev": null, "min": null, "max": null },
-      "time_seconds": { "mean": null, "stddev": null, "min": null, "max": null },
-      "tokens": { "mean": null, "stddev": null, "min": null, "max": null }
+      "pass_rate": {
+        "mean": null,
+        "stddev": null,
+        "min": null,
+        "max": null
+      },
+      "time_seconds": {
+        "mean": null,
+        "stddev": null,
+        "min": null,
+        "max": null
+      },
+      "tokens": {
+        "mean": null,
+        "stddev": null,
+        "min": null,
+        "max": null
+      }
     }
   },
   "delta": null,
   "cases": [
-    { "surface": "/holacracy:tension-triage", "eval_id": 0, "eval_name": "authority-gate-fires-before-venue-routing" },
-    { "surface": "/holacracy:tension-triage", "eval_id": 1, "eval_name": "blended-tension-partitioned" },
-    { "surface": "/holacracy:tension-triage", "eval_id": 2, "eval_name": "successor-written-before-archive" },
-    { "surface": "/holacracy:capture-tension", "eval_id": 0, "eval_name": "person-tension-refused-and-routed-to-idr" }
+    {
+      "surface": "/holacracy:tension-triage",
+      "eval_id": 0,
+      "eval_name": "authority-gate-fires-before-venue-routing"
+    },
+    {
+      "surface": "/holacracy:tension-triage",
+      "eval_id": 1,
+      "eval_name": "blended-tension-partitioned"
+    },
+    {
+      "surface": "/holacracy:tension-triage",
+      "eval_id": 2,
+      "eval_name": "successor-written-before-archive"
+    },
+    {
+      "surface": "/holacracy:capture-tension",
+      "eval_id": 0,
+      "eval_name": "person-tension-refused-and-routed-to-idr"
+    }
   ]
 }

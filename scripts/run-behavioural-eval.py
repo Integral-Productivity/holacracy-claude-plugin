@@ -973,6 +973,10 @@ def main() -> int:
     # to one name would hide exactly the thing the recording exists to expose.
     executors: set[str] = set()
     analyzers: set[str] = set()
+    # Per config as well as overall. The overall set answers "which models
+    # appear"; only the per-config split answers "did the two arms run on the
+    # same one", which is the question a delta depends on.
+    executors_by_config: dict = {}
 
     for case_path in args.case:
         doc = load_case_file(Path(case_path))
@@ -1031,6 +1035,9 @@ def main() -> int:
                         name = grading["models"].get(which)
                         if name:
                             seen.add(name)
+                    executor = grading["models"].get("executor")
+                    if executor:
+                        executors_by_config.setdefault(config, set()).add(executor)
                     summary = grading["summary"]
                     note = f"  [{grading['execution_error']}]" if grading["execution_error"] else ""
                     print(f"{case['eval_name']} / {config} / run-{run}: "
@@ -1052,7 +1059,33 @@ def main() -> int:
             "executor_models": sorted(executors),
             "analyzer_models": sorted(analyzers),
             "graded": not args.no_grade,
+            "executor_models_by_config": {c: sorted(m) for c, m
+                                          in sorted(executors_by_config.items())},
         }, indent=2))
+
+        # The arms must have run on the SAME executor model, or the delta
+        # between them is a fact about the models rather than about the plugin.
+        #
+        # This is not hypothetical. Graded run 31229964963 answered every one of
+        # the 12 `with_skill` executions with claude-opus-5[1m] and every one of
+        # the 12 `without_skill` executions with claude-haiku-4-5 — a perfect
+        # confound with the configuration, because `--model` was blank and each
+        # session chose for itself. It reported +0.13 in the plugin's favour and
+        # the treatment arm is the one that got the stronger model. The loop runs
+        # `with_skill` first for every eval, so the bias has a fixed direction.
+        #
+        # Reported AFTER run_metadata.json is written: the evidence is what makes
+        # the failure actionable, and a run that fails here has still done all the
+        # work, so throwing its record away would be the expensive kind of tidy.
+        distinct = {m for models in executors_by_config.values() for m in models}
+        if len(distinct) > 1:
+            print("ERROR: the configurations did not run on the same executor "
+                  "model, so their delta measures the models and not the plugin. "
+                  "Pass --model to pin it.", file=sys.stderr)
+            for config in sorted(executors_by_config):
+                print(f"  {config}: {', '.join(sorted(executors_by_config[config]))}",
+                      file=sys.stderr)
+            failures += 1
 
     return 1 if failures else 0
 

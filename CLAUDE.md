@@ -154,12 +154,24 @@ that passes with the skill disabled measures nothing, and the only defensible
 exception is a constitutional floor that must hold in every configuration.
 
 `evals/benchmark.json` is the baseline [#173](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/173)'s
-regression alarm compares against. **It is currently unmeasured**, and says so in
-its own body: no graded run has happened because `ANTHROPIC_API_KEY` is not yet a
-repository secret. Seed it from a real `workflow_dispatch` run rather than
-filling in a plausible number — a baseline nobody measured is the same
-report-health-from-absent-evidence failure the grounding readout section below
-spends a page on.
+regression alarm compares against. **It is still unmeasured**, and says so in its own
+body. `ANTHROPIC_API_KEY` is configured now — that blocker is gone — but the
+first graded run taken after it
+([31229964963](https://github.com/Integral-Productivity/holacracy-claude-plugin/actions/runs/31229964963))
+ran its two arms on two different models and so measured the models. Seed it
+from a real `workflow_dispatch` run, never by hand: a baseline nobody measured
+is the same report-health-from-absent-evidence failure the grounding readout
+section below spends a page on.
+
+**A baseline is only comparable against runs of the same model, and only against
+runs of a harness that loads the plugin.** The first condition is recorded in the
+file (`metadata.executor_model`); the second is not, and is what
+[#226](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/226)
+turned from a theoretical caveat into a rule — every number produced before
+[#227](https://github.com/Integral-Productivity/holacracy-claude-plugin/pull/227)
+merged compared the base model against itself. Re-seed after any change to how
+the session is constructed, and read the `--validate-only` session-shape
+preflight before trusting a run at all.
 
 **Fixtures never contain real GlassFrog data, and that is structural rather than
 procedural.** `scripts/glassfrog-schema-capture.py` reduces a live response to

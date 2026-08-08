@@ -74,6 +74,12 @@ def opt(name):
 EXECUTOR_MODEL = "fake-executor-model"
 ANALYZER_MODEL = "fake-analyzer-model"
 
+# Reproduces graded run 31229964963, where every with_skill execution was
+# answered by one model and every without_skill execution by another, purely
+# because --model was blank and each session chose for itself.
+if os.environ.get("FAKE_SPLIT_MODEL") and "--plugin-dir" not in sys.argv[1:]:
+    EXECUTOR_MODEL = "fake-control-model"
+
 # The namespace the plugin registers under, read from the manifest by the shell
 # and handed in. Hard-coding it here would let a rename turn the plugin-loaded
 # assertions into vacuous ones without anything going red.
@@ -952,6 +958,60 @@ V="$(validate "$RUNNER" --no-session-probe)"
 [ "$(validate_rc "$RUNNER" --no-session-probe)" = "0" ] \
   || fail "--no-session-probe did not skip the failing probe"
 unset FAKE_NO_SKILL_TOOL
+pass
+
+# ---------------------------------------------------------------------------
+# 12. THE TWO ARMS MUST HAVE RUN ON THE SAME EXECUTOR MODEL.
+# ---------------------------------------------------------------------------
+# A delta between arms that ran on different models is a fact about the models.
+# Graded run 31229964963 answered all 12 with_skill executions with
+# claude-opus-5[1m] and all 12 without_skill executions with claude-haiku-4-5,
+# reported +0.13 in the plugin's favour, and every artifact looked healthy —
+# benchmark.json records executor_model as a comma-joined string, so even a
+# careful reader sees "two models" only if they think to ask. The loop runs
+# with_skill first for every eval, so the bias has a fixed direction.
+both_configs() {  # $1 = runner, $2 = out dir; prints the exit code
+  rm -rf "$2"
+  FAKE_PLAN="$TMP/plan-both-legs.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+    python3 "$1" --case "$TMP/case/evals.json" --out "$2" \
+      --configs with_skill,without_skill --no-grade >/dev/null 2>"$TMP/both.err"
+  echo $?
+}
+
+# One model across both arms is the healthy case.
+[ "$(both_configs "$RUNNER" "$TMP/out-samemodel")" = "0" ] \
+  || { cat "$TMP/both.err"; fail "a run whose arms shared an executor model was rejected"; }
+python3 -c "
+import json
+m=json.load(open('$TMP/out-samemodel/run_metadata.json'))['executor_models_by_config']
+assert sorted(m)==['with_skill','without_skill'], m
+assert m['with_skill']==m['without_skill']==['fake-executor-model'], m
+" || fail "run_metadata did not record the per-config executor models"
+pass
+
+# Mutation: split the model along the configuration, exactly as the live run did.
+export FAKE_SPLIT_MODEL=1
+# Spelled as an explicit `if`: `A && B || C` is not if-then-else (SC2015), and C
+# would also run when A holds and B does not — the same shellcheck note § 8
+# already carries a comment about.
+SPLIT_RC="$(both_configs "$RUNNER" "$TMP/out-splitmodel")"
+if [ "$SPLIT_RC" = "0" ] \
+   || ! grep -q "did not run on the same executor model" "$TMP/both.err"; then
+  cat "$TMP/both.err"
+  fail "a run whose arms used different executor models was accepted (exit $SPLIT_RC)"
+fi
+# The evidence has to survive the failure — a run that fails here has still done
+# all of its work, and the record is what makes the failure actionable.
+python3 -c "
+import json
+m=json.load(open('$TMP/out-splitmodel/run_metadata.json'))['executor_models_by_config']
+assert m['with_skill']==['fake-executor-model'], m
+assert m['without_skill']==['fake-control-model'], m
+" || fail "run_metadata was not written for a run that failed the same-model check"
+MUT="$(make_mutant samemodel '        if len(distinct) > 1:' '        if False:')"
+[ "$(both_configs "$MUT" "$TMP/out-splitmodel-mut")" = "0" ] \
+  || fail "the split-model defect was caught by something other than its own check"
+unset FAKE_SPLIT_MODEL
 pass
 
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

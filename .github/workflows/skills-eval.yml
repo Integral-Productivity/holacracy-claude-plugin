@@ -43,8 +43,8 @@ on:
         description: "Runs per (eval, config). More runs shrink the stddev; the flakiness read in evals/README.md needs at least 3."
         default: "3"
       model:
-        description: "Model for both the executor and the grader (blank = the CLI default)"
-        default: ""
+        description: "Model for both the executor and the grader. Leave the default unless you are deliberately re-baselining on another model — blank lets each session choose, which is how run 31229964963 ran one arm on Opus and the other on Haiku."
+        default: "claude-sonnet-5"
 
 permissions:
   contents: read
@@ -241,7 +241,12 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RUNS: ${{ inputs.runs || '3' }}
-          MODEL: ${{ inputs.model }}
+          # The `|| ` fallback is not cosmetic: `inputs` is EMPTY on a schedule
+          # event, so a default declared on the workflow_dispatch input alone
+          # would leave the nightly run — the only one that runs unattended —
+          # unpinned, which is exactly the configuration that produced the
+          # confounded run 31229964963. Same reason RUNS carries one.
+          MODEL: ${{ inputs.model || 'claude-sonnet-5' }}
         run: |
           set -euo pipefail
           # Both are workflow_dispatch inputs, so they reach the shell only as
@@ -315,6 +320,12 @@ jobs:
 
           args=()
           for f in evals/cases/*/evals.json; do args+=(--case "$f"); done
+          # Pinned, not defaulted-to-the-CLI. With --model absent each session
+          # picks for itself, and in run 31229964963 that meant all 12
+          # with_skill executions on claude-opus-5[1m] and all 12 without_skill
+          # executions on claude-haiku-4-5 — a delta that measured the models.
+          # The runner now refuses such a benchmark outright; this is the half
+          # that stops it happening rather than only catching it.
           if [ -n "$MODEL" ]; then args+=(--model "$MODEL"); fi
           python3 scripts/run-behavioural-eval.py \
             --out "$RUNNER_TEMP/benchmark" --runs "$RUNS" "${args[@]}"

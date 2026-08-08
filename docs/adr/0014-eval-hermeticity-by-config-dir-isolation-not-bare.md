@@ -87,6 +87,24 @@ must seed it from a run taken after this. The premise of
 — a case scoring 5/5 in both configurations — is most likely an artifact of this
 defect and should be re-derived before it is treated as a fact about the case.
 
+**A second variable had to be held constant, and this ADR originally missed it.**
+Isolation makes the plugin the only *content* difference between the arms. It does
+nothing about the *model*. The first graded run taken after this decision
+([31229964963](https://github.com/Integral-Productivity/holacracy-claude-plugin/actions/runs/31229964963))
+answered all 12 `with_skill` executions with `claude-opus-5[1m]` and all 12
+`without_skill` executions with `claude-haiku-4-5`, because `--model` was blank
+and each session chose for itself. It reported +0.13 in the plugin's favour.
+
+That is the same defect shape as #226 — two configurations differing in more than
+the variable under test — arriving through a different door, and it is worse in
+one respect: the runner loops `with_skill` before `without_skill` for every eval,
+so the bias has a fixed direction rather than being noise. Amended accordingly:
+the graded tier pins `--model` (`claude-sonnet-5`, defaulted in
+`skills-eval.yml` on both the dispatch input *and* the `MODEL` expression, since
+`inputs` is empty on a schedule event), and `run-behavioural-eval.py` refuses a
+benchmark whose arms did not share an executor model, recording the per-config
+split in `run_metadata.json` so the refusal is actionable.
+
 **The control is reduced, not proven.** `Task` is offered, and a subagent's own
 tool calls do not surface in the parent event stream, so a control run that
 delegated a filesystem search would not be caught. Stated in the runner's

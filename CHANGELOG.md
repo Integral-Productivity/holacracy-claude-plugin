@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.13.1...v0.13.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **evals:** the graded tier never loaded the plugin, because --bare has no Skill tool ([#227](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/227)) ([71b2f2b](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/71b2f2bcf4e27d3f94b4e675973c888a8f29f576))
+
 ## [0.13.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.13.0...v0.13.1) (2026-08-06)
 
 

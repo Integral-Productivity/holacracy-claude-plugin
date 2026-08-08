@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.3](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.13.2...v0.13.3) (2026-08-08)
+
+
+### Bug Fixes
+
+* **evals:** pin the executor model, and refuse a benchmark whose arms diverged ([#243](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/243)) ([839c0f9](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/839c0f937fa22d547749ee0d03c20cc4727477a8))
+
 ## [0.13.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.13.1...v0.13.2) (2026-08-08)
 
 

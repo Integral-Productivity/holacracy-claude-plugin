@@ -137,7 +137,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.key.outputs.present == 'true'
         with:
           node-version: "22"

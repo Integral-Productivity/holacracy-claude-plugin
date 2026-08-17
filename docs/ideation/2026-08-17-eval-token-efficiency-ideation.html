@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: Prompt caching and token efficiency in the eval harness</title>
+<style>
+  :root{
+    --bg:#fbfaf7; --surface:#ffffff; --ink:#1c1a17; --muted:#5f5a52;
+    --line:#e6e1d8; --accent:#7a5b2e; --accent-soft:#f3ecde; --accent-text:#6a4d24;
+    --info-soft:#e7eef4; --info-text:#33546b;
+    --warn-soft:#f6ead9; --warn-text:#8a5a1d;
+    --good-soft:#e6efe4; --good-text:#3f6238;
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#17150f; --surface:#201d16; --ink:#ece7dc; --muted:#a39c8d;
+      --line:#332e24; --accent:#d8b275; --accent-text:#e3c187; --accent-soft:#2c2618;
+      --info-soft:#1d2730; --info-text:#9cc0db;
+      --warn-soft:#2e2415; --warn-text:#e0b072;
+      --good-soft:#1d2a1c; --good-text:#9fc596;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.6 ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:900px; margin-inline:auto; padding:48px 24px 80px}
+  .eyebrow{
+    font:600 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--accent-text); margin:0 0 8px
+  }
+  h1{font-size:2.05rem; line-height:1.22; margin:0 0 14px; font-weight:600}
+  h2{
+    font-size:1.32rem; margin:52px 0 14px; padding-bottom:8px;
+    border-bottom:1px solid var(--line); font-weight:600
+  }
+  h3{font-size:1.1rem; margin:0 0 10px; font-weight:600}
+  p{max-width:70ch}
+  .meta{
+    display:flex; flex-wrap:wrap; gap:8px; margin:0 0 26px;
+    font:500 12px/1 ui-sans-serif, system-ui, sans-serif;
+  }
+  .meta span{
+    background:var(--surface); border:1px solid var(--line); color:var(--muted);
+    border-radius:999px; padding:7px 13px;
+  }
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+    gap:12px; margin:28px 0 8px;
+  }
+  .stat{
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:14px 16px;
+  }
+  .stat b{display:block; font-size:1.6rem; line-height:1.1; font-weight:600}
+  .stat small{
+    display:block; margin-top:5px; color:var(--muted);
+    font:500 11px/1.35 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.05em; text-transform:uppercase;
+  }
+  .card{
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:22px 24px; margin:0 0 20px;
+  }
+  .callout{
+    background:var(--info-soft); border:1px solid var(--line);
+    border-radius:var(--radius); padding:16px 20px; margin:20px 0;
+  }
+  .callout .eyebrow{color:var(--info-text)}
+  .callout p{color:var(--info-text); margin:0}
+  .chips{display:flex; flex-wrap:wrap; gap:7px; margin:0 0 14px}
+  .chip{
+    font:600 11px/1 ui-sans-serif, system-ui, sans-serif;
+    border-radius:999px; padding:6px 11px; border:1px solid transparent;
+  }
+  .chip-id{background:var(--accent-soft); color:var(--accent-text)}
+  .chip-axis{background:var(--info-soft); color:var(--info-text)}
+  .chip-conf{background:var(--good-soft); color:var(--good-text)}
+  .chip-cx{background:var(--warn-soft); color:var(--warn-text)}
+  dl{margin:14px 0 0}
+  dt{
+    font:600 10.5px/1.4 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-top:15px;
+  }
+  dd{margin:5px 0 0; max-width:70ch}
+  code{
+    font:0.86em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background:var(--accent-soft); color:var(--accent-text);
+    padding:1px 5px; border-radius:4px;
+  }
+  .jump{
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:16px 22px; margin:0 0 26px;
+  }
+  .jump ol{margin:0; padding-left:20px; font:15px/1.9 ui-sans-serif, system-ui, sans-serif}
+  .jump a{color:var(--accent-text); text-decoration:none}
+  .jump a:hover{text-decoration:underline}
+  table{border-collapse:collapse; width:100%; margin:16px 0; font-size:.94rem}
+  th,td{border:1px solid var(--line); padding:9px 12px; text-align:left; vertical-align:top}
+  th{
+    background:var(--accent-soft); color:var(--accent-text);
+    font:600 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.08em; text-transform:uppercase;
+  }
+  figure{margin:20px 0 4px}
+  figure svg{
+    display:block; width:100%; height:auto;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  }
+  figcaption{
+    margin-top:8px; color:var(--muted);
+    font:400 13px/1.5 ui-sans-serif, system-ui, sans-serif; max-width:70ch;
+  }
+  ul.tight{max-width:70ch; padding-left:20px}
+  ul.tight li{margin:5px 0}
+  .composition-signal{
+    margin-top:56px; padding-top:18px; border-top:1px solid var(--line);
+    color:var(--muted); font:400 12.5px/1.6 ui-sans-serif, system-ui, sans-serif;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<p class="eyebrow">Ideation · Repo-grounded</p>
+<h1>Prompt caching and token efficiency in the skill-eval harness</h1>
+
+<div class="meta">
+  <span>Date: <time datetime="2026-08-17">2026-08-17</time></span>
+  <span>Topic: eval-token-efficiency</span>
+  <span>Mode: repo-grounded</span>
+  <span>Focus: enable prompt caching for evals; improve token efficiency during skill testing and evaluation</span>
+</div>
+
+<div class="stats">
+  <div class="stat"><b>46</b><small>Raw ideas</small></div>
+  <div class="stat"><b>22</b><small>After dedupe</small></div>
+  <div class="stat"><b>7</b><small>Survivors</small></div>
+  <div class="stat"><b>5</b><small>Axes covered</small></div>
+</div>
+
+<h2 id="grounding-context">Grounding Context</h2>
+
+<p><strong>Codebase context.</strong> <code>scripts/run-behavioural-eval.py</code> drives the Claude Code
+CLI headlessly. For each eval case it runs two configurations — <code>with_skill</code> via
+<code>--plugin-dir</code>, and a <code>without_skill</code> control — with N repeats each (nightly N=3).
+Every execution is a fresh <code>subprocess.run()</code> with an empty <code>CLAUDE_CONFIG_DIR</code>, a
+sandbox cwd outside the checkout, <code>--strict-mcp-config</code>, and a generated stub-MCP config
+pointing at <code>evals/stub/glassfrog_stub.py</code>. A second, separate model subprocess then grades
+the transcript against per-case assertions. <code>.github/workflows/skills-eval.yml</code> runs the whole
+thing nightly and on <code>workflow_dispatch</code>; per-PR CI runs only the offline suites, which make
+no API calls at all.</p>
+
+<p>That shape produces roughly 24 executions plus 24 grading passes per nightly run, at about two
+minutes per execution against a 90-minute job ceiling. No session is ever resumed or reused, so
+nothing in the harness gets any API-side prompt-cache benefit today. The <code>evals/benchmark.json</code>
+baseline is committed unmeasured, with null token figures.</p>
+
+<p><strong>The finding that reorganised this ideation.</strong> Three grounding scouts disagreed about what
+the harness records. Reading the code settled it, and the answer is worse than any of the three
+guessed: <code>usage_tokens()</code> sums <code>input_tokens</code>, <code>output_tokens</code>,
+<code>cache_creation_input_tokens</code> and <code>cache_read_input_tokens</code> into a single integer
+before anything is stored. Cache hit rate is therefore not merely unreported — it is unrecoverable
+from the artifacts. Enabling prompt caching today would produce no observable change in anything the
+harness writes.</p>
+
+<p><strong>Past learnings.</strong> Nothing in <code>docs/solutions/</code> addresses caching for eval
+harnesses. Two adjacent lessons transfer: ADR-0012's cost-stratified tier model (the cheap tier makes
+no model calls, so caching has no value there), and a tooling-decisions entry recording that the
+in-repo API constraints doc had gone stale — probe the live surface before designing against
+documentation.</p>
+
+<p><strong>External context.</strong> Anthropic prompt caching allows up to four
+<code>cache_control</code> breakpoints; reads cost roughly 0.1× base input, writes 1.25× at the
+five-minute TTL or 2.0× at the one-hour TTL, which only pays off past about five to seven reads.
+Matching is exact-prefix — any change before a breakpoint invalidates everything after it.
+Independent write-ups converge on the Claude Code CLI being fragile here: a per-invocation dynamic
+header, plus three documented defects that break the prefix on resumed turns, measured at roughly a
+66% hit rate before patching. The Message Batches API offers a flat 50% discount for non-interactive
+work and stacks with caching discounts. Inspect AI ships a <code>cache-prompt</code> option and batch
+mode as explicit scale knobs, and its cost doctrine — deterministic scorers wherever possible,
+model-graded scorers reserved for genuinely open-ended judgment — matches this repo's own stated
+principle almost exactly.</p>
+
+<h2 id="topic-axes">Topic Axes</h2>
+<ul class="tight">
+  <li><strong>Executor session construction</strong> — how each arm's CLI session is spawned, isolated, pinned, and never reused; whether cache breakpoints are reachable through this invocation path at all.</li>
+  <li><strong>Grading pass</strong> — the separate scoring call: prompt shape, the identical-across-calls preamble and schema, transcript payload, batchability, grader model choice.</li>
+  <li><strong>Run economics</strong> — what executes and how often: cases × configs × repeats, scheduling, result caching, early stopping, tier placement.</li>
+  <li><strong>Cost observability</strong> — measuring and reporting token, cache and USD cost per run, per case, per arm; regression alarms on cost, not only on pass rate.</li>
+  <li><strong>Assertion layer</strong> — free deterministic Python checks versus model-graded assertions; how much graded surface could move to free checks without losing discriminating power.</li>
+</ul>
+
+<h2 id="ranked-ideas">Ranked Ideas</h2>
+
+<div class="jump">
+  <ol>
+    <li><a href="#i1">Unbundle the token ledger — make cost measurable at all</a></li>
+    <li><a href="#i2">Settle whether the cache prefix is stable, before writing any caching code</a></li>
+    <li><a href="#i3">Rebuild grading as a batched, cached, blinded scoring stage</a></li>
+    <li><a href="#i4">Skip what has not changed — one decision at three possible scopes</a></li>
+    <li><a href="#i5">Log reads in the stub, then measure whether assertions discriminate</a></li>
+    <li><a href="#i6">Spend repeats where the signal is ambiguous</a></li>
+    <li><a href="#i7">Own the request body — the fork the harness never explicitly took</a></li>
+  </ol>
+</div>
+
+<article class="card" id="i1">
+  <div class="chips">
+    <span class="chip chip-id">1.</span>
+    <span class="chip chip-axis">Cost observability</span>
+    <span class="chip chip-conf">Confidence 95%</span>
+    <span class="chip chip-cx">Complexity Low-Medium</span>
+  </div>
+  <h3>Unbundle the token ledger — make cost measurable at all</h3>
+
+  <figure>
+    <svg viewBox="0 0 700 250" role="img" aria-label="Four distinct token fields collapsed by a sum into one integer">
+      <style>
+        .lbl{font:12px ui-sans-serif,system-ui,sans-serif; fill:#1c1a17}
+        .lblm{font:11px ui-sans-serif,system-ui,sans-serif; fill:#5f5a52}
+        .lblb{font:600 12px ui-sans-serif,system-ui,sans-serif; fill:#6a4d24}
+        .mono{font:12px ui-monospace,Menlo,monospace; fill:#1c1a17}
+      </style>
+      <rect x="18" y="34" width="256" height="196" rx="8" fill="#f3ecde" stroke="#e6e1d8"/>
+      <text class="lblb" x="30" y="24">observed on the result event</text>
+      <rect x="32" y="50" width="228" height="34" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="mono" x="44" y="72">input_tokens</text>
+      <rect x="32" y="94" width="228" height="34" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="mono" x="44" y="116">output_tokens</text>
+      <rect x="32" y="138" width="228" height="34" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="mono" x="44" y="160">cache_creation_input_tokens</text>
+      <rect x="32" y="182" width="228" height="34" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="mono" x="44" y="204">cache_read_input_tokens</text>
+
+      <text class="lblb" x="300" y="118">sum()</text>
+      <text class="lblm" x="300" y="136">line 551-560</text>
+      <path d="M292 150 L 402 150" stroke="#7a5b2e" stroke-width="2" fill="none" marker-end="url(#ar1)"/>
+      <defs>
+        <marker id="ar1" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#7a5b2e"/>
+        </marker>
+      </defs>
+
+      <rect x="416" y="112" width="262" height="76" rx="8" fill="#f6ead9" stroke="#e6e1d8"/>
+      <text class="mono" x="434" y="146">total_tokens: 41827</text>
+      <text class="lblm" x="434" y="168">one integer, executor only</text>
+      <text class="lblb" x="416" y="216">cache reads vs writes: unrecoverable</text>
+    </svg>
+    <figcaption>The four fields are read and immediately collapsed, so no artifact the harness writes can distinguish a cache read from a cache write — or from ordinary input.</figcaption>
+  </figure>
+
+  <dl>
+    <dt>Description</dt>
+    <dd>Record five distinct fields per arm — input, output, cache creation, cache read, and
+    <code>total_cost_usd</code> — instead of one collapsed integer. Capture the grader's usage as well as
+    the executor's. Render cost deltas in <code>scripts/eval-report.py</code> alongside pass rate, seed
+    <code>benchmark.json</code>'s null tokens block honestly, and add a cost-regression alarm built on the
+    chassis the repo already uses three times over: 0/1/2 exit codes, <code>--dry-run</code>, fixture
+    injection for offline CI, tracking-issue upsert. Optionally report cost against a denominator —
+    tokens per discriminating assertion resolved — so interventions can be ranked rather than merely
+    totalled.</dd>
+
+    <dt>Basis</dt>
+    <dd><code>direct:</code> <code>run-behavioural-eval.py:551-560</code> sums all four usage fields into
+    one int and returns it; <code>:877</code> stores that single value in <code>timing.json</code> from
+    <code>outcome["events"]</code> — the executor's stream only. The <code>metrics</code> dict at
+    <code>:541-547</code> carries no token field at all. <code>grep total_tokens scripts/eval-report.py</code>
+    returns nothing. <code>benchmark.json</code>'s tokens block is null across mean, stddev, min and max.
+    The grader's own result payload <em>is</em> parsed at <code>:782</code>, so its usage is available and
+    simply never read.</dd>
+
+    <dt>Rationale</dt>
+    <dd>Every other idea in this document is unfalsifiable until this lands. You cannot show that
+    batching saved 50%, that a cache breakpoint raised hit rate, or that a skip-if-unchanged cache paid
+    for itself, when roughly half the nightly spend is structurally invisible and the numerator and
+    denominator of the cache ratio were added together before storage. The repo already articulated this
+    exact standard one layer over: a benchmark that cannot name its model makes a model upgrade
+    indistinguishable from a skill regression. A benchmark that cannot name its cache-hit rate makes a
+    caching win indistinguishable from noise. And because the baseline is still unmeasured, the fields
+    can be defined correctly <em>before</em> it is seeded rather than re-seeded afterward.</dd>
+
+    <dt>Downsides</dt>
+    <dd>Widens the artifact schema before any of it is validated against a real graded run, so the first
+    seeding may still need revision. The cost-per-discriminating-assertion denominator is a genuinely
+    debatable metric choice and should not block the plain unbundling. Adding a fourth alarm adds
+    maintenance surface to a repo that already carries three.</dd>
+  </dl>
+</article>
+
+<article class="card" id="i2">
+  <div class="chips">
+    <span class="chip chip-id">2.</span>
+    <span class="chip chip-axis">Executor session construction</span>
+    <span class="chip chip-conf">Confidence 85%</span>
+    <span class="chip chip-cx">Complexity Low</span>
+  </div>
+  <h3>Settle whether the cache prefix is stable, before writing any caching code</h3>
+
+  <figure>
+    <svg viewBox="0 0 700 250" role="img" aria-label="Two scenarios showing the dynamic header inside versus outside the cached prefix">
+      <style>
+        .s{font:10.5px ui-sans-serif,system-ui,sans-serif; fill:#1c1a17}
+        .sm{font:11px ui-sans-serif,system-ui,sans-serif; fill:#5f5a52}
+        .sb{font:600 12px ui-sans-serif,system-ui,sans-serif; fill:#6a4d24}
+        .bp{font:600 10px ui-sans-serif,system-ui,sans-serif; fill:#8a5a1d;
+            paint-order:stroke fill; stroke:#ffffff; stroke-width:3px}
+      </style>
+
+      <text class="sb" x="18" y="26">A · header sits inside the cached prefix</text>
+      <rect x="18" y="46" width="92" height="40" rx="4" fill="#f6ead9" stroke="#e6e1d8"/>
+      <text class="s" x="26" y="71">cch= varies</text>
+      <rect x="110" y="46" width="126" height="40" rx="4" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="s" x="122" y="71">system prompt</text>
+      <rect x="236" y="46" width="104" height="40" rx="4" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="s" x="250" y="71">tool defs</text>
+      <rect x="340" y="46" width="120" height="40" rx="4" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="s" x="356" y="71">skill text</text>
+      <line x1="464" y1="42" x2="464" y2="90" stroke="#8a5a1d" stroke-width="2" stroke-dasharray="4 3"/>
+      <text class="bp" x="428" y="36">cache_control</text>
+      <rect x="468" y="46" width="212" height="40" rx="4" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="s" x="482" y="71">case prompt</text>
+      <text class="sm" x="18" y="108">every call re-writes the prefix — no read is ever possible</text>
+
+      <text class="sb" x="18" y="158">B · header sits outside the cached prefix</text>
+      <rect x="18" y="178" width="126" height="40" rx="4" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="s" x="30" y="203">system prompt</text>
+      <rect x="144" y="178" width="104" height="40" rx="4" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="s" x="158" y="203">tool defs</text>
+      <rect x="248" y="178" width="120" height="40" rx="4" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="s" x="264" y="203">skill text</text>
+      <line x1="372" y1="174" x2="372" y2="222" stroke="#8a5a1d" stroke-width="2" stroke-dasharray="4 3"/>
+      <text class="bp" x="336" y="168">cache_control</text>
+      <rect x="376" y="178" width="92" height="40" rx="4" fill="#f6ead9" stroke="#e6e1d8"/>
+      <text class="s" x="384" y="203">cch= varies</text>
+      <rect x="468" y="178" width="212" height="40" rx="4" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="s" x="482" y="203">case prompt</text>
+      <text class="sm" x="18" y="240">prefix is reusable — reads land at roughly 0.1× base input</text>
+    </svg>
+    <figcaption>The whole executor axis hinges on which of these two arrangements is real. Nothing in the repo or in public documentation settles it; a free probe does.</figcaption>
+  </figure>
+
+  <dl>
+    <dt>Description</dt>
+    <dd>Before wiring a single <code>cache_control</code> breakpoint, determine empirically whether the
+    Claude Code CLI's per-invocation dynamic header sits before or after where a breakpoint would go —
+    that is, whether prefix caching is reachable at all through a headless spawn. Reuse the harness's own
+    <code>--validate-only</code> pattern, which starts a real session, reads what it needs, and kills it
+    before any model turn. If a request-capture affordance turns out to exist and works offline, the
+    stronger version of this move is to keep a byte-differ over two identical invocations as a permanent
+    free gate — the reproducible-builds approach of pairing nondeterminism neutralisation with a
+    regression test on byte-identity.</dd>
+
+    <dt>Basis</dt>
+    <dd><code>direct:</code> <code>probe_session()</code>'s docstring records that the CLI emits its
+    <code>system/init</code> event <em>before</em> it authenticates, which is exactly why
+    <code>--validate-only</code> costs nothing. <code>external:</code> two independent write-ups converge on
+    the CLI emitting a unique per-invocation header that guarantees a cache miss without session reuse,
+    and on three further defects that break the prefix even on resumed turns.</dd>
+
+    <dt>Rationale</dt>
+    <dd>This is the gating question for everything else on the executor axis, and it is the cheapest item
+    in this document. A warm-up call to pre-pay a one-hour-TTL write, a resumed-repeats scheme, or any
+    breakpoint placement is undecidable until it is answered — and each of those is far more expensive to
+    build and unwind than the probe is to run. The repo has already recorded the general form of this
+    lesson in <code>docs/solutions/</code>: probe the live surface rather than designing against
+    documentation that may have gone stale.</dd>
+
+    <dt>Downsides</dt>
+    <dd>The answer may be "no, not reachable through this path" — which redirects effort to idea 7 and its
+    unresolved conflict with the repo's testing philosophy. The byte-differ half rests on a request-capture
+    capability that has zero footprint in this repo and was not substantiated during verification; if
+    capturing a request needs a live round-trip, it cannot be the free per-PR gate described and would
+    violate the rule that per-PR CI makes no API calls.</dd>
+  </dl>
+</article>
+
+<article class="card" id="i3">
+  <div class="chips">
+    <span class="chip chip-id">3.</span>
+    <span class="chip chip-axis">Grading pass</span>
+    <span class="chip chip-conf">Confidence 80%</span>
+    <span class="chip chip-cx">Complexity High</span>
+  </div>
+  <h3>Rebuild grading as a batched, cached, blinded scoring stage</h3>
+
+  <figure>
+    <svg viewBox="0 0 700 290" role="img" aria-label="Today twenty-four sequential grading calls each resending the preamble; proposed one batch with a cached preamble and paired arms">
+      <style>
+        .g{font:10.5px ui-sans-serif,system-ui,sans-serif; fill:#1c1a17}
+        .gm{font:11px ui-sans-serif,system-ui,sans-serif; fill:#5f5a52}
+        .gb{font:600 12px ui-sans-serif,system-ui,sans-serif; fill:#6a4d24}
+      </style>
+      <text class="gb" x="18" y="26">Today — 24 sequential calls, preamble re-sent every time</text>
+      <g>
+        <rect x="18" y="44" width="86" height="58" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+        <rect x="18" y="44" width="86" height="24" rx="5" fill="#f6ead9" stroke="#e6e1d8"/>
+        <text class="g" x="28" y="60">preamble</text>
+        <text class="g" x="28" y="88">transcript</text>
+      </g>
+      <g>
+        <rect x="116" y="44" width="86" height="58" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+        <rect x="116" y="44" width="86" height="24" rx="5" fill="#f6ead9" stroke="#e6e1d8"/>
+        <text class="g" x="126" y="60">preamble</text>
+        <text class="g" x="126" y="88">transcript</text>
+      </g>
+      <g>
+        <rect x="214" y="44" width="86" height="58" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+        <rect x="214" y="44" width="86" height="24" rx="5" fill="#f6ead9" stroke="#e6e1d8"/>
+        <text class="g" x="224" y="60">preamble</text>
+        <text class="g" x="224" y="88">transcript</text>
+      </g>
+      <g>
+        <rect x="312" y="44" width="86" height="58" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+        <rect x="312" y="44" width="86" height="24" rx="5" fill="#f6ead9" stroke="#e6e1d8"/>
+        <text class="g" x="322" y="60">preamble</text>
+        <text class="g" x="322" y="88">transcript</text>
+      </g>
+      <text class="gm" x="416" y="79">… ×24, interleaved between executions</text>
+
+      <text class="gb" x="18" y="166">Proposed — one batch, preamble cached, arms paired and blinded</text>
+      <rect x="18" y="182" width="662" height="82" rx="8" fill="#f3ecde" stroke="#e6e1d8"/>
+      <rect x="32" y="196" width="118" height="54" rx="5" fill="#e6efe4" stroke="#e6e1d8"/>
+      <text class="g" x="42" y="218">preamble</text>
+      <text class="g" x="42" y="236">+ schema, cached</text>
+      <rect x="162" y="196" width="118" height="54" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="g" x="172" y="227">case 1: A / B</text>
+      <rect x="292" y="196" width="118" height="54" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="g" x="302" y="227">case 2: A / B</text>
+      <rect x="422" y="196" width="118" height="54" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="g" x="432" y="227">case 3: A / B</text>
+      <rect x="552" y="196" width="114" height="54" rx="5" fill="#ffffff" stroke="#e6e1d8"/>
+      <text class="g" x="562" y="227">case 4: A / B</text>
+      <text class="gm" x="18" y="282">phase-separated: all executions finish first, then all grading</text>
+    </svg>
+    <figcaption>Three changes that compose: batch the calls, cache the identical preamble, and pair the two arms inside one blinded judgment instead of two absolute ones.</figcaption>
+  </figure>
+
+  <dl>
+    <dt>Description</dt>
+    <dd>The grader is a stateless, tool-free, schema-constrained call — a Messages API call wearing a CLI
+    costume. Move it off the interactive CLI and restructure it three ways at once. Put the fixed preamble
+    and JSON schema behind a <code>cache_control</code> breakpoint and the per-case payload after it.
+    Submit all grading as one Message Batches job after the executor matrix completes, rather than
+    interleaving a grading round-trip between every pair of executions. And grade both arms of a case
+    inside a single call with the transcripts shuffled and labelled A/B, un-blinded in Python afterward —
+    which halves the fixed portion and turns two absolute judgments into the one paired comparison the
+    benchmark actually reports. Carry one property through the rewrite: a grading call that did not
+    happen must be reported as unsettled and retried, never scored.</dd>
+
+    <dt>Basis</dt>
+    <dd><code>direct:</code> the grader command at <code>:759-766</code> is
+    <code>claude -p … --output-format json --json-schema … --tools ""</code> — no tools, no plugin, no
+    agentic loop. <code>GRADER_PROMPT</code>'s preamble and contract at <code>:711-726</code> plus
+    <code>GRADER_SCHEMA</code> are byte-identical across every call; only <code>{writes}</code> and
+    <code>{transcript}</code> vary, and assertions and ground truth come from the shared case dict.
+    The call site at <code>:859</code> sits inside the per-run loop, which is what interleaves it.
+    <code>external:</code> the Batches API's 50% discount stacks with cache-read pricing; Inspect AI ships
+    batch mode as an explicit scale knob; Dorfman pooled testing and clinical-trial blinding supply the
+    paired-judgment structure.</dd>
+
+    <dt>Rationale</dt>
+    <dd>This is where the cheap, uncontroversial money is: none of it touches hermeticity, the stub, the
+    fixtures, or a single assertion's content. It is also the one place where the cost move and a
+    methodological improvement are the same move — a paired within-call comparison removes between-call
+    judge drift, which is a free reduction in exactly the variance the repo says makes a nightly job
+    ignorable. Four of the five ideation agents reached this independently from separate contexts.</dd>
+
+    <dt>Downsides</dt>
+    <dd>The real cost is architectural, and verification flagged it: the Batches API is asynchronous with
+    an up-to-24-hour ceiling, while the workflow derives its entire budget from a single synchronous
+    90-minute job. Adopting it means restructuring into a dispatch-then-poll shape that no other idea here
+    accounts for. Blinding is mandatory rather than optional — an unblinded grader seeing both arms can
+    infer which came from the plugin and grade generously — and pooling repeats into one call carries the
+    same correlated-judgment risk, so it needs the same discipline. Splitting a single call into a
+    submit/reconcile pair also adds a failure mode the current synchronous design does not have.</dd>
+  </dl>
+</article>
+
+<article class="card" id="i4">
+  <div class="chips">
+    <span class="chip chip-id">4.</span>
+    <span class="chip chip-axis">Run economics</span>
+    <span class="chip chip-conf">Confidence 75%</span>
+    <span class="chip chip-cx">Complexity Medium-High</span>
+  </div>
+  <h3>Skip what has not changed — one decision at three possible scopes</h3>
+  <dl>
+    <dt>Description</dt>
+    <dd>Treat an eval case the way a build system treats an action: key its result on a hash of everything
+    that could move it — case file content, skill content and version, fixture hash, model id, stub hash,
+    CLI version — and skip re-execution when the key already has a fresh measured result. Three scopes are
+    available and the choice between them <em>is</em> the decision, not three separate proposals. Narrowest:
+    amortise only the <code>without_skill</code> control, which is a property of the base model and cannot
+    change when this repo changes. Middle: a general per-leg action cache. Widest: retire the unconditional
+    nightly clock entirely, running the full matrix on content change and a small canary periodically to
+    catch base-model drift. Whichever scope is chosen, keep the free <code>--validate-only</code> session-shape
+    probe running every night on both arms, so a replayed control still proves it registered no
+    <code>holacracy:</code> command.</dd>
+
+    <dt>Basis</dt>
+    <dd><code>direct:</code> <code>skills-lint.sh</code>'s check 4 — a skill whose content changed also moved
+    its version — already computes half the proposed cache key today. <code>session_shape_error()</code> at
+    <code>:278-280</code> rejects a control that leaked the plugin, and the free probe is what preserves that
+    guarantee under replay. <code>external:</code> Bazel's action cache maps an input hash to a
+    content-addressed result shared across CI runs.</dd>
+
+    <dt>Rationale</dt>
+    <dd>On a quiet night the nightly job re-executes and re-grades every case to produce a result identical
+    to the one already committed — real spend against zero new information. Making cost scale with
+    <em>changes</em> rather than with the calendar frees the 90-minute ceiling for the higher tiers the repo
+    has deferred, without raising spend. The scope question matters because the widest version is the one that
+    changes what "nightly" means to the team.</dd>
+
+    <dt>Downsides</dt>
+    <dd>Cache-key correctness is the whole risk: omit an input that actually moves results and the harness
+    silently reports a stale verdict as current — a failure mode strictly worse than overspending. The
+    control-only variant's headline arithmetic was asserted rather than derived during verification. The
+    widest variant rests on a first-principles argument rather than repo evidence: skills, fixtures and CLI
+    version can all change silently between nights, so "only the model varies" is not established. And any
+    replay scheme interacts badly with a resumed-repeats design, which is one reason that idea was cut.</dd>
+  </dl>
+</article>
+
+<article class="card" id="i5">
+  <div class="chips">
+    <span class="chip chip-id">5.</span>
+    <span class="chip chip-axis">Assertion layer</span>
+    <span class="chip chip-conf">Confidence 90%</span>
+    <span class="chip chip-cx">Complexity Medium</span>
+  </div>
+  <h3>Log reads in the stub, then measure whether assertions discriminate</h3>
+  <dl>
+    <dt>Description</dt>
+    <dd>The stub records writes and nothing else, so every claim about what the assistant <em>consulted</em>
+    — did it read the role's accountabilities before proposing, did it check sub-role tensions, did it invent
+    a role it never fetched — has to be judged by a model reading a transcript. Log every call including
+    reads, with sequence numbers, and extend the mechanical check vocabulary with read-presence and
+    read-ordering kinds. That converts a large slice of currently-judged surface into free, deterministic,
+    drift-proof checks. Three follow-ons ride on the same log and should be scoped separately rather than
+    bundled: an assertion-level ledger recording whether each <code>discriminating: true</code> declaration
+    has ever actually discriminated between arms; a repeatability study grading frozen transcripts N times to
+    find assertions that flip on byte-identical input; and a graduation pipeline that demotes stable judged
+    assertions to mechanical ones, gated on a mutation-verified replacement rather than on looking stable.</dd>
+
+    <dt>Basis</dt>
+    <dd><code>direct:</code> <code>evals/stub/glassfrog_stub.py:57-71</code> defines seven read tools against
+    four write tools, but <code>record_write()</code> at <code>:74-80</code> fires only on writes. The runner's
+    own comment at <code>:83-94</code> states the principle already: ordering claims are only checkable against
+    a log, and checking them deterministically means they cost no tokens and cannot drift between nightly runs.
+    <code>external:</code> gauge repeatability studies in measurement-systems analysis; metamorphic testing as
+    used in compiler validation, which suggests a further free family of checks over generated fixture
+    variants.</dd>
+
+    <dt>Rationale</dt>
+    <dd>This is the only idea here that <em>raises</em> discriminating power while cutting tokens, which makes
+    it the one kind of cost reduction the stated constraint permits unconditionally. A grader can be talked
+    into passing "it checked the accountabilities" by an assistant that merely says it did; a read log cannot.
+    The repo already won this argument once for writes and stopped there because ordering was the only
+    mechanically-checkable claim anyone noticed. It also closes a real gap in doctrine: the repo polices whether
+    an assertion discriminates <em>between arms</em> and not at all whether it discriminates <em>between
+    identical inputs</em>, which is a strictly worse defect and invisible in every artifact today.</dd>
+
+    <dt>Downsides</dt>
+    <dd>Expands the stub's contract and the case-file schema, and invites a re-audit of existing judged
+    assertions — real work, and politically the first ledger will likely indict an assertion someone wrote and
+    defended. The bundle spans very different sizes and risks and should be unbundled before anyone votes on
+    it. The repeatability study is quietly defeated if grader-verdict memoisation is ever introduced without
+    forcing misses for repeated grading of identical content.</dd>
+  </dl>
+</article>
+
+<article class="card" id="i6">
+  <div class="chips">
+    <span class="chip chip-id">6.</span>
+    <span class="chip chip-axis">Run economics</span>
+    <span class="chip chip-conf">Confidence 70%</span>
+    <span class="chip chip-cx">Complexity Medium</span>
+  </div>
+  <h3>Spend repeats where the signal is ambiguous</h3>
+  <dl>
+    <dt>Description</dt>
+    <dd>Every case currently gets a flat three repeats per arm whether or not its results are stable.
+    Replace the fixed count with a sequential rule: run one repeat, and escalate only when the accumulated
+    evidence is ambiguous — a case where the treated arm passes cleanly and the control fails cleanly needs
+    no second observation, while a case whose first two repeats disagree deserves five. Same nightly budget,
+    allocated by information rather than by uniform quota. One guard is load-bearing: a run that hit any of
+    the five execution-failure conditions must not enrol as an observation at all, or the rule stops early on
+    garbage.</dd>
+
+    <dt>Basis</dt>
+    <dd><code>external:</code> Wald's sequential probability ratio test, developed for acceptance sampling
+    where each observation is expensive and destructive, and its descendants in group-sequential clinical
+    trial design; both typically terminate at around half the fixed-N sample size.
+    <code>direct:</code> <code>evals/README.md</code> already treats a wide standard deviation as a defect in
+    the case rather than a finding about the skill — but nothing in the harness acts on that.</dd>
+
+    <dt>Rationale</dt>
+    <dd>The harness is a paired experiment measuring a small treatment effect under high per-observation cost
+    and high per-observation variance, which is precisely the regime where sequential designs dominate fixed-N.
+    It also inverts the current failure mode: stable cases stop paying a 3× tax they do not need, and the
+    budget moves to the cases where the answer is genuinely unclear. Discriminating power goes up, not down,
+    for constant spend — and the repeat ceiling stops binding as the case count grows.</dd>
+
+    <dt>Downsides</dt>
+    <dd>Changes what the benchmark means statistically, so the baseline's variance figures are not comparable
+    across the switch. Requires independent observations to be valid, which rules out combining it with any
+    resumed-session repeats scheme and puts it in tension with replaying cached results as though they were
+    fresh draws. Sequential designs are also easy to implement subtly wrong, and a wrong stopping rule
+    produces confident nonsense rather than an obvious failure.</dd>
+  </dl>
+</article>
+
+<article class="card" id="i7">
+  <div class="chips">
+    <span class="chip chip-id">7.</span>
+    <span class="chip chip-axis">Executor session construction</span>
+    <span class="chip chip-conf">Confidence 45%</span>
+    <span class="chip chip-cx">Complexity High</span>
+  </div>
+  <h3>Own the request body — the fork the harness never explicitly took</h3>
+  <dl>
+    <dt>Description</dt>
+    <dd>The harness shells out to <code>claude -p</code> and therefore can never place a cache breakpoint:
+    the prompt is one opaque string and everything expensive is assembled inside a binary it does not control.
+    Rebuild the executor on the Agent SDK or the Messages API with an explicit tool loop, so the harness
+    constructs the request, places its own breakpoints, and pins the prefix byte-for-byte across arms and
+    repeats — retaining the CLI path as a second, periodic configuration that answers "does the real shipped
+    product still behave this way".</dd>
+
+    <dt>Basis</dt>
+    <dd><code>direct:</code> <code>build_command()</code> at <code>:208-223</code> emits a flat argv —
+    <code>-p</code>, <code>--tools</code>, <code>--output-format</code>, <code>--strict-mcp-config</code>,
+    <code>--mcp-config</code>, <code>--permission-mode</code>, plus <code>--plugin-dir</code> and
+    <code>--model</code>. No flag in that list can express a cache breakpoint.</dd>
+
+    <dt>Rationale</dt>
+    <dd>Whoever owns the request body sets the ceiling on every caching lever in this document. Today the
+    answer is nobody in this repo, which is why <code>cache_read_input_tokens</code> is a number the harness
+    observes rather than one it causes. It would also sidestep the CLI's per-invocation dynamic header
+    entirely rather than working around it.</dd>
+
+    <dt>Downsides</dt>
+    <dd>This one is ranked last because verification found it in direct tension with the repo's own stated
+    testing philosophy, and the idea as generated did not address that. The stub's docstring says the eval
+    must exercise the actual command path precisely because a mock at the reasoning layer would test the
+    prompt and miss what the plugin actually does wrong — and #226 exists because two different loading paths
+    produced indistinguishable results. Demoting the CLI to occasional reintroduces the class of risk that
+    fix was built to catch. It is also the largest rewrite proposed here, and idea 2 may show it is
+    unnecessary.</dd>
+  </dl>
+</article>
+
+<div class="callout">
+  <p class="eyebrow">Reading order</p>
+  <p>Ideas 1 and 2 are prerequisites rather than options: without the ledger, no result here is measurable,
+  and without the probe, the executor-side ideas are undecidable. Idea 3 is the largest confirmed saving
+  available and depends on neither. Ideas 4 and 6 cannot both be built as described alongside any
+  resumed-session scheme, and idea 7 becomes relevant mainly if idea 2 returns a negative answer.</p>
+</div>
+
+<h2 id="rejection-summary">Rejection Summary</h2>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Idea</th><th>Reason rejected</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>Enforced <code>--token-budget N</code> with exit 2 on exhaustion</td><td>The cited 0/1/2 convention belongs to the alarm-script family, where exit 2 means an empty evidence window — not a mid-run spend cap; the enforcement idea folds into idea 1.</td></tr>
+    <tr><td>2</td><td>Byte-differ over captured request prefixes as a per-PR gate</td><td>Rests on a request-dump capability with zero footprint in this repo; if capture needs a live round-trip it cannot be the free offline gate claimed. Retained as a conditional inside idea 2.</td></tr>
+    <tr><td>3</td><td>Canonical byte-identical <code>CLAUDE_CONFIG_DIR</code> template</td><td>Below the ambition floor — formalises what is already effectively true, with no real decision to make.</td></tr>
+    <tr><td>4</td><td><code>--resume</code> the session across repeats 2..N</td><td>Converts independent repeats into continuation samples, which invalidates idea 6's sequential test and biases any cached variance figure. Cannot coexist with two stronger survivors.</td></tr>
+    <tr><td>5</td><td>One-hour-TTL warm-up call to pre-pay the cache write</td><td>Entirely contingent on idea 2's unanswered question — a warm-up from one subprocess may be unreadable by the next. Not decidable yet.</td></tr>
+    <tr><td>6</td><td>Deferred settlement for grader failures, as framed</td><td>Basis refuted: the cited lines are the deliberate fail-hard branch, not a vacuous-fail defect. The sound half — retry, and never score a grading that did not happen — is carried as a property of idea 3.</td></tr>
+    <tr><td>7</td><td>Memoise grader verdicts on a content hash</td><td>The claimed in-repo precedent does not hold — the stub computes from fixtures dynamically, which is a deterministic mock, not content-addressed caching. Also cache-hits straight past a model-drift canary unless model identity is in the key.</td></tr>
+    <tr><td>8</td><td>Flag transcript truncation as a sixth unreliability condition</td><td>Below the ambition floor — correct, cheap, and uncontroversial enough that it needs no discussion. Worth doing; not worth a slot.</td></tr>
+    <tr><td>9</td><td>"Bounded concurrency is also the caching fix"</td><td>Basis refuted: concurrent requests all begin before any cache write completes, so parallel executions cannot warm each other. The phase-separation half is carried into idea 3.</td></tr>
+    <tr><td>10</td><td>Paraphrased repeats instead of identical ones</td><td>Interesting, but it swaps a statistic the benchmark currently reports for a different one — better handled as a scoping question inside the deferred triggering-accuracy tier than as a cost idea.</td></tr>
+    <tr><td>11</td><td>Model × arm cross-product for attribution</td><td>Raises spend rather than lowering it, and is only affordable on the back of savings not yet realised — premature until ideas 1 and 3 land.</td></tr>
+    <tr><td>12</td><td>Cassette record/replay of executor transcripts</td><td>Duplicates idea 4's mechanism at a layer with worse staleness properties; the action-hash framing is the stronger form of the same move.</td></tr>
+  </tbody>
+</table>
+
+<footer class="composition-signal">
+  Composed 2026-08-17T17:51Z by ce-ideate from the session prompt “Enable prompt caching for performing
+  evals and seek other improvements to token efficiency during skill testing and evaluation.”
+  Grounded against <code>scripts/run-behavioural-eval.py</code>, <code>evals/</code>, and
+  <code>.github/workflows/skills-eval.yml</code>; candidate bases independently verified against the repo.
+</footer>
+
+</div>
+</body>
+</html>

@@ -156,7 +156,7 @@ DEFAULT_CONFIGS = ("with_skill", "without_skill")
 #
 # WHAT GOES INTO THE KEY, AND WHY EACH PIECE
 # -------------------------------------------
-# Nine inputs, each independently capable of moving a leg's result:
+# Eleven inputs, each independently capable of moving a leg's result:
 #
 #   case content       the eval's own prompt, assertions, ground truth and
 #                       fixture path -- editing any of them is editing the
@@ -175,6 +175,20 @@ DEFAULT_CONFIGS = ("with_skill", "without_skill")
 #                       hashes the shared files a skill actually loads,
 #                       discovered the same way skills-lint.sh check 1 proves
 #                       a load path resolves (see discover_shared_references).
+#   commands/*.md       every eval's `surface` field names a slash command
+#                       (e.g. `/holacracy:capture-tension`), implemented here
+#                       -- not under skills/<dir>, so nothing above hashes it.
+#                       Hashed as one whole-directory digest rather than a
+#                       per-surface mapping, matching the with_skill
+#                       skill_versions precedent of over- rather than
+#                       under-invalidating (R4).
+#   agents/*.md          a command can dispatch a subagent (e.g.
+#                       capture-tension.md -> the tension-capture subagent),
+#                       which can itself load skills/shared/*.md content no
+#                       skills/<dir>/{SKILL.md,references/*.md} ever cites --
+#                       content discover_shared_references cannot see because
+#                       it only treats those two locations as citing files.
+#                       Same whole-directory-digest treatment as commands/.
 #   fixture             the synthetic org state the case exercises
 #   harness script       run-behavioural-eval.py itself participates in
 #                       producing a leg's result -- it drives execution,
@@ -192,19 +206,32 @@ DEFAULT_CONFIGS = ("with_skill", "without_skill")
 #                       nothing here having changed at all
 #
 # CACHE_KEY_INPUT_CLASSES below is a narrower, DELIBERATELY SHORTER list: the
-# file-tree globs among the nine, not the runtime values (runs/model/cli
-# version) or the fixture. Planning Contract KTD2 fixes its five entries
-# exactly (skills/**, skills/shared/**, evals/cases/**, evals/stub/**,
-# scripts/run-behavioural-eval.py) as the ONE canonical enumeration a LATER
-# completeness check (R7, not built here) asserts against -- a static
+# file-tree globs among the eleven, not the runtime values (runs/model/cli
+# version) or the fixture. Planning Contract KTD2 originally fixed five
+# entries (skills/**, skills/shared/**, evals/cases/**, evals/stub/**,
+# scripts/run-behavioural-eval.py); commands/** and agents/** were added after
+# code review found the with_skill/without_skill eval surfaces are actually
+# implemented in commands/*.md (+ dispatched agents/*.md), which nothing
+# above ever hashed -- a real evaled-behaviour change there left every cache
+# key untouched. This is the ONE canonical enumeration a completeness check
+# (scripts/cache-key-completeness-check.sh, R7) asserts against -- a static
 # assertion design, not a git-diff scan. Extending compute_cache_key to a new
 # sensitive input class must extend this constant in the same change, or the
-# later check has nothing to catch the drift with (R4).
+# later check has nothing to catch the drift with (R4). NOTE: hooks/ and
+# hooks-handlers/ can also run during a with_skill session (the plugin's own
+# SessionStart hook is live there per #227) and are NOT yet in this list --
+# a deliberately scoped, disclosed gap (see evals/README.md), not an
+# oversight; KTD2 already settled that a general "which files can move this
+# leg's result" detector is unimplementable, so a wholly new sensitive class
+# still depends on a human noticing it during review, same as before this
+# fix.
 # ---------------------------------------------------------------------------
 
 CACHE_KEY_INPUT_CLASSES = (
     "skills/**",
     "skills/shared/**",
+    "commands/**",
+    "agents/**",
     "evals/cases/**",
     "evals/stub/**",
     "scripts/run-behavioural-eval.py",
@@ -314,10 +341,10 @@ def compute_cache_key(case: dict, *, skill_dirs: list[Path] = (), fixture_path: 
                        repo: Path = REPO) -> str:
     """A stable, content-addressed cache key for one (case, config) leg.
 
-    Hashes exactly the nine inputs documented in the section header above --
-    the list is treated as exhaustive by design (R4): adding a new input that
-    could move a result is a required edit here, not an optional enhancement,
-    so a cache hit never masks an actual change.
+    Hashes exactly the eleven inputs documented in the section header above
+    -- the list is treated as exhaustive by design (R4): adding a new input
+    that could move a result is a required edit here, not an optional
+    enhancement, so a cache hit never masks an actual change.
 
     `skill_dirs` is the set of skill directories this specific leg exercises
     -- resolving WHICH skill(s) a given case's surface engages is a decision
@@ -326,10 +353,19 @@ def compute_cache_key(case: dict, *, skill_dirs: list[Path] = (), fixture_path: 
     without_skill control leg, or a case whose fixture-only assertions never
     reach skill content).
 
+    commands/*.md and agents/*.md are hashed under the SAME condition as
+    skill_dirs being non-empty, rather than via a separate parameter: a
+    without_skill leg never passes --plugin-dir (execute()'s config ==
+    "with_skill" branch), so it can never load a command or dispatch a
+    subagent, exactly the same reason resolve_skill_dirs_for_leg returns []
+    for that config. Piggybacking on skill_dirs' presence avoids adding a
+    second, independent with_skill signal that could drift from the first.
+
     Deliberately does not fold `config` (with_skill / without_skill) into the
     hash: the caller already keys the on-disk cache by config as a directory
     component, and the natural way a config leg differs -- which skill_dirs
-    it passes -- already flows through the hash via that parameter.
+    it passes, and by extension whether commands/agents apply -- already
+    flows through the hash via that parameter.
     """
     stub_path = stub_path or STUB
     runner_path = runner_path or Path(__file__).resolve()
@@ -342,10 +378,19 @@ def compute_cache_key(case: dict, *, skill_dirs: list[Path] = (), fixture_path: 
     shared_digest = _sha256_hex(
         "".join(_sha256_file(p) for p in shared_paths).encode())
 
+    commands_paths = sorted((repo / "commands").glob("*.md")) if skill_dirs else []
+    commands_digest = _sha256_hex(
+        "".join(_sha256_file(p) for p in commands_paths).encode())
+    agents_paths = sorted((repo / "agents").glob("*.md")) if skill_dirs else []
+    agents_digest = _sha256_hex(
+        "".join(_sha256_file(p) for p in agents_paths).encode())
+
     components = {
         "case": _sha256_hex(json.dumps(case, sort_keys=True).encode()),
         "skill_versions": skill_versions,
         "shared_refs": shared_digest,
+        "commands": commands_digest,
+        "agents": agents_digest,
         "fixture": _sha256_file(fixture_path),
         "runner": _sha256_file(runner_path),
         "runs": runs,
@@ -484,17 +529,25 @@ def cache_entry_is_usable(entry: dict | None, *, now: datetime, max_age_days: in
     False whenever any of the following holds, each corresponding to one of
     the plan's skip/execute decision-tree cases:
 
-      entry is None                    no prior attempt under this key (R3)
+      entry not a dict                 malformed index entry, treated as absent
       not entry["successful"]          the prior attempt errored (R4/R6)
       no/unparseable last_executed     a malformed entry, treated as absent
+      last_executed is in the future   clock skew/bad edit; never "permanently fresh"
       now - last_executed >= max_age   the entry is stale (R5, U3's R8)
+      entry["grading"] missing summary/models   the shape the skip branch and
+                                        record_leg_bookkeeping() require to
+                                        reuse this entry without crashing
 
-    Only a successful entry executed within the window returns True (case 6
-    in the plan's decision tree). This is the ONLY place that combines the
-    four checks, so a later change to the freshness rule has one function to
-    edit rather than every call site.
+    Only a successful, well-shaped entry executed within the window returns
+    True (case 6 in the plan's decision tree). This is the ONLY place that
+    combines these checks, so a later change to the freshness rule -- or to
+    what shape a reused entry must have -- has one function to edit rather
+    than every call site. The index lives on an unprotected branch (KTD1),
+    so a hand-edited or older/newer-script-written entry can have any shape;
+    every check here exists to keep a malformed entry a cache miss rather
+    than an unhandled exception that aborts the rest of the nightly run.
     """
-    if entry is None or not entry.get("successful"):
+    if not isinstance(entry, dict) or not entry.get("successful"):
         return False
     last_executed = entry.get("last_executed")
     if not last_executed:
@@ -503,7 +556,13 @@ def cache_entry_is_usable(entry: dict | None, *, now: datetime, max_age_days: in
         executed_at = _parse_iso_as_utc(last_executed)
     except (ValueError, TypeError):
         return False
-    return (now - executed_at) < timedelta(days=max_age_days)
+    age = now - executed_at
+    if age < timedelta(0) or age >= timedelta(days=max_age_days):
+        return False
+    grading = entry.get("grading")
+    return (isinstance(grading, dict)
+            and isinstance(grading.get("summary"), dict)
+            and isinstance(grading.get("models"), dict))
 
 
 def record_leg_bookkeeping(grading: dict, config: str, executors: set, analyzers: set,

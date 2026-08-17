@@ -83,7 +83,8 @@
 
 set -uo pipefail
 
-ROOT="${CACHE_KEY_CHECK_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${CACHE_KEY_CHECK_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 SKIP="${CACHE_KEY_CHECK_SKIP:-}"
 
 while [ $# -gt 0 ]; do
@@ -98,12 +99,8 @@ done
 TARGET="$ROOT/scripts/run-behavioural-eval.py"
 [ -f "$TARGET" ] || { echo "not found: $TARGET" >&2; exit 2; }
 
-FINDINGS=0
-finding() {  # $1 = check id, $2 = file, $3 = message
-  printf '%s  %s: %s\n' "[$1]" "$2" "$3"
-  FINDINGS=$((FINDINGS + 1))
-}
-skipped() { case ",$SKIP," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+# shellcheck source=lib/check-common.sh
+source "$SCRIPT_DIR/lib/check-common.sh"
 
 # ---------------------------------------------------------------------------
 # Extraction: the two source-of-truth blocks, read from the target file as
@@ -154,6 +151,14 @@ _class_markers() {  # $1 = class string; sets MARKER_CALL, MARKER_KEY; 1 if unkn
     "skills/shared/**")
       MARKER_CALL='discover_shared_references\('
       MARKER_KEY='shared_refs'
+      ;;
+    "commands/**")
+      MARKER_CALL='commands_paths = sorted\(\(repo / "commands"\)\.glob'
+      MARKER_KEY='commands'
+      ;;
+    "agents/**")
+      MARKER_CALL='agents_paths = sorted\(\(repo / "agents"\)\.glob'
+      MARKER_KEY='agents'
       ;;
     "evals/cases/**")
       MARKER_CALL='json\.dumps\(case,'
@@ -245,8 +250,4 @@ check_code_to_enum() {
 check_enum_to_code
 check_code_to_enum
 
-if [ "$FINDINGS" -gt 0 ]; then
-  printf '\ncache-key-completeness-check: %d finding(s)\n' "$FINDINGS"
-  exit 1
-fi
-printf 'cache-key-completeness-check: clean\n'
+check_common_summarize "cache-key-completeness-check"

@@ -286,11 +286,25 @@ jobs:
           git -C "$WORKTREE" init -q
           git -C "$WORKTREE" remote add origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if git -C "$WORKTREE" fetch -q --depth 1 origin eval-cache-index; then
+          # `git ls-remote --exit-code` probes existence WITHOUT conflating
+          # "the branch genuinely doesn't exist yet" (its own documented
+          # exit 2) with any other fetch failure (auth, network, API
+          # hiccup) -- code review found the earlier version of this step
+          # treated every `git fetch` failure as "ref missing", which
+          # silently discarded real cache history on a transient error and
+          # then misreported the cause in this step's own log line.
+          LS_RC=0
+          git -C "$WORKTREE" ls-remote --exit-code origin eval-cache-index \
+            >/dev/null 2>&1 || LS_RC=$?
+          if [ "$LS_RC" = "2" ]; then
+            echo "eval-cache-index branch does not exist yet; starting with an empty index"
+          elif [ "$LS_RC" != "0" ]; then
+            echo "::error::git ls-remote failed with exit $LS_RC while checking for the eval-cache-index branch -- not 'branch does not exist' (that is exit 2); failing loudly rather than silently starting from an empty cache index"
+            exit 1
+          else
+            git -C "$WORKTREE" fetch -q --depth 1 origin eval-cache-index
             git -C "$WORKTREE" checkout -q FETCH_HEAD
             echo "checked out the existing eval-cache-index branch"
-          else
-            echo "eval-cache-index branch does not exist yet; starting with an empty index"
           fi
           if [ ! -f "$WORKTREE/cache-index.json" ]; then
             echo '{}' > "$WORKTREE/cache-index.json"
@@ -540,6 +554,19 @@ jobs:
         # github-actions[bot] is GitHub's own documented identity for exactly
         # this case (a workflow committing on the repo's behalf), so it is
         # used as-is rather than inventing a repo-specific one.
+        #
+        # continue-on-error: same reasoning as "Report against the committed
+        # baseline" above — a git-push failure here (a transient network/auth
+        # error, or a non-fast-forward from another writer racing this
+        # unprotected branch) is housekeeping, not an eval regression, and
+        # must not read as one. Code review found this step had neither
+        # retry nor continue-on-error, so any push failure collapsed into
+        # the same red `graded` job as an actual behavioural regression,
+        # even though the eval run and its report (posted to
+        # $GITHUB_STEP_SUMMARY by the step above) had already succeeded.
+        # `::warning::` on failure names that distinction explicitly rather
+        # than leaving it to whoever opens the logs to work out.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -565,7 +592,10 @@ jobs:
           # (the "branch did not exist yet" path). Naming the destination ref
           # explicitly makes the push correct in both cases without having to
           # know which one happened.
-          git push origin HEAD:refs/heads/eval-cache-index
+          if ! git push origin HEAD:refs/heads/eval-cache-index; then
+            echo "::warning::failed to push the updated eval-cache-index -- tonight's fresh cache writes are lost, not an eval regression (the eval run and its report above already succeeded). The next run re-fetches and re-executes whatever this run computed but could not save."
+            exit 1
+          fi
 
       - name: Upload the benchmark
         # always(), because a failed run is exactly when this matters. A graded

@@ -1060,22 +1060,27 @@ import importlib.util
 spec = importlib.util.spec_from_file_location("runner", spec_path)
 runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
 
-# KTD2: this is the ONE canonical enumeration a later completeness check (R7,
-# not built in this unit) will assert against. Fixed exactly, in this order
-# by convention -- a drift here is a drift in the contract itself, not a
-# behavioural finding this suite should silently absorb.
+# KTD2: this is the ONE canonical enumeration the completeness check
+# (scripts/cache-key-completeness-check.sh, R7) asserts against. Fixed
+# exactly, in this order by convention -- a drift here is a drift in the
+# contract itself, not a behavioural finding this suite should silently
+# absorb. commands/** and agents/** were added after code review found the
+# original five-entry list never hashed the actual with_skill/without_skill
+# eval surfaces (implemented in commands/*.md + dispatched agents/*.md).
 assert list(runner.CACHE_KEY_INPUT_CLASSES) == [
-    "skills/**", "skills/shared/**", "evals/cases/**", "evals/stub/**",
-    "scripts/run-behavioural-eval.py",
+    "skills/**", "skills/shared/**", "commands/**", "agents/**",
+    "evals/cases/**", "evals/stub/**", "scripts/run-behavioural-eval.py",
 ], runner.CACHE_KEY_INPUT_CLASSES
 
 def build_repo(root):
     """One skill, two shared files -- one cited from SKILL.md, one cited only
-    from a references/ file one level deeper -- a stub, a runner script and a
-    fixture: every file compute_cache_key reads."""
+    from a references/ file one level deeper -- a command, an agent, a stub,
+    a runner script and a fixture: every file compute_cache_key reads."""
     skill_dir = root / "skills" / "my-skill"
     (skill_dir / "references").mkdir(parents=True)
     (root / "skills" / "shared").mkdir(parents=True)
+    (root / "commands").mkdir(parents=True)
+    (root / "agents").mkdir(parents=True)
     (root / "evals" / "stub").mkdir(parents=True)
     (root / "evals" / "fixtures" / "glassfrog").mkdir(parents=True)
     (root / "scripts").mkdir(parents=True)
@@ -1087,6 +1092,8 @@ def build_repo(root):
         "Loads `../shared/shared-a.md` directly.\n")
     (skill_dir / "references" / "deep.md").write_text(
         "Loads `../../shared/shared-b.md`, one level deeper than SKILL.md.\n")
+    (root / "commands" / "my-command.md").write_text("command v1\n")
+    (root / "agents" / "my-agent.md").write_text("agent v1\n")
     (root / "evals" / "stub" / "glassfrog_stub.py").write_text("# stub v1\n")
     (root / "scripts" / "run-behavioural-eval.py").write_text("# runner v1\n")
     (root / "evals" / "fixtures" / "glassfrog" / "fixture.json").write_text('{"v":1}\n')
@@ -1150,6 +1157,37 @@ try:
     shared_b.write_text("shared B v1\n")
     assert key_for(base, skill_dir) == baseline
 
+    # 3c. commands/*.md -- the eval surface itself (e.g.
+    #     /holacracy:capture-tension) is implemented here, not under
+    #     skills/<dir>, so nothing above this line reads it. Gated on
+    #     skill_dirs being non-empty, mirroring without_skill's
+    #     --plugin-dir-less execution never loading commands at all.
+    command_file = base / "commands" / "my-command.md"
+    command_file.write_text("command v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing a commands/*.md file did not change the key -- the eval " \
+        "surface's own implementation is unhashed"
+    without_skill_before = key_for(base, skill_dir, skill_dirs=[])
+    command_file.write_text("command v1\n")
+    assert key_for(base, skill_dir) == baseline
+    command_file.write_text("command v2 -- EDITED\n")
+    assert key_for(base, skill_dir, skill_dirs=[]) == without_skill_before, \
+        "a without_skill leg's key must not be sensitive to commands/*.md " \
+        "-- that config never loads --plugin-dir and so can never reach it"
+    command_file.write_text("command v1\n")
+
+    # 3d. agents/*.md -- a command can dispatch a subagent that loads
+    #     skills/shared/*.md content discover_shared_references never sees
+    #     (it only treats a skill's own SKILL.md/references/*.md as citing
+    #     files, never agents/*.md). Same with_skill-only gating as commands/.
+    agent_file = base / "agents" / "my-agent.md"
+    agent_file.write_text("agent v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing an agents/*.md file did not change the key -- a dispatched " \
+        "subagent's own implementation is unhashed"
+    agent_file.write_text("agent v1\n")
+    assert key_for(base, skill_dir) == baseline
+
     # 4. fixture hash
     fixture = base / "evals" / "fixtures" / "glassfrog" / "fixture.json"
     fixture.write_text('{"v":2}\n')
@@ -1207,7 +1245,7 @@ try:
 finally:
     shutil.rmtree(base, ignore_errors=True)
 
-print("compute_cache_key: all nine inputs independently discriminating; "
+print("compute_cache_key: all eleven inputs independently discriminating; "
       "shared-file discovery walks references/; CACHE_KEY_INPUT_CLASSES intact")
 PY
 pass
@@ -1463,9 +1501,12 @@ spec.loader.exec_module(runner)
 
 now = datetime(2026, 8, 17, tzinfo=timezone.utc)
 
+VALID_GRADING = {"summary": {"passed": 4, "total": 4}, "models": {"executor": "m", "analyzer": "m"}}
+
 def usable(**overrides):
     entry = {"successful": True,
-             "last_executed": (now - timedelta(days=1)).isoformat()}
+             "last_executed": (now - timedelta(days=1)).isoformat(),
+             "grading": VALID_GRADING}
     entry.update(overrides)
     return runner.cache_entry_is_usable(entry, now=now, max_age_days=7)
 
@@ -1487,7 +1528,32 @@ naive = (now - timedelta(days=1)).replace(tzinfo=None).isoformat()
 assert usable(last_executed=naive) is True, \
     "a timezone-naive last_executed must be treated as UTC, not rejected"
 
-print("cache_entry_is_usable: R3-R6 and R8's 7-day boundary all hold")
+# A future-dated last_executed (clock skew, a bad manual edit, or --now
+# misuse against the real branch) must never be treated as "permanently
+# fresh" -- a negative age must not satisfy `age < max_age`.
+assert usable(last_executed=(now + timedelta(days=1)).isoformat()) is False, \
+    "a future-dated last_executed must force re-execution, not read as fresher-than-fresh"
+assert usable(last_executed=now.isoformat()) is True, \
+    "last_executed exactly equal to now (zero age) must still be usable"
+
+# The index lives on an unprotected branch (KTD1) -- a hand-edited or
+# older/newer-script-written entry can have any shape. Every malformed shape
+# below must degrade to a cache miss, never raise.
+assert runner.cache_entry_is_usable("not-a-dict", now=now, max_age_days=7) is False, \
+    "a non-dict entry must not be usable (and must not raise on .get())"
+assert runner.cache_entry_is_usable(["also", "not", "a", "dict"], now=now, max_age_days=7) is False, \
+    "a list entry must not be usable (and must not raise on .get())"
+assert usable(grading=None) is False, "a missing grading must not be usable"
+assert usable(grading="not-a-dict") is False, "a non-dict grading must not be usable"
+assert usable(grading={"summary": VALID_GRADING["summary"]}) is False, \
+    "a grading with no models key must not be usable"
+assert usable(grading={"models": VALID_GRADING["models"]}) is False, \
+    "a grading with no summary key must not be usable"
+assert usable(grading={"summary": "not-a-dict", "models": VALID_GRADING["models"]}) is False, \
+    "a grading whose summary is not a dict must not be usable"
+
+print("cache_entry_is_usable: R3-R6 and R8's 7-day boundary all hold; future-dated "
+      "and malformed-shape entries degrade to a cache miss rather than raising")
 PY
 pass
 
@@ -1535,6 +1601,110 @@ assert s['misses'] == 1, s
 legs = {leg['config']: leg['cache_hit'] for leg in s['legs']}
 assert legs == {'with_skill': True, 'without_skill': False}, s
 " || fail "a mixed hit/miss run did not record per-leg hit/miss correctly in _run_summary"
+pass
+
+# 14i. The same-executor-model confound guard (§8, run 31229964963) must
+#     still fire when the two arms' models diverge THROUGH a cache hit, not
+#     just through two fresh executions. 14h's mixed run seeds the cached
+#     with_skill leg's executor model as "fake-executor-model" -- identical
+#     to EXECUTOR_MODEL, the fake claude script's own fixed output -- so
+#     that test's two arms always agree and the guard never has anything to
+#     catch. Here the cached leg is seeded with a DIFFERENT model
+#     ("stale-executor-model", as if it were cached from a night that ran on
+#     an older model), so a healthy guard must still detect the mismatch
+#     against the fresh without_skill leg's live "fake-executor-model" --
+#     proving record_leg_bookkeeping's cache-hit call site (main(), the
+#     stored_grading branch) feeds executors_by_config just as faithfully as
+#     its fresh-execution call site does.
+seed_cache_index "$TMP/idx-mixed-model.json" "$CACHE_KEY_WS" \
+  "2026-08-16T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stale-executor-model" 4 4
+MIXED_MODEL_RC="$(run_cache "$TMP/out-cache-mixed-model" "$TMP/idx-mixed-model.json" "$NOW" --configs with_skill,without_skill)"
+if [ "$MIXED_MODEL_RC" = "0" ] \
+   || ! grep -q "did not run on the same executor model" "$TMP/cache-run.err"; then
+  cat "$TMP/cache-run.err"
+  fail "a cache hit whose stored model differed from a same-run fresh leg's model was accepted (exit $MIXED_MODEL_RC)"
+fi
+python3 -c "
+import json
+m = json.load(open('$TMP/out-cache-mixed-model/run_metadata.json'))['executor_models_by_config']
+assert m['with_skill'] == ['stale-executor-model'], m
+assert m['without_skill'] == ['fake-executor-model'], m
+" || fail "run_metadata did not record the cache-hit leg's stored model under a divergent mixed run"
+pass
+
+# 15 (maintainability #10). discover_shared_references() (this file) claims
+# in its own docstring to replicate skills-lint.sh check 1's backticked-path
+# resolution rule EXACTLY, but nothing proved the two stay in sync -- a
+# future edit to either regex or resolution rule could silently drift with
+# no test noticing. This builds ONE small fixture skill exercising every
+# resolution depth check 1 and discover_shared_references both handle (a
+# same-directory citation, a citation resolved from the repo root, a
+# citation one level deeper via references/, and a citation that does not
+# resolve at all) and asserts both tools agree on every one of them.
+PARITY_TMP="$(mktemp -d)"
+mkdir -p "$PARITY_TMP"/{commands,agents,skills/demo/references,skills/shared,evals}
+cat > "$PARITY_TMP/skills/demo/SKILL.md" <<'EOF'
+---
+name: demo
+description: A demo skill.
+status: draft
+version: 1.0.0
+---
+Loads `../shared/same-dir.md` (resolves relative to this file's own directory)
+and `skills/shared/from-root.md` (resolves only from the repo root) and
+`../shared/does-not-exist.md` (resolves under neither base).
+EOF
+cat > "$PARITY_TMP/skills/demo/references/deep.md" <<'EOF'
+Loads `../../shared/one-level-deeper.md`, one level deeper than SKILL.md.
+EOF
+printf '# same-dir\n' > "$PARITY_TMP/skills/shared/same-dir.md"
+printf '# from-root\n' > "$PARITY_TMP/skills/shared/from-root.md"
+printf '# one-level-deeper\n' > "$PARITY_TMP/skills/shared/one-level-deeper.md"
+printf '# allowlist\n' > "$PARITY_TMP/evals/lint-allow-paths.txt"
+printf '# forward references\n' > "$PARITY_TMP/evals/forward-references.txt"
+git -C "$PARITY_TMP" init -q 2>/dev/null
+git -C "$PARITY_TMP" config user.email t@t.t; git -C "$PARITY_TMP" config user.name t
+git -C "$PARITY_TMP" add -A && git -C "$PARITY_TMP" commit -qm init >/dev/null
+
+# skills-lint.sh's verdict: run check 1 alone (skip 2-7) and read which of the
+# three backtick targets it flags as unresolved. Anything NOT flagged is, by
+# check 1's own logic, resolved.
+SKILLS_LINT_SKIP=2,3,4,5,6,7 SKILLS_LINT_ROOT="$PARITY_TMP" \
+  bash "$HERE/skills-lint.sh" > "$TMP/parity-lint.out" 2>&1
+LINT_UNRESOLVED="$(grep -oE '[a-z-]+\.md$' "$TMP/parity-lint.out" | sort -u)"
+python3 -c "
+import sys
+unresolved = set('''$LINT_UNRESOLVED'''.split())
+assert 'does-not-exist.md' in unresolved, \
+    f'skills-lint check 1 did not flag the genuinely-missing target: {unresolved}'
+assert 'same-dir.md' not in unresolved, \
+    f'skills-lint check 1 flagged a same-directory citation that does resolve: {unresolved}'
+assert 'from-root.md' not in unresolved, \
+    f'skills-lint check 1 flagged a repo-root citation that does resolve: {unresolved}'
+assert 'one-level-deeper.md' not in unresolved, \
+    f'skills-lint check 1 flagged a references/-nested citation that does resolve: {unresolved}'
+" || fail "the parity fixture itself did not exercise skills-lint check 1 as expected"
+
+# discover_shared_references()'s verdict over the identical fixture.
+python3 - "$RUNNER" "$PARITY_TMP" <<'PY' || fail "discover_shared_references did not agree with skills-lint check 1 on the parity fixture"
+import importlib.util, pathlib, sys
+
+spec = importlib.util.spec_from_file_location("parity_runner", sys.argv[1])
+runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
+repo = pathlib.Path(sys.argv[2])
+skill_dir = repo / "skills" / "demo"
+
+found = {p.name for p in runner.discover_shared_references(skill_dir, repo)}
+assert found == {"same-dir.md", "from-root.md", "one-level-deeper.md"}, (
+    "discover_shared_references's resolved set does not match skills-lint "
+    f"check 1's verdict on the identical fixture: got {found}, expected "
+    "{'same-dir.md', 'from-root.md', 'one-level-deeper.md'} (does-not-exist.md "
+    "correctly excluded by both)")
+print("discover_shared_references: agrees with skills-lint.sh check 1 on same-dir, "
+      "repo-root, references/-nested, and unresolvable targets")
+PY
+rm -rf "$PARITY_TMP"
 pass
 
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

@@ -164,7 +164,16 @@ jobs:
             exit 1
           fi
 
-          "$sc" --severity="${SHELLCHECK_SEVERITY}" scripts/*.sh
+          # -x follows `source`d files (scripts/lib/*.sh) instead of reporting
+          # SC1091/leaving their own SC2034-style false positives on the
+          # sourcing script; -P scripts is the search path that resolution
+          # needs because these scripts compute their own source path from a
+          # runtime SCRIPT_DIR variable shellcheck cannot evaluate statically
+          # -- without -P, -x still can't find lib/check-common.sh when this
+          # step invokes shellcheck from the repo root. scripts/lib/*.sh is
+          # listed explicitly alongside scripts/*.sh so the sourced files
+          # themselves are checked too, not just followed.
+          "$sc" --severity="${SHELLCHECK_SEVERITY}" -x -P scripts scripts/*.sh scripts/lib/*.sh
 
       - name: test-wiring regression suite
         # Mutation-checked, same contract as the suites below: for each defense

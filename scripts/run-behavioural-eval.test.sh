@@ -245,6 +245,14 @@ if os.environ.get("FAKE_MULTI_MODEL"):
 if os.environ.get("FAKE_USAGE_MISMATCH"):
     model_usage[EXECUTOR_MODEL]["outputTokens"] = 999
 
+# Reproduces diagnostic run 32055798335: every without_skill leg billed an
+# auxiliary model that answered no visible turn, listed FIRST in modelUsage,
+# ahead of the model that actually produced the assistant event above. #222.
+# Prepended to the map built above rather than replacing it: the cost ledger
+# needs the cache-bearing entries, and #222's question is purely about ORDER.
+if os.environ.get("FAKE_AUX_MODEL_FIRST"):
+    model_usage = {"fake-auxiliary-model": {"inputTokens": 5}, **model_usage}
+
 print(json.dumps({"type": "result", "is_error": False,
                   "result": leg.get("final", "done"),
                   "modelUsage": model_usage,
@@ -1029,6 +1037,141 @@ import json
 g=json.load(open('$TMP/out-model-mut/eval-case-model-0/with_skill/run-1/grading.json'))
 assert g['models']['executor']=='requested-model-not-used', g['models']
 " || fail "the request-echoing mutant did not reproduce the defect, so § 9 no longer proves the recording reads the stream"
+pass
+
+# ---------------------------------------------------------------------------
+# 9a. modelUsage's first key can name a model that answered nothing (#222).
+# ---------------------------------------------------------------------------
+# Diagnostic run 32055798335 showed every without_skill leg billing an
+# auxiliary model ahead of the one that produced every visible assistant turn
+# — modelUsage's first-key heuristic named the wrong model on 9 consecutive
+# nightly runs. assistant.message.model is now tried FIRST; modelUsage is the
+# fallback for a stream with no assistant event at all (e.g. an auth failure).
+export FAKE_AUX_MODEL_FIRST=1
+record_models "$RUNNER" "$TMP/out-model-aux"
+python3 -c "
+import json
+g=json.load(open('$TMP/out-model-aux/eval-case-model-0/with_skill/run-1/grading.json'))
+assert g['models']['executor']=='fake-executor-model', (
+  'observed_model named the auxiliary billed-but-silent model instead of the '
+  'one that actually answered: ' + str(g['models']))
+" || fail "an auxiliary model listed first in modelUsage was recorded as the executor"
+unset FAKE_AUX_MODEL_FIRST
+pass
+
+# Mutation: restore the old modelUsage-first order. This is the exact defect
+# #222 fixes — without it, the assertion above would name the auxiliary model,
+# which is what every without_skill leg did against production for nine nights.
+mkdir -p "$TMP/mut-modelusage-first/scripts"
+ln -s "$REPO/evals" "$TMP/mut-modelusage-first/evals"
+ln -s "$REPO/.claude-plugin" "$TMP/mut-modelusage-first/.claude-plugin"
+python3 - "$RUNNER" "$TMP/mut-modelusage-first/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+old = '''    for event in events:
+        if event.get("type") == "assistant":
+            name = (event.get("message") or {}).get("model")
+            if name:
+                return str(name)
+    for event in reversed(events):
+        if event.get("type") == "result":
+            for name in (event.get("modelUsage") or {}):
+                if name:
+                    return str(name)
+    for event in events:
+        if event.get("type") == "system" and event.get("model"):'''
+new = '''    for event in reversed(events):
+        if event.get("type") == "result":
+            for name in (event.get("modelUsage") or {}):
+                if name:
+                    return str(name)
+    for event in events:
+        if event.get("type") == "assistant":
+            name = (event.get("message") or {}).get("model")
+            if name:
+                return str(name)
+    for event in events:
+        if event.get("type") == "system" and event.get("model"):'''
+mutated = text.replace(old, new)
+assert mutated != text, "mutation target not found: observed_model's resolution order moved"
+dst.write_text(mutated)
+PY
+export FAKE_AUX_MODEL_FIRST=1
+record_models "$TMP/mut-modelusage-first/scripts/run-behavioural-eval.py" "$TMP/out-model-aux-mut"
+python3 -c "
+import json
+g=json.load(open('$TMP/out-model-aux-mut/eval-case-model-0/with_skill/run-1/grading.json'))
+assert g['models']['executor']=='fake-auxiliary-model', g['models']
+" || fail "the modelUsage-first mutant did not reproduce the defect, so § 9a no longer proves the resolution order is load-bearing"
+unset FAKE_AUX_MODEL_FIRST
+pass
+
+# ---------------------------------------------------------------------------
+# 9b. The raw events observed_model() reads survive the run (#221).
+# ---------------------------------------------------------------------------
+# A completed run's grading.json is already-derived data. Deciding whether
+# `executor` named an auxiliary model rather than the one that answered (#222)
+# requires the events observed_model() actually looked at, and until this
+# they were discarded the moment the process exited. Reuses $TMP/out-model
+# from § 9 — same run, one more file to check.
+python3 -c "
+import json
+p = '$TMP/out-model/eval-case-model-0/with_skill/run-1/outputs/events.jsonl'
+lines = [json.loads(l) for l in open(p) if l.strip()]
+types = {e['type'] for e in lines}
+assert 'system' in types, types
+assert 'assistant' in types, types
+assert 'result' in types, types
+# 'user' events carry tool results, already retained via transcript.md, and
+# are excluded on purpose (see EVENTS_WORTH_KEEPING) to bound artifact size.
+assert 'user' not in types, f\"user events were not filtered out: {types}\"
+" || fail "events.jsonl did not survive the run with the expected system/assistant/result shape"
+pass
+
+# Mutation: skip writing events.jsonl entirely. This is the defect #221 exists
+# to fix — a completed run leaves nothing to answer a model-resolution question
+# with, and only a new graded run could settle it.
+mkdir -p "$TMP/mut-no-events/scripts"
+ln -s "$REPO/evals" "$TMP/mut-no-events/evals"
+ln -s "$REPO/.claude-plugin" "$TMP/mut-no-events/.claude-plugin"
+python3 - "$RUNNER" "$TMP/mut-no-events/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace('write_events(outputs / "events.jsonl", outcome["events"])', 'pass')
+assert mutated != text, "mutation target not found: the events.jsonl write call moved"
+dst.write_text(mutated)
+PY
+record_models "$TMP/mut-no-events/scripts/run-behavioural-eval.py" "$TMP/out-model-noevents"
+if [ -f "$TMP/out-model-noevents/eval-case-model-0/with_skill/run-1/outputs/events.jsonl" ]; then
+  fail "the events.jsonl-skipping mutant still produced the file, so this case does not prove the write is load-bearing"
+fi
+pass
+
+# Mutation: keep every event type instead of filtering. Proves the exclusion of
+# 'user' events is what the assertion above depends on, not an accident of this
+# particular case's plan.
+mkdir -p "$TMP/mut-all-events/scripts"
+ln -s "$REPO/evals" "$TMP/mut-all-events/evals"
+ln -s "$REPO/.claude-plugin" "$TMP/mut-all-events/.claude-plugin"
+python3 - "$RUNNER" "$TMP/mut-all-events/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace(
+    'EVENTS_WORTH_KEEPING = ("system", "assistant", "result")',
+    'EVENTS_WORTH_KEEPING = ("system", "assistant", "result", "user")')
+assert mutated != text, "mutation target not found: EVENTS_WORTH_KEEPING moved"
+dst.write_text(mutated)
+PY
+record_models "$TMP/mut-all-events/scripts/run-behavioural-eval.py" "$TMP/out-model-allevents"
+python3 -c "
+import json
+p = '$TMP/out-model-allevents/eval-case-model-0/with_skill/run-1/outputs/events.jsonl'
+types = {json.loads(l)['type'] for l in open(p) if l.strip()}
+assert 'user' in types, 'the all-events mutant did not reproduce an unfiltered stream: ' + str(types)
+" || fail "the unfiltered-events mutant did not reproduce the defect, so the 'user' exclusion is not proven load-bearing"
 pass
 
 # ---------------------------------------------------------------------------

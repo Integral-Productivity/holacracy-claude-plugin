@@ -83,6 +83,18 @@ EOF
 echo '{"run_summary": {}}' > "$TMP/empty-summary.json"
 echo '{}' > "$TMP/no-summary.json"
 
+# A baseline whose every statistic is null -- the shape evals/benchmark.json
+# carried before it was seeded (#183), and the shape it or any sibling would
+# carry again before its own next seeding. Kept as a synthetic fixture rather
+# than read off the real committed file: the file is now measured, and a check
+# for "does a null mean render as n/a" must not depend on the committed
+# baseline's own re-seedable content staying null forever.
+cat > "$TMP/unmeasured-baseline.json" <<'EOF'
+{ "run_summary": {
+    "with_skill":    { "pass_rate": { "mean": null, "stddev": null } },
+    "without_skill": { "pass_rate": { "mean": null, "stddev": null } } } }
+EOF
+
 # A measured baseline, so the delta column has something real to compute.
 cat > "$TMP/measured-baseline.json" <<'EOF'
 { "run_summary": {
@@ -121,14 +133,30 @@ echo "$OUT" | grep -qF '| with_skill | 0.938 | 0.125 | 0.8 | +0.137 |' \
 pass
 
 # ---------------------------------------------------------------------------
-# 2. The committed, UNMEASURED baseline, whose every statistic is null.
+# 2. An unmeasured baseline, whose every statistic is null.
 # ---------------------------------------------------------------------------
-# This is the repo's actual state until a graded run seeds one. `mean - None`
-# is a TypeError, so the baseline and delta columns must read "n/a" instead.
-OUT="$(report "$TMP/real.json" "$BASELINE")" \
-  || { echo "$OUT"; fail "the committed unmeasured baseline crashed the report"; }
+# This is the shape evals/benchmark.json carries before a graded run seeds it.
+# `mean - None` is a TypeError, so the baseline and delta columns must read
+# "n/a" instead.
+OUT="$(report "$TMP/real.json" "$TMP/unmeasured-baseline.json")" \
+  || { echo "$OUT"; fail "an unmeasured baseline crashed the report"; }
 [ "$(echo "$OUT" | grep -c '| n/a | n/a |')" = "2" ] \
   || { echo "$OUT"; fail "a null baseline statistic did not render as n/a"; }
+pass
+
+# 2a. The committed baseline, used as-is rather than copied. If
+# evals/benchmark.json is ever edited into a shape this report cannot read,
+# that is a defect in the pair and this suite is where it should surface.
+# Once #183 seeded it (2026-08-17, run 32058594541) it carries real numbers,
+# so this checks the report computes a real delta against it rather than
+# falling back to "n/a" -- the null-baseline behaviour above already covers
+# the pre-seeding shape via its own synthetic fixture.
+OUT="$(report "$TMP/real.json" "$BASELINE")" \
+  || { echo "$OUT"; fail "the committed baseline crashed the report"; }
+echo "$OUT" | grep -qF '| with_skill | 0.938 | 0.125 | 0.5861 | +0.351 |' \
+  || { echo "$OUT"; fail "the with_skill row did not compute against the committed baseline"; }
+echo "$OUT" | grep -qF '| without_skill | 0.438 | 0.125 | 0.5333 | -0.096 |' \
+  || { echo "$OUT"; fail "the without_skill row did not compute against the committed baseline"; }
 pass
 
 # A baseline file that does not exist at all is the same story, one step
@@ -230,7 +258,7 @@ pass
 M="$(mutate nulls \
   'delta = f"{mean - bm:+.3f}" if isinstance(bm, (int, float)) else "n/a"' \
   'delta = f"{mean - bm:+.3f}"')" || fail "could not build the null mutant"
-report "$TMP/real.json" "$BASELINE" "$M" >/dev/null 2>&1 \
+report "$TMP/real.json" "$TMP/unmeasured-baseline.json" "$M" >/dev/null 2>&1 \
   && fail "a null baseline statistic survived arithmetic, so case 2 proves nothing"
 pass
 report "$TMP/real.json" "$TMP/measured-baseline.json" "$M" >/dev/null 2>&1 \

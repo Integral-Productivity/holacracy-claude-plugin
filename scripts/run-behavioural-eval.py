@@ -11,7 +11,7 @@ skill-creator plugin) consumes:
     <out>/eval-<suite>-<id>/<config>/run-<k>/grading.json
     <out>/eval-<suite>-<id>/<config>/run-<k>/timing.json
     <out>/eval-<suite>-<id>/<config>/run-<k>/cost.json
-    <out>/eval-<suite>-<id>/<config>/run-<k>/outputs/{transcript.md,writes.jsonl,metrics.json}
+    <out>/eval-<suite>-<id>/<config>/run-<k>/outputs/{transcript.md,writes.jsonl,metrics.json,events.jsonl}
 
 `<suite>` is the case file's directory name. It is part of the key because
 `eval_id` is unique only within one case file, and without it two suites'
@@ -627,6 +627,31 @@ def cli_version() -> str | None:
     return proc.stdout.strip() or None
 
 
+# The event types observed_model() actually reads (system for the init model,
+# assistant for message.model, result for modelUsage). `user` events carry tool
+# results, which are already rendered into transcript.md and are typically the
+# bulkiest part of a stream -- dropping them is a deliberate size reduction,
+# not an oversight. Kept as a module constant so the filter and the function it
+# serves cannot silently drift apart.
+EVENTS_WORTH_KEEPING = ("system", "assistant", "result")
+
+
+def write_events(path: Path, events: list) -> None:
+    """Persist the events observed_model() can be re-derived from (#221).
+
+    Without this, a question like "did modelUsage name an auxiliary model
+    rather than the one that answered" can only be settled by spending another
+    graded run -- the raw stream a completed run parsed is gone the moment the
+    process exits, and only the already-derived `grading.json` survives. Full
+    events were considered and rejected: the `user` events include tool
+    results, which are the largest single piece of most sessions and are
+    already retained via transcript.md, so this filters to the three types
+    `observed_model` actually reads and nothing else.
+    """
+    kept = [e for e in events if e.get("type") in EVENTS_WORTH_KEEPING]
+    path.write_text("\n".join(json.dumps(e) for e in kept))
+
+
 def observed_model(events: list) -> str | None:
     """Which model actually answered, read off the stream rather than requested.
 
@@ -636,27 +661,41 @@ def observed_model(events: list) -> str | None:
     cannot name its model makes a model upgrade indistinguishable from a skill
     regression -- which is what #173's alarm would then misattribute (#203).
 
-    Three independent places in a real stream carry it. They are tried in order
-    of how directly they report what the API actually billed:
+    Three independent places in a real stream carry it, tried in this order:
 
-      1. the result event's `modelUsage`, keyed by model name
-      2. an assistant event's `message.model`
+      1. an assistant event's `message.model` -- the model on the turn that
+         actually answered
+      2. the result event's `modelUsage`, keyed by model name
       3. the system init event's `model`
+
+    `modelUsage` is NOT primary, despite billing the API most directly (#222).
+    Diagnostic run 32055798335 (dispatched once #221 gave a completed run
+    somewhere to keep its raw events) settled this with real evidence: every
+    `without_skill` leg across all four eval cases billed an auxiliary
+    `claude-haiku-4-5-20251001` alongside the requested `claude-sonnet-5`, with
+    haiku listed FIRST in `modelUsage` -- yet every single `assistant` event in
+    every one of those same runs had `message.model == "claude-sonnet-5"`. The
+    auxiliary call never produced a visible turn; `modelUsage`'s first-key
+    heuristic named the model that did not do the work, which is exactly why
+    every graded run since #243 pinned `--model` still failed the "did the arms
+    run on the same model" check for nine consecutive nights. `with_skill` legs
+    never billed the auxiliary model at all, so the two orderings previously
+    agreed by coincidence on that leg and diverged only on the control.
 
     Returns None when none of them is present, and the caller records that as
     JSON null. An unresolvable model must stay legibly absent: substituting a
     guess is the same defect as the `<model-name>` placeholder, one layer down.
     """
-    for event in reversed(events):
-        if event.get("type") == "result":
-            for name in (event.get("modelUsage") or {}):
-                if name:
-                    return str(name)
     for event in events:
         if event.get("type") == "assistant":
             name = (event.get("message") or {}).get("model")
             if name:
                 return str(name)
+    for event in reversed(events):
+        if event.get("type") == "result":
+            for name in (event.get("modelUsage") or {}):
+                if name:
+                    return str(name)
     for event in events:
         if event.get("type") == "system" and event.get("model"):
             return str(event["model"])
@@ -930,6 +969,7 @@ def run_once(case: dict, config: str, run_dir: Path, model: str | None,
     metrics["output_chars"] = len(transcript)
     metrics["writes"] = len(writes)
     (outputs / "metrics.json").write_text(json.dumps(metrics, indent=2))
+    write_events(outputs / "events.jsonl", outcome["events"])
 
     mechanical, judged_specs = [], []
     for assertion in case["assertions"]:

@@ -479,6 +479,7 @@ jobs:
             ${{ runner.temp }}/benchmark/**/grading.json
             ${{ runner.temp }}/benchmark/**/cost.json
             ${{ runner.temp }}/benchmark/**/transcript.md
+            ${{ runner.temp }}/benchmark/**/events.jsonl
           retention-days: 30
           # warn, not error: with always() this step legitimately runs in states
           # that produced nothing (the eval step itself died early). Failing the

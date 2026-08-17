@@ -444,7 +444,7 @@ jobs:
         # and a complete successful run was lost outright (#199). Whatever the
         # run produced before dying is worth keeping.
         if: always() && steps.key.outputs.present == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: behavioural-benchmark
           path: |

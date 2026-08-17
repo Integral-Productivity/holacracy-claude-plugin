@@ -1014,4 +1014,179 @@ MUT="$(make_mutant samemodel '        if len(distinct) > 1:' '        if False:'
 unset FAKE_SPLIT_MODEL
 pass
 
+# ---------------------------------------------------------------------------
+# 13. CACHE KEY COMPUTATION (U1) -- compute_cache_key hashes exactly R1's nine
+#     declared inputs and nothing else silently.
+#
+# This runs entirely against a SYNTHETIC mini-repo under $TMP, not against
+# this checkout, so each of the nine inputs can be mutated one at a time
+# without touching (or restoring) a real file. discover_shared_references is
+# exercised through two citing files -- the skill's SKILL.md and a
+# references/ file one level deeper -- because that asymmetry is the exact
+# failure mode skills-lint.sh check 1 exists to catch (CLAUDE.md: nine broken
+# shared-file load paths shipped to main once already under a looser
+# resolver); a cache key that only discovered SKILL.md's own citations would
+# silently under-hash a skill whose references/ file cites shared content the
+# version-bump check (check 4) cannot see either.
+# ---------------------------------------------------------------------------
+python3 - "$RUNNER" <<'PY' || fail "compute_cache_key did not behave as required"
+import pathlib, shutil, sys, tempfile
+
+spec_path = sys.argv[1]
+import importlib.util
+spec = importlib.util.spec_from_file_location("runner", spec_path)
+runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
+
+# KTD2: this is the ONE canonical enumeration a later completeness check (R7,
+# not built in this unit) will assert against. Fixed exactly, in this order
+# by convention -- a drift here is a drift in the contract itself, not a
+# behavioural finding this suite should silently absorb.
+assert list(runner.CACHE_KEY_INPUT_CLASSES) == [
+    "skills/**", "skills/shared/**", "evals/cases/**", "evals/stub/**",
+    "scripts/run-behavioural-eval.py",
+], runner.CACHE_KEY_INPUT_CLASSES
+
+def build_repo(root):
+    """One skill, two shared files -- one cited from SKILL.md, one cited only
+    from a references/ file one level deeper -- a stub, a runner script and a
+    fixture: every file compute_cache_key reads."""
+    skill_dir = root / "skills" / "my-skill"
+    (skill_dir / "references").mkdir(parents=True)
+    (root / "skills" / "shared").mkdir(parents=True)
+    (root / "evals" / "stub").mkdir(parents=True)
+    (root / "evals" / "fixtures" / "glassfrog").mkdir(parents=True)
+    (root / "scripts").mkdir(parents=True)
+
+    (root / "skills" / "shared" / "shared-a.md").write_text("shared A v1\n")
+    (root / "skills" / "shared" / "shared-b.md").write_text("shared B v1\n")
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: my-skill\ndescription: d\nstatus: active\nversion: 1.0.0\n---\n"
+        "Loads `../shared/shared-a.md` directly.\n")
+    (skill_dir / "references" / "deep.md").write_text(
+        "Loads `../../shared/shared-b.md`, one level deeper than SKILL.md.\n")
+    (root / "evals" / "stub" / "glassfrog_stub.py").write_text("# stub v1\n")
+    (root / "scripts" / "run-behavioural-eval.py").write_text("# runner v1\n")
+    (root / "evals" / "fixtures" / "glassfrog" / "fixture.json").write_text('{"v":1}\n')
+    return skill_dir
+
+def key_for(root, skill_dir, **overrides):
+    case = overrides.pop("case", {"eval_id": 0, "prompt": "p"})
+    kwargs = dict(
+        case=case,
+        skill_dirs=[skill_dir],
+        fixture_path=root / "evals" / "fixtures" / "glassfrog" / "fixture.json",
+        stub_path=root / "evals" / "stub" / "glassfrog_stub.py",
+        runner_path=root / "scripts" / "run-behavioural-eval.py",
+        repo=root,
+        runs=1,
+        model="claude-model-x",
+        cli_version="2.1.0",
+    )
+    kwargs.update(overrides)
+    return runner.compute_cache_key(**kwargs)
+
+base = pathlib.Path(tempfile.mkdtemp(prefix="cachekey-"))
+try:
+    skill_dir = build_repo(base)
+
+    baseline = key_for(base, skill_dir)
+    assert key_for(base, skill_dir) == baseline, "identical inputs produced different keys"
+
+    # 1. case file content
+    assert key_for(base, skill_dir, case={"eval_id": 0, "prompt": "DIFFERENT"}) != baseline, \
+        "changing the case content did not change the key"
+
+    # 2. the skill's declared version: field
+    skill_md = skill_dir / "SKILL.md"
+    skill_md.write_text(skill_md.read_text().replace("version: 1.0.0", "version: 1.0.1"))
+    assert key_for(base, skill_dir) != baseline, \
+        "changing the skill's declared version did not change the key"
+    skill_md.write_text(skill_md.read_text().replace("version: 1.0.1", "version: 1.0.0"))
+    assert key_for(base, skill_dir) == baseline, "restoring the version did not restore the key"
+
+    # 3. a skills/shared/ file cited directly from SKILL.md, version: UNCHANGED
+    #    -- the whole point of R1: check 4 excludes skills/shared/ from its
+    #    diff, so the version field alone is not a proxy for shared-file drift.
+    shared_a = base / "skills" / "shared" / "shared-a.md"
+    shared_a.write_text("shared A v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing a skills/shared/ file did not change the key even though " \
+        "the skill's version: field was left untouched"
+    shared_a.write_text("shared A v1\n")
+    assert key_for(base, skill_dir) == baseline, "restoring the shared file did not restore the key"
+
+    # 3b. the file cited only from references/deep.md, one level deeper than
+    #     SKILL.md -- the historical failure mode skills-lint.sh check 1 was
+    #     built to catch.
+    shared_b = base / "skills" / "shared" / "shared-b.md"
+    shared_b.write_text("shared B v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing a shared file cited only from a references/ file (one " \
+        "level deeper than SKILL.md) did not change the key -- discovery " \
+        "is not walking references/"
+    shared_b.write_text("shared B v1\n")
+    assert key_for(base, skill_dir) == baseline
+
+    # 4. fixture hash
+    fixture = base / "evals" / "fixtures" / "glassfrog" / "fixture.json"
+    fixture.write_text('{"v":2}\n')
+    assert key_for(base, skill_dir) != baseline, "changing the fixture did not change the key"
+    fixture.write_text('{"v":1}\n')
+    assert key_for(base, skill_dir) == baseline
+
+    # 5. the harness's own execution/grading script
+    runner_file = base / "scripts" / "run-behavioural-eval.py"
+    runner_file.write_text("# runner v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing run-behavioural-eval.py did not change the key"
+    runner_file.write_text("# runner v1\n")
+    assert key_for(base, skill_dir) == baseline
+
+    # 5b. eval-report.py is a post-hoc renderer that never runs during
+    #     execution or grading, so it must play NO part in the key -- an edit
+    #     to a same-directory file by that name must not move it.
+    (base / "scripts" / "eval-report.py").write_text("# report v2 -- irrelevant\n")
+    assert key_for(base, skill_dir) == baseline, \
+        "an eval-report.py-only edit changed the key, but that script " \
+        "never runs during execution or grading"
+
+    # 6. runs
+    assert key_for(base, skill_dir, runs=2) != baseline, "changing runs did not change the key"
+
+    # 7. model id
+    assert key_for(base, skill_dir, model="claude-model-y") != baseline, \
+        "changing the model id did not change the key"
+    assert key_for(base, skill_dir, model=None) != baseline, \
+        "a None model produced the same key as a named model"
+
+    # 8. stub hash
+    stub = base / "evals" / "stub" / "glassfrog_stub.py"
+    stub.write_text("# stub v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, "changing the stub did not change the key"
+    stub.write_text("# stub v1\n")
+    assert key_for(base, skill_dir) == baseline
+
+    # 9. the invoked CLI binary's version
+    assert key_for(base, skill_dir, cli_version="2.2.0") != baseline, \
+        "changing the CLI version did not change the key"
+
+    # A leg with no relevant skill (e.g. a without_skill control leg) is a
+    # valid input, not an error -- it just contributes no skill_versions or
+    # shared_refs to the key.
+    empty_skill_key = runner.compute_cache_key(
+        case={"eval_id": 0, "prompt": "p"}, skill_dirs=[],
+        fixture_path=base / "evals" / "fixtures" / "glassfrog" / "fixture.json",
+        stub_path=base / "evals" / "stub" / "glassfrog_stub.py",
+        runner_path=base / "scripts" / "run-behavioural-eval.py",
+        repo=base, runs=1, model=None, cli_version="2.1.0")
+    assert empty_skill_key != baseline, \
+        "a leg with no skill_dirs produced the same key as one with a skill"
+finally:
+    shutil.rmtree(base, ignore_errors=True)
+
+print("compute_cache_key: all nine inputs independently discriminating; "
+      "shared-file discovery walks references/; CACHE_KEY_INPUT_CLASSES intact")
+PY
+pass
+
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

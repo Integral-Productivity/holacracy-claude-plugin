@@ -101,6 +101,7 @@ the judged set is the cheapest available reduction in variance.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -139,6 +140,222 @@ MCP_SERVER_NAME = "glassfrog"
 CLAUDE_BIN = os.environ.get("BEHAVIOURAL_EVAL_CLAUDE_BIN", "claude")
 
 DEFAULT_CONFIGS = ("with_skill", "without_skill")
+
+
+# ---------------------------------------------------------------------------
+# Cache key computation
+#
+# WHY THIS EXISTS
+# ----------------
+# The nightly graded tier re-executes and re-grades every (case, config) leg
+# every night, whether or not anything that could move its result has
+# changed. A stable, content-addressed key per leg is the precondition for a
+# change-aware skip: two runs with the same key are runs of the identical
+# leg, and a skip decision (a later unit) can trust that equality without
+# re-deriving it from a git diff each time.
+#
+# WHAT GOES INTO THE KEY, AND WHY EACH PIECE
+# -------------------------------------------
+# Nine inputs, each independently capable of moving a leg's result:
+#
+#   case content       the eval's own prompt, assertions, ground truth and
+#                       fixture path -- editing any of them is editing the
+#                       question being asked
+#   skill version       skills-lint.sh check 4 (scripts/skills-lint.sh:286)
+#                       already enforces that a skill's `version:` field moves
+#                       when its content does. Reusing that field as a cache
+#                       input (rather than hashing the skill's own directory
+#                       tree directly) is a session-settled decision: it
+#                       piggybacks on an existing enforcement mechanism
+#                       instead of adding a second, independent one that could
+#                       drift out of sync with the first.
+#   shared references   check 4 explicitly EXCLUDES skills/shared/ from its
+#                       diff (`grep -v '^skills/shared/'`), so a shared file
+#                       can change with no skill's version field moving. This
+#                       hashes the shared files a skill actually loads,
+#                       discovered the same way skills-lint.sh check 1 proves
+#                       a load path resolves (see discover_shared_references).
+#   fixture             the synthetic org state the case exercises
+#   harness script       run-behavioural-eval.py itself participates in
+#                       producing a leg's result -- it drives execution,
+#                       decides what counts as an error, and grades. Deliberately
+#                       NOT eval-report.py, a post-hoc renderer that never runs
+#                       during execution or grading and so cannot move a
+#                       leg's result.
+#   runs                 the requested repeat count
+#   model                the requested model id
+#   stub                 evals/stub/glassfrog_stub.py, which the MCP server
+#                       in every leg actually is
+#   cli version           the invoked Claude Code CLI binary's own version
+#                       (`claude --version`), independent of anything in this
+#                       repo -- a CLI behaviour change can move a result with
+#                       nothing here having changed at all
+#
+# CACHE_KEY_INPUT_CLASSES below is a narrower, DELIBERATELY SHORTER list: the
+# file-tree globs among the nine, not the runtime values (runs/model/cli
+# version) or the fixture. Planning Contract KTD2 fixes its five entries
+# exactly (skills/**, skills/shared/**, evals/cases/**, evals/stub/**,
+# scripts/run-behavioural-eval.py) as the ONE canonical enumeration a LATER
+# completeness check (R7, not built here) asserts against -- a static
+# assertion design, not a git-diff scan. Extending compute_cache_key to a new
+# sensitive input class must extend this constant in the same change, or the
+# later check has nothing to catch the drift with (R4).
+# ---------------------------------------------------------------------------
+
+CACHE_KEY_INPUT_CLASSES = (
+    "skills/**",
+    "skills/shared/**",
+    "evals/cases/**",
+    "evals/stub/**",
+    "scripts/run-behavioural-eval.py",
+)
+
+_BACKTICK_MD_RE = re.compile(r"`([A-Za-z0-9_./-]+\.md)`")
+_SKILL_VERSION_RE = re.compile(r"^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$", re.MULTILINE)
+
+
+def _sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    return _sha256_hex(path.read_bytes())
+
+
+def skill_declared_version(skill_dir: Path) -> str:
+    """The skill's declared `version:` frontmatter field.
+
+    Raises rather than substituting a default: a skill directory whose
+    SKILL.md carries no semver version is a data problem skills-lint.sh check
+    3 already flags, and silently treating it as "unversioned" would let a
+    cache key mask exactly the drift this whole mechanism exists to catch.
+    """
+    skill_md = skill_dir / "SKILL.md"
+    text = skill_md.read_text()
+    match = _SKILL_VERSION_RE.search(text)
+    if not match:
+        raise ValueError(f"{skill_md}: no semver 'version:' field in frontmatter")
+    return match.group(1)
+
+
+def discover_shared_references(skill_dir: Path, repo: Path) -> list[Path]:
+    """Which skills/shared/*.md files does this skill actually load?
+
+    Replicates skills-lint.sh check 1's (`check_links`) resolution rule
+    EXACTLY, rather than reimplementing a looser one: a backticked path is
+    resolved relative to (a) the citing file's own directory, or (b) the repo
+    root -- nothing more permissive. This repo shipped nine broken shared-file
+    load paths under a looser reading once already (see this repo's
+    CLAUDE.md); a shallower resolver here would under-hash a skill whose
+    references/ file cites shared/ content one level deeper than SKILL.md
+    does, which is exactly that failure mode reproduced inside the cache key.
+
+    Citing files searched: the skill's own SKILL.md, and every `*.md` file
+    directly under its `references/` directory (mirroring check 1's `_live_md`
+    population, scoped to one skill). Bare filenames with no slash are
+    skipped, matching check 1: `SKILL.md` in prose names a concept, not a
+    path.
+    """
+    citing_files = []
+    skill_md = skill_dir / "SKILL.md"
+    if skill_md.exists():
+        citing_files.append(skill_md)
+    refs_dir = skill_dir / "references"
+    if refs_dir.is_dir():
+        citing_files.extend(sorted(refs_dir.glob("*.md")))
+
+    shared_root = (repo / "skills" / "shared").resolve()
+    found: set[Path] = set()
+    for citing in citing_files:
+        text = citing.read_text()
+        for target in _BACKTICK_MD_RE.findall(text):
+            if "/" not in target:
+                continue  # bare filename: a concept, not a path (check 1 parity)
+            candidate = citing.parent / target
+            if not candidate.exists():
+                candidate = repo / target
+                if not candidate.exists():
+                    continue  # unresolvable: check 1's finding, not this function's
+            resolved = candidate.resolve()
+            try:
+                resolved.relative_to(shared_root)
+            except ValueError:
+                continue  # resolves, but not under skills/shared/
+            found.add(resolved)
+    return sorted(found)
+
+
+def claude_cli_version(claude_bin: str | None = None) -> str:
+    """The invoked Claude Code CLI binary's version -- `claude --version`, NOT
+    this harness script's own version.
+
+    A leg's result can move when the CLI itself changes (a new default tool
+    behaviour, a flag's semantics shifting) independently of anything in this
+    repo, so the cache key must be sensitive to it. Read once per invocation
+    of this runner rather than once per leg: the binary does not change
+    mid-run, and shelling out per leg would be a wasted process spawn
+    repeated across the whole matrix.
+    """
+    claude_bin = claude_bin or CLAUDE_BIN
+    try:
+        proc = subprocess.run([claude_bin, "--version"], capture_output=True,
+                              text=True, timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"could not determine the {claude_bin} CLI version: {exc}") from exc
+    version = (proc.stdout or proc.stderr or "").strip()
+    if not version:
+        raise RuntimeError(f"{claude_bin} --version produced no output")
+    return version
+
+
+def compute_cache_key(case: dict, *, skill_dirs: list[Path] = (), fixture_path: Path,
+                       runs: int, model: str | None, cli_version: str,
+                       stub_path: Path | None = None, runner_path: Path | None = None,
+                       repo: Path = REPO) -> str:
+    """A stable, content-addressed cache key for one (case, config) leg.
+
+    Hashes exactly the nine inputs documented in the section header above --
+    the list is treated as exhaustive by design (R4): adding a new input that
+    could move a result is a required edit here, not an optional enhancement,
+    so a cache hit never masks an actual change.
+
+    `skill_dirs` is the set of skill directories this specific leg exercises
+    -- resolving WHICH skill(s) a given case's surface engages is a decision
+    for the caller (a case-to-skill mapping is not part of what this function
+    computes), so an empty tuple is valid for a leg that engages none (e.g. a
+    without_skill control leg, or a case whose fixture-only assertions never
+    reach skill content).
+
+    Deliberately does not fold `config` (with_skill / without_skill) into the
+    hash: the caller already keys the on-disk cache by config as a directory
+    component, and the natural way a config leg differs -- which skill_dirs
+    it passes -- already flows through the hash via that parameter.
+    """
+    stub_path = stub_path or STUB
+    runner_path = runner_path or Path(__file__).resolve()
+
+    skill_versions = sorted(
+        f"{d.name}={skill_declared_version(d)}" for d in skill_dirs)
+    shared_paths = sorted({
+        p for d in skill_dirs for p in discover_shared_references(d, repo)
+    })
+    shared_digest = _sha256_hex(
+        "".join(_sha256_file(p) for p in shared_paths).encode())
+
+    components = {
+        "case": _sha256_hex(json.dumps(case, sort_keys=True).encode()),
+        "skill_versions": skill_versions,
+        "shared_refs": shared_digest,
+        "fixture": _sha256_file(fixture_path),
+        "runner": _sha256_file(runner_path),
+        "runs": runs,
+        "model": model,
+        "stub": _sha256_file(stub_path),
+        "cli_version": cli_version,
+    }
+    canonical = json.dumps(components, sort_keys=True, default=str)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+    return f"leg_{digest}"
 
 
 # ---------------------------------------------------------------------------

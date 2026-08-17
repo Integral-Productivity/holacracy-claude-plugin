@@ -68,6 +68,11 @@ DELTA_KEY = "delta"
 # case, not a finding about the skill.
 WIDE_STDDEV = 0.2
 
+# Marks a cost summary that could not be parsed, so the failure travels as DATA
+# into the cost section's own boundary instead of raising at load time. See
+# load_cost below for why that distinction is load-bearing.
+UNREADABLE_KEY = "_unreadable"
+
 
 def configs_only(summary):
     """The per-config entries, with the `delta` sibling removed.
@@ -146,6 +151,9 @@ def fmt_usd(value):
 
 def cost_rows(cost, base_cost):
     """The cost table's lines, per config, both passes, never blended."""
+    unreadable = (cost or {}).get(UNREADABLE_KEY)
+    if unreadable:
+        return ["\n### Cost\n", f"_Cost data could not be read: {unreadable}_"]
     configs = (cost or {}).get("configs") or {}
     base_configs = (base_cost or {}).get("configs") or {}
     if not configs:
@@ -221,6 +229,29 @@ def load(path):
     return json.loads(p.read_text()) if p.exists() else {}
 
 
+def load_cost(path):
+    """Parse a cost summary, returning a marker rather than raising.
+
+    Deliberately NOT `load()`. Raising on malformed JSON is right for the
+    benchmark itself -- a report about a run whose results cannot be read is
+    worthless -- but wrong here, and the difference is easy to miss: the load
+    happens in main(), which is OUTSIDE render_cost's boundary, so a malformed
+    cost file would take the pass-rate table down with it. That is #199's shape
+    exactly, one file over, and it defeats the isolation this section was given
+    in the first place.
+
+    So an unreadable cost summary travels as data and is rendered as a stated
+    absence by the cost section alone.
+    """
+    p = pathlib.Path(path)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return {UNREADABLE_KEY: f"{type(exc).__name__}: {exc}"}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--current", required=True,
@@ -236,8 +267,8 @@ def main(argv=None):
                         help="a cost summary to compare against; omitted means no delta column")
     args = parser.parse_args(argv)
 
-    cost = load(args.cost) if args.cost else None
-    base_cost = load(args.cost_baseline) if args.cost_baseline else None
+    cost = load_cost(args.cost) if args.cost else None
+    base_cost = load_cost(args.cost_baseline) if args.cost_baseline else None
     print("\n".join(render(load(args.current), load(args.baseline), cost, base_cost)))
     return 0
 

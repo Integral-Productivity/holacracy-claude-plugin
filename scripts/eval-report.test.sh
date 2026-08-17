@@ -318,10 +318,17 @@ pass
 echo '{}' > "$TMP/cost-empty.json"
 OUT="$(cost_report "$TMP/cost-empty.json" "")" || { echo "$OUT"; fail "an empty cost file crashed the report"; }
 echo "$OUT" | grep -q "No cost data" || { echo "$OUT"; fail "an empty cost file did not say so"; }
+# A cost file that will not parse at all. This one is easy to get wrong: the
+# obvious implementation loads it in main(), OUTSIDE the cost section's
+# boundary, so the raise takes the pass-rate table with it -- #199's shape, one
+# file over. The load must fail into the section, not around it.
 printf 'not json at all' > "$TMP/cost-bad.json"
-OUT="$(python3 "$REPORT" --current "$TMP/real.json" --baseline "$TMP/measured-baseline.json" \
-  --cost "$TMP/cost-bad.json" 2>&1)" \
-  && { echo "$OUT"; fail "an unparseable cost file should fail at load, not render silently"; }
+OUT="$(cost_report "$TMP/cost-bad.json" "")" \
+  || { echo "$OUT"; fail "an unparseable cost file crashed the whole report"; }
+echo "$OUT" | grep -q "## Behavioural eval results" \
+  || { echo "$OUT"; fail "an unparseable cost file deleted the pass-rate table"; }
+echo "$OUT" | grep -q "could not be read" \
+  || { echo "$OUT"; fail "an unparseable cost file did not state the absence"; }
 pass
 
 # THE ONE THAT MATTERS: a cost summary that PARSES but carries a shape nobody
@@ -360,6 +367,21 @@ pass
 # the same mutant, so it is not masking an ordinary bug.
 cost_report "$TMP/cost.json" "" "$M" >/dev/null 2>&1 \
   || fail "the boundary mutant also broke the well-formed case; the boundary is hiding a real defect"
+pass
+
+# 6-mut2. Load the cost summary with the strict loader instead of the soft one.
+# The malformed file must then kill the whole report, proving the separate
+# loader is what keeps the failure inside the section.
+M="$(mutate softload 'cost = load_cost(args.cost) if args.cost else None' \
+  'cost = load(args.cost) if args.cost else None')" \
+  || fail "could not build the strict-load mutant"
+cost_report "$TMP/cost-bad.json" "" "$M" >/dev/null 2>&1 \
+  && fail "the malformed cost file survived a strict load, so that case proves nothing"
+pass
+# ...and the strict-load mutant leaves the well-formed case working, so this is
+# isolating the loader rather than breaking cost rendering generally.
+cost_report "$TMP/cost.json" "" "$M" >/dev/null 2>&1 \
+  || fail "the strict-load mutant also broke the well-formed case; it is not isolating the loader"
 pass
 
 echo "eval-report.test.sh: $CASES cases passed"

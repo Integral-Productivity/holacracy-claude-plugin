@@ -39,7 +39,8 @@
 # shellcheck disable=SC2016  # backticks in single quotes are literal markdown, not substitution
 set -uo pipefail
 
-ROOT="${SKILLS_LINT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${SKILLS_LINT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BASE=""
 SKIP="${SKILLS_LINT_SKIP:-}"
 
@@ -53,12 +54,8 @@ done
 
 cd "$ROOT" || { echo "cannot cd to $ROOT" >&2; exit 2; }
 
-FINDINGS=0
-finding() {  # $1 = check id, $2 = file:line or file, $3 = message
-  printf '%s  %s: %s\n' "[$1]" "$2" "$3"
-  FINDINGS=$((FINDINGS + 1))
-}
-skipped() { case ",$SKIP," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+# shellcheck source=lib/check-common.sh
+source "$SCRIPT_DIR/lib/check-common.sh"
 
 # Files that ship as part of the plugin's behaviour or its public documentation.
 #
@@ -449,8 +446,4 @@ check_command_refs
 check_orphans
 check_roster_delegation
 
-if [ "$FINDINGS" -gt 0 ]; then
-  printf '\nskills-lint: %d finding(s)\n' "$FINDINGS"
-  exit 1
-fi
-printf 'skills-lint: clean\n'
+check_common_summarize "skills-lint"

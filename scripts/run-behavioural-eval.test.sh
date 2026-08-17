@@ -68,11 +68,15 @@ argv = sys.argv[1:]
 def opt(name):
     return argv[argv.index(name) + 1] if name in argv else None
 
-# FIRST, before anything reads FAKE_PLAN or PLUGIN_NS. `cli_version()` shells
-# out to `<bin> --version`, and without this branch that call falls through to
-# the plan-replay path below and dies on a missing file -- so the version would
-# silently record as null in every offline run and #237's stamp would be
-# untested.
+# FIRST, before anything reads FAKE_PLAN or PLUGIN_NS. Both claude_cli_version()
+# (the cache-key input, § 13/14) and cli_version() (the cost/metadata stamp)
+# shell out to `<bin> --version`, and without this branch that call falls
+# through to the plan-replay path below and dies on a missing file -- so the
+# version would silently record as null/absent in every offline run and both
+# the cache-key tests and #237's stamp would be untested. Fixed and
+# unconditional in the common case -- this must answer identically whether or
+# not any other FAKE_* mutation below is active, so § 13/14 can compute the
+# SAME cli_version the runner folds into its cache key.
 if "--version" in argv:
     if os.environ.get("FAKE_NO_VERSION"):
         sys.stderr.write("simulated: unknown flag --version\n")
@@ -268,6 +272,20 @@ cat > "$TMP/fake-claude" <<EOF
 exec $FAKE "\$@"
 EOF
 chmod +x "$TMP/fake-claude"
+
+# A logging variant used only by § 14 (the cache index). It records every
+# invocation's argv to $CACHE_INVOKE_LOG before delegating to the same fake
+# executor above, so a cache-hit test can assert the CLI was invoked exactly
+# once (the --version probe used to compute the cache key) rather than the
+# full session/grading calls a fresh execution would make.
+cat > "$TMP/fake-claude-logged" <<EOF
+#!/usr/bin/env bash
+if [ -n "\${CACHE_INVOKE_LOG:-}" ]; then
+  printf '%s\n' "\$*" >> "\$CACHE_INVOKE_LOG"
+fi
+exec $FAKE "\$@"
+EOF
+chmod +x "$TMP/fake-claude-logged"
 
 # A case file carrying exactly the mechanical checks under test, and nothing
 # judged — so a section can only go red for the reason it is named after.
@@ -1444,6 +1462,676 @@ MUT="$(make_mutant samemodel '        if len(distinct) > 1:' '        if False:'
 [ "$(both_configs "$MUT" "$TMP/out-splitmodel-mut")" = "0" ] \
   || fail "the split-model defect was caught by something other than its own check"
 unset FAKE_SPLIT_MODEL
+pass
+
+# ---------------------------------------------------------------------------
+# 13. CACHE KEY COMPUTATION (U1) -- compute_cache_key hashes exactly R1's nine
+#     declared inputs and nothing else silently.
+#
+# This runs entirely against a SYNTHETIC mini-repo under $TMP, not against
+# this checkout, so each of the nine inputs can be mutated one at a time
+# without touching (or restoring) a real file. discover_shared_references is
+# exercised through two citing files -- the skill's SKILL.md and a
+# references/ file one level deeper -- because that asymmetry is the exact
+# failure mode skills-lint.sh check 1 exists to catch (CLAUDE.md: nine broken
+# shared-file load paths shipped to main once already under a looser
+# resolver); a cache key that only discovered SKILL.md's own citations would
+# silently under-hash a skill whose references/ file cites shared content the
+# version-bump check (check 4) cannot see either.
+# ---------------------------------------------------------------------------
+python3 - "$RUNNER" <<'PY' || fail "compute_cache_key did not behave as required"
+import pathlib, shutil, sys, tempfile
+
+spec_path = sys.argv[1]
+import importlib.util
+spec = importlib.util.spec_from_file_location("runner", spec_path)
+runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
+
+# KTD2: this is the ONE canonical enumeration the completeness check
+# (scripts/cache-key-completeness-check.sh, R7) asserts against. Fixed
+# exactly, in this order by convention -- a drift here is a drift in the
+# contract itself, not a behavioural finding this suite should silently
+# absorb. commands/** and agents/** were added after code review found the
+# original five-entry list never hashed the actual with_skill/without_skill
+# eval surfaces (implemented in commands/*.md + dispatched agents/*.md).
+assert list(runner.CACHE_KEY_INPUT_CLASSES) == [
+    "skills/**", "skills/shared/**", "commands/**", "agents/**",
+    "evals/cases/**", "evals/stub/**", "scripts/run-behavioural-eval.py",
+], runner.CACHE_KEY_INPUT_CLASSES
+
+def build_repo(root):
+    """One skill, two shared files -- one cited from SKILL.md, one cited only
+    from a references/ file one level deeper -- a command, an agent, a stub,
+    a runner script and a fixture: every file compute_cache_key reads."""
+    skill_dir = root / "skills" / "my-skill"
+    (skill_dir / "references").mkdir(parents=True)
+    (root / "skills" / "shared").mkdir(parents=True)
+    (root / "commands").mkdir(parents=True)
+    (root / "agents").mkdir(parents=True)
+    (root / "evals" / "stub").mkdir(parents=True)
+    (root / "evals" / "fixtures" / "glassfrog").mkdir(parents=True)
+    (root / "scripts").mkdir(parents=True)
+
+    (root / "skills" / "shared" / "shared-a.md").write_text("shared A v1\n")
+    (root / "skills" / "shared" / "shared-b.md").write_text("shared B v1\n")
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: my-skill\ndescription: d\nstatus: active\nversion: 1.0.0\n---\n"
+        "Loads `../shared/shared-a.md` directly.\n")
+    (skill_dir / "references" / "deep.md").write_text(
+        "Loads `../../shared/shared-b.md`, one level deeper than SKILL.md.\n")
+    (root / "commands" / "my-command.md").write_text("command v1\n")
+    (root / "agents" / "my-agent.md").write_text("agent v1\n")
+    (root / "evals" / "stub" / "glassfrog_stub.py").write_text("# stub v1\n")
+    (root / "scripts" / "run-behavioural-eval.py").write_text("# runner v1\n")
+    (root / "evals" / "fixtures" / "glassfrog" / "fixture.json").write_text('{"v":1}\n')
+    return skill_dir
+
+def key_for(root, skill_dir, **overrides):
+    case = overrides.pop("case", {"eval_id": 0, "prompt": "p"})
+    kwargs = dict(
+        case=case,
+        skill_dirs=[skill_dir],
+        fixture_path=root / "evals" / "fixtures" / "glassfrog" / "fixture.json",
+        stub_path=root / "evals" / "stub" / "glassfrog_stub.py",
+        runner_path=root / "scripts" / "run-behavioural-eval.py",
+        repo=root,
+        runs=1,
+        model="claude-model-x",
+        cli_version="2.1.0",
+    )
+    kwargs.update(overrides)
+    return runner.compute_cache_key(**kwargs)
+
+base = pathlib.Path(tempfile.mkdtemp(prefix="cachekey-"))
+try:
+    skill_dir = build_repo(base)
+
+    baseline = key_for(base, skill_dir)
+    assert key_for(base, skill_dir) == baseline, "identical inputs produced different keys"
+
+    # 1. case file content
+    assert key_for(base, skill_dir, case={"eval_id": 0, "prompt": "DIFFERENT"}) != baseline, \
+        "changing the case content did not change the key"
+
+    # 2. the skill's declared version: field
+    skill_md = skill_dir / "SKILL.md"
+    skill_md.write_text(skill_md.read_text().replace("version: 1.0.0", "version: 1.0.1"))
+    assert key_for(base, skill_dir) != baseline, \
+        "changing the skill's declared version did not change the key"
+    skill_md.write_text(skill_md.read_text().replace("version: 1.0.1", "version: 1.0.0"))
+    assert key_for(base, skill_dir) == baseline, "restoring the version did not restore the key"
+
+    # 3. a skills/shared/ file cited directly from SKILL.md, version: UNCHANGED
+    #    -- the whole point of R1: check 4 excludes skills/shared/ from its
+    #    diff, so the version field alone is not a proxy for shared-file drift.
+    shared_a = base / "skills" / "shared" / "shared-a.md"
+    shared_a.write_text("shared A v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing a skills/shared/ file did not change the key even though " \
+        "the skill's version: field was left untouched"
+    shared_a.write_text("shared A v1\n")
+    assert key_for(base, skill_dir) == baseline, "restoring the shared file did not restore the key"
+
+    # 3b. the file cited only from references/deep.md, one level deeper than
+    #     SKILL.md -- the historical failure mode skills-lint.sh check 1 was
+    #     built to catch.
+    shared_b = base / "skills" / "shared" / "shared-b.md"
+    shared_b.write_text("shared B v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing a shared file cited only from a references/ file (one " \
+        "level deeper than SKILL.md) did not change the key -- discovery " \
+        "is not walking references/"
+    shared_b.write_text("shared B v1\n")
+    assert key_for(base, skill_dir) == baseline
+
+    # 3c. commands/*.md -- the eval surface itself (e.g.
+    #     /holacracy:capture-tension) is implemented here, not under
+    #     skills/<dir>, so nothing above this line reads it. Gated on
+    #     skill_dirs being non-empty, mirroring without_skill's
+    #     --plugin-dir-less execution never loading commands at all.
+    command_file = base / "commands" / "my-command.md"
+    command_file.write_text("command v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing a commands/*.md file did not change the key -- the eval " \
+        "surface's own implementation is unhashed"
+    without_skill_before = key_for(base, skill_dir, skill_dirs=[])
+    command_file.write_text("command v1\n")
+    assert key_for(base, skill_dir) == baseline
+    command_file.write_text("command v2 -- EDITED\n")
+    assert key_for(base, skill_dir, skill_dirs=[]) == without_skill_before, \
+        "a without_skill leg's key must not be sensitive to commands/*.md " \
+        "-- that config never loads --plugin-dir and so can never reach it"
+    command_file.write_text("command v1\n")
+
+    # 3d. agents/*.md -- a command can dispatch a subagent that loads
+    #     skills/shared/*.md content discover_shared_references never sees
+    #     (it only treats a skill's own SKILL.md/references/*.md as citing
+    #     files, never agents/*.md). Same with_skill-only gating as commands/.
+    agent_file = base / "agents" / "my-agent.md"
+    agent_file.write_text("agent v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing an agents/*.md file did not change the key -- a dispatched " \
+        "subagent's own implementation is unhashed"
+    agent_file.write_text("agent v1\n")
+    assert key_for(base, skill_dir) == baseline
+
+    # 4. fixture hash
+    fixture = base / "evals" / "fixtures" / "glassfrog" / "fixture.json"
+    fixture.write_text('{"v":2}\n')
+    assert key_for(base, skill_dir) != baseline, "changing the fixture did not change the key"
+    fixture.write_text('{"v":1}\n')
+    assert key_for(base, skill_dir) == baseline
+
+    # 5. the harness's own execution/grading script
+    runner_file = base / "scripts" / "run-behavioural-eval.py"
+    runner_file.write_text("# runner v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, \
+        "editing run-behavioural-eval.py did not change the key"
+    runner_file.write_text("# runner v1\n")
+    assert key_for(base, skill_dir) == baseline
+
+    # 5b. eval-report.py is a post-hoc renderer that never runs during
+    #     execution or grading, so it must play NO part in the key -- an edit
+    #     to a same-directory file by that name must not move it.
+    (base / "scripts" / "eval-report.py").write_text("# report v2 -- irrelevant\n")
+    assert key_for(base, skill_dir) == baseline, \
+        "an eval-report.py-only edit changed the key, but that script " \
+        "never runs during execution or grading"
+
+    # 6. runs
+    assert key_for(base, skill_dir, runs=2) != baseline, "changing runs did not change the key"
+
+    # 7. model id
+    assert key_for(base, skill_dir, model="claude-model-y") != baseline, \
+        "changing the model id did not change the key"
+    assert key_for(base, skill_dir, model=None) != baseline, \
+        "a None model produced the same key as a named model"
+
+    # 8. stub hash
+    stub = base / "evals" / "stub" / "glassfrog_stub.py"
+    stub.write_text("# stub v2 -- EDITED\n")
+    assert key_for(base, skill_dir) != baseline, "changing the stub did not change the key"
+    stub.write_text("# stub v1\n")
+    assert key_for(base, skill_dir) == baseline
+
+    # 9. the invoked CLI binary's version
+    assert key_for(base, skill_dir, cli_version="2.2.0") != baseline, \
+        "changing the CLI version did not change the key"
+
+    # A leg with no relevant skill (e.g. a without_skill control leg) is a
+    # valid input, not an error -- it just contributes no skill_versions or
+    # shared_refs to the key.
+    empty_skill_key = runner.compute_cache_key(
+        case={"eval_id": 0, "prompt": "p"}, skill_dirs=[],
+        fixture_path=base / "evals" / "fixtures" / "glassfrog" / "fixture.json",
+        stub_path=base / "evals" / "stub" / "glassfrog_stub.py",
+        runner_path=base / "scripts" / "run-behavioural-eval.py",
+        repo=base, runs=1, model=None, cli_version="2.1.0")
+    assert empty_skill_key != baseline, \
+        "a leg with no skill_dirs produced the same key as one with a skill"
+finally:
+    shutil.rmtree(base, ignore_errors=True)
+
+print("compute_cache_key: all eleven inputs independently discriminating; "
+      "shared-file discovery walks references/; CACHE_KEY_INPUT_CLASSES intact")
+PY
+pass
+
+# ---------------------------------------------------------------------------
+# 14. CACHE INDEX SKIP/EXECUTE DECISION (U2 + U3) -- the change-aware skip
+#     wrapped around the per-config loop in main(), and its bounded lifetime.
+#
+# These run the REAL main() loop (not just compute_cache_key in isolation)
+# against a "cache root" that mirrors this checkout closely enough for
+# resolve_skill_dirs_for_leg and discover_shared_references to see the real
+# shipped skills, but with its OWN copy of skills/ so one skill's version can
+# be bumped without touching this checkout's actual files. evals/ and
+# .claude-plugin/ are symlinked (their content does not need to be mutated),
+# and scripts/run-behavioural-eval.py is a plain copy of $RUNNER so its own
+# REPO constant resolves inside the cache root -- the same technique § 10's
+# make_mutant uses, extended to also copy skills/ rather than leave it absent.
+# ---------------------------------------------------------------------------
+CACHE_ROOT="$TMP/cache-root"
+mkdir -p "$CACHE_ROOT/scripts"
+cp "$RUNNER" "$CACHE_ROOT/scripts/run-behavioural-eval.py"
+ln -s "$REPO/evals" "$CACHE_ROOT/evals"
+ln -s "$REPO/.claude-plugin" "$CACHE_ROOT/.claude-plugin"
+cp -R "$REPO/skills" "$CACHE_ROOT/skills"
+CACHE_RUNNER="$CACHE_ROOT/scripts/run-behavioural-eval.py"
+# Fixed and matched by the "--version" branch added to fake-claude.py above --
+# claude_cli_version() is one of the eleven inputs compute_cache_key hashes,
+# so the test's own key computation and the runner's must agree on it exactly.
+CLI_VERSION="1.2.3-fake (Claude Code)"
+
+# Computes the SAME key main() will compute for (case, config) in a cache
+# root, using the runner's own resolve_skill_dirs_for_leg + compute_cache_key
+# rather than recomputing the logic by hand -- the whole point is to prove
+# the runner's internal decision, not a parallel guess at it.
+cache_key_for() {  # $1=cache_root $2=case_file $3=eval_id $4=config $5=runs $6=model(or "") $7=cli_version
+  python3 - "$@" <<'PY'
+import importlib.util, json, pathlib, sys
+cache_root, case_file, eval_id, config, runs, model, cli_version = sys.argv[1:8]
+spec = importlib.util.spec_from_file_location(
+    "cache_runner", pathlib.Path(cache_root) / "scripts" / "run-behavioural-eval.py")
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+doc = json.load(open(case_file))
+case = next(c for c in doc["evals"] if str(c["eval_id"]) == str(eval_id))
+skill_dirs = runner.resolve_skill_dirs_for_leg(config, repo=pathlib.Path(cache_root))
+fixture_path = pathlib.Path(cache_root) / case["fixture"]
+print(runner.compute_cache_key(
+    case=case, skill_dirs=skill_dirs, fixture_path=fixture_path,
+    runs=int(runs), model=(model or None), cli_version=cli_version))
+PY
+}
+
+# Seeds one entry into a cache index file, creating it if absent. The stored
+# "grading" is deliberately minimal -- only the fields cache_entry_is_usable
+# and record_leg_bookkeeping actually read (summary, models, execution_error)
+# -- matching the plan's "keep it simple" instruction for the index schema.
+seed_cache_index() {  # $1=index_path $2=key $3=last_executed $4=successful(true|false) $5=eval_name $6=config $7=executor_model $8=passed $9=total
+  python3 - "$@" <<'PY'
+import json, sys
+path, key, last_executed, successful, eval_name, config, executor_model, passed, total = sys.argv[1:10]
+try:
+    idx = json.load(open(path))
+except (FileNotFoundError, json.JSONDecodeError):
+    idx = {}
+passed_i, total_i = int(passed), int(total)
+idx[key] = {
+    "last_executed": last_executed,
+    "successful": successful == "true",
+    "grading": {
+        "eval_name": eval_name,
+        "config": config,
+        "models": {"requested": None, "executor": executor_model, "analyzer": None},
+        "expectations": [],
+        "summary": {"passed": passed_i, "failed": total_i - passed_i, "total": total_i,
+                    "pass_rate": (passed_i / total_i) if total_i else 0.0},
+        "execution_metrics": {}, "timing": {}, "execution_error": None,
+        "cache_hit": True,
+    },
+    "case": eval_name,
+    "config": config,
+}
+with open(path, "w") as f:
+    json.dump(idx, f, indent=2)
+PY
+}
+
+# Runs the cache root's runner over the clean plan (§ 1's plan-clean.json --
+# it satisfies every mechanical check, so a leg that DOES execute is a leg
+# that passes cleanly rather than one whose result is incidentally a fresh
+# defect). Logs every CLI invocation to $TMP/cache-invoke.log and captures
+# stdout/stderr for the caller to inspect; prints the exit code.
+run_cache() {  # $1=out_dir $2=index_path $3=now rest=extra args
+  local out="$1" idx="$2" now="$3"; shift 3
+  rm -rf "$out"
+  : > "$TMP/cache-invoke.log"
+  CACHE_INVOKE_LOG="$TMP/cache-invoke.log" FAKE_PLAN="$TMP/plan-clean.json" \
+    BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude-logged" \
+    python3 "$CACHE_RUNNER" --case "$TMP/case/evals.json" --out "$out" \
+      --configs with_skill --no-grade --cache-index "$idx" --now "$now" "$@" \
+      >"$TMP/cache-run.out" 2>"$TMP/cache-run.err"
+  echo $?
+}
+
+NOW="2026-08-17T00:00:00+00:00"
+CACHE_KEY_WS="$(cache_key_for "$CACHE_ROOT" "$TMP/case/evals.json" 0 with_skill 1 "" "$CLI_VERSION")"
+
+# 14a (AE1). A fresh, successful entry under the leg's CURRENT key is reused:
+#     the CLI is invoked exactly once (the --version probe used to compute
+#     the key -- never a real session or grading call), run_dir is never
+#     created, and the stored result feeds run_metadata.json exactly as a
+#     fresh execution's would.
+seed_cache_index "$TMP/idx-hit.json" "$CACHE_KEY_WS" \
+  "2026-08-16T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stored-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-hit" "$TMP/idx-hit.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "a cache-hit run did not exit 0"; }
+[ -d "$TMP/out-cache-hit/eval-case-0/with_skill" ] \
+  && fail "a skipped leg created its run_dir"
+grep -q "cache hit" "$TMP/cache-run.out" \
+  || { cat "$TMP/cache-run.out"; fail "a cache-hit run did not report a cache hit"; }
+INVOCATIONS="$(wc -l < "$TMP/cache-invoke.log" | tr -d ' ')"
+[ "$INVOCATIONS" = "1" ] \
+  || { cat "$TMP/cache-invoke.log"; fail "expected exactly one CLI invocation (the --version probe) on a cache hit, got $INVOCATIONS"; }
+grep -q -- "--version" "$TMP/cache-invoke.log" \
+  || { cat "$TMP/cache-invoke.log"; fail "the one invocation on a cache hit was not the --version probe"; }
+python3 -c "
+import json
+m = json.load(open('$TMP/out-cache-hit/run_metadata.json'))
+assert m['executor_models'] == ['stored-executor-model'], m
+assert m['executor_models_by_config']['with_skill'] == ['stored-executor-model'], m
+" || fail "a cache-hit leg's stored result did not feed run_metadata.json"
+pass
+
+# 14a-summary (U5, R6). An all-cache-hit night's run must record itself as
+#     such in the index's `_run_summary` -- 1 hit, 0 misses, and the one leg
+#     tagged cache_hit: true -- so a downstream reader can tell "everything
+#     was already cached" apart from "nothing ran at all".
+python3 -c "
+import json
+idx = json.load(open('$TMP/idx-hit.json'))
+s = idx['_run_summary']
+assert s['hits'] == 1, s
+assert s['misses'] == 0, s
+assert s['legs'] == [{'case': 'mechanical-checks', 'config': 'with_skill', 'cache_hit': True}], s
+" || fail "an all-cache-hit run did not record itself in _run_summary"
+pass
+
+# 14b (AE2). Bumping a shipped skill's version: changes the computed key
+#     (proving the leg's cache key really is sensitive to it, same as § 13's
+#     unit-level proof, but now observed through the whole main() loop), so
+#     an entry seeded under the OLD (pre-bump) key is a miss under the new
+#     one. The leg executes fresh, and a new entry lands under the CURRENT
+#     key; the superseded old entry is left in place rather than deleted --
+#     only the key that matters now is the one main() looks up.
+FACILITATOR_SKILL_MD="$CACHE_ROOT/skills/holacracy-facilitator/SKILL.md"
+cp "$FACILITATOR_SKILL_MD" "$TMP/facilitator-SKILL.md.orig"
+python3 - "$FACILITATOR_SKILL_MD" <<'PY'
+import re, sys
+path = sys.argv[1]
+text = open(path).read()
+bumped = re.sub(r'^version:\s*[0-9]+\.[0-9]+\.[0-9]+\s*$', 'version: 99.0.0',
+                text, count=1, flags=re.MULTILINE)
+assert bumped != text, "no version: field found to bump"
+open(path, "w").write(bumped)
+PY
+CACHE_KEY_WS_BUMPED="$(cache_key_for "$CACHE_ROOT" "$TMP/case/evals.json" 0 with_skill 1 "" "$CLI_VERSION")"
+[ "$CACHE_KEY_WS_BUMPED" != "$CACHE_KEY_WS" ] \
+  || fail "bumping a shipped skill's version did not change the computed cache key"
+
+seed_cache_index "$TMP/idx-bumped.json" "$CACHE_KEY_WS" \
+  "2026-08-16T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stale-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-bumped" "$TMP/idx-bumped.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "a post-bump execution did not exit 0"; }
+grep -q "cache hit" "$TMP/cache-run.out" \
+  && { cat "$TMP/cache-run.out"; fail "a leg whose skill version bumped was skipped as a cache hit"; }
+[ -f "$TMP/out-cache-bumped/eval-case-0/with_skill/run-1/grading.json" ] \
+  || fail "a leg whose cache key changed did not execute (no grading.json written)"
+python3 -c "
+import json
+g = json.load(open('$TMP/out-cache-bumped/eval-case-0/with_skill/run-1/grading.json'))
+assert g['cache_hit'] is False, g
+idx = json.load(open('$TMP/idx-bumped.json'))
+assert idx['$CACHE_KEY_WS_BUMPED']['successful'] is True, idx.get('$CACHE_KEY_WS_BUMPED')
+assert '$CACHE_KEY_WS' in idx, 'the superseded entry under the old key should not be deleted'
+s = idx['_run_summary']
+assert s['hits'] == 0, s
+assert s['misses'] == 1, s
+assert s['legs'] == [{'case': 'mechanical-checks', 'config': 'with_skill', 'cache_hit': False}], s
+" || fail "the cache index was not updated correctly after a key-changing execution"
+cp "$TMP/facilitator-SKILL.md.orig" "$FACILITATOR_SKILL_MD"
+CACHE_KEY_WS_RESTORED="$(cache_key_for "$CACHE_ROOT" "$TMP/case/evals.json" 0 with_skill 1 "" "$CLI_VERSION")"
+[ "$CACHE_KEY_WS_RESTORED" = "$CACHE_KEY_WS" ] \
+  || fail "restoring the bumped skill's version did not restore the original cache key"
+pass
+
+# 14c (AE6). An entry under the CURRENT key whose stored result was NOT
+#     successful is not reused, however fresh it is -- the leg executes
+#     again, and the index is updated with the new (successful) outcome.
+seed_cache_index "$TMP/idx-unsuccessful.json" "$CACHE_KEY_WS" \
+  "$NOW" false "mechanical-checks" with_skill "stale-executor-model" 0 4
+RC="$(run_cache "$TMP/out-cache-unsuccessful" "$TMP/idx-unsuccessful.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "execution of an unsuccessful-entry leg did not exit 0"; }
+grep -q "cache hit" "$TMP/cache-run.out" \
+  && { cat "$TMP/cache-run.out"; fail "a leg with an unsuccessful stored entry was skipped as a cache hit"; }
+[ -f "$TMP/out-cache-unsuccessful/eval-case-0/with_skill/run-1/grading.json" ] \
+  || fail "a leg with an unsuccessful stored entry did not execute"
+python3 -c "
+import json
+idx = json.load(open('$TMP/idx-unsuccessful.json'))
+assert idx['$CACHE_KEY_WS']['successful'] is True, idx['$CACHE_KEY_WS']
+" || fail "the unsuccessful entry was not replaced with a successful one after re-execution"
+pass
+
+# 14d (AE5 / U3's bounded lifetime). An entry under the CURRENT key that IS
+#     successful but 8 nights old is stale and executes again -- the ceiling
+#     a static key alone would never enforce.
+seed_cache_index "$TMP/idx-stale.json" "$CACHE_KEY_WS" \
+  "2026-08-09T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stale-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-stale" "$TMP/idx-stale.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "execution of a stale-entry leg did not exit 0"; }
+grep -q "cache hit" "$TMP/cache-run.out" \
+  && { cat "$TMP/cache-run.out"; fail "an 8-night-old entry was reused as a cache hit"; }
+[ -f "$TMP/out-cache-stale/eval-case-0/with_skill/run-1/grading.json" ] \
+  || fail "a leg with a stale stored entry did not execute"
+pass
+
+# 14e. The mirror of 14d: an entry only 3 nights old, well inside the
+#     7-night default, still skips.
+seed_cache_index "$TMP/idx-fresh3.json" "$CACHE_KEY_WS" \
+  "2026-08-14T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stored-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-fresh3" "$TMP/idx-fresh3.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "a 3-night-old cache hit did not exit 0"; }
+grep -q "cache hit" "$TMP/cache-run.out" \
+  || { cat "$TMP/cache-run.out"; fail "a 3-night-old entry was not reused"; }
+[ -d "$TMP/out-cache-fresh3/eval-case-0/with_skill" ] \
+  && fail "a skipped (3-night-old) leg created its run_dir"
+pass
+
+# 14f. cache_entry_is_usable itself, at the boundary --the CLI-level tests
+#     above prove the loop wires it in correctly; this proves the ceiling is
+#     exactly 7 days rather than "roughly a week", including the exact-7
+#     boundary none of the CLI-level cases above exercises.
+python3 - "$CACHE_RUNNER" <<'PY' || fail "cache_entry_is_usable did not behave as required"
+import importlib.util, sys
+from datetime import datetime, timedelta, timezone
+
+spec = importlib.util.spec_from_file_location("cache_runner_unit", sys.argv[1])
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+
+now = datetime(2026, 8, 17, tzinfo=timezone.utc)
+
+VALID_GRADING = {"summary": {"passed": 4, "total": 4}, "models": {"executor": "m", "analyzer": "m"}}
+
+def usable(**overrides):
+    entry = {"successful": True,
+             "last_executed": (now - timedelta(days=1)).isoformat(),
+             "grading": VALID_GRADING}
+    entry.update(overrides)
+    return runner.cache_entry_is_usable(entry, now=now, max_age_days=7)
+
+assert runner.cache_entry_is_usable(None, now=now, max_age_days=7) is False, \
+    "no entry must never be usable"
+assert usable(successful=False) is False, "an unsuccessful entry must never be usable"
+assert usable(last_executed=None) is False, "a missing last_executed must not be usable"
+assert usable(last_executed="not-a-timestamp") is False, \
+    "an unparseable last_executed must not be usable (and must not raise)"
+assert usable(last_executed=(now - timedelta(days=6, hours=23)).isoformat()) is True, \
+    "an entry just under 7 days old must be usable"
+assert usable(last_executed=(now - timedelta(days=7)).isoformat()) is False, \
+    "an entry exactly 7 days old must force re-execution (R8: at least once every 7 nights)"
+assert usable(last_executed=(now - timedelta(days=8)).isoformat()) is False, \
+    "an entry 8 days old must not be usable"
+# A naive (timezone-unaware) ISO string, as a hand-edited index might carry,
+# must be treated as UTC rather than raising or comparing wrong.
+naive = (now - timedelta(days=1)).replace(tzinfo=None).isoformat()
+assert usable(last_executed=naive) is True, \
+    "a timezone-naive last_executed must be treated as UTC, not rejected"
+
+# A future-dated last_executed (clock skew, a bad manual edit, or --now
+# misuse against the real branch) must never be treated as "permanently
+# fresh" -- a negative age must not satisfy `age < max_age`.
+assert usable(last_executed=(now + timedelta(days=1)).isoformat()) is False, \
+    "a future-dated last_executed must force re-execution, not read as fresher-than-fresh"
+assert usable(last_executed=now.isoformat()) is True, \
+    "last_executed exactly equal to now (zero age) must still be usable"
+
+# The index lives on an unprotected branch (KTD1) -- a hand-edited or
+# older/newer-script-written entry can have any shape. Every malformed shape
+# below must degrade to a cache miss, never raise.
+assert runner.cache_entry_is_usable("not-a-dict", now=now, max_age_days=7) is False, \
+    "a non-dict entry must not be usable (and must not raise on .get())"
+assert runner.cache_entry_is_usable(["also", "not", "a", "dict"], now=now, max_age_days=7) is False, \
+    "a list entry must not be usable (and must not raise on .get())"
+assert usable(grading=None) is False, "a missing grading must not be usable"
+assert usable(grading="not-a-dict") is False, "a non-dict grading must not be usable"
+assert usable(grading={"summary": VALID_GRADING["summary"]}) is False, \
+    "a grading with no models key must not be usable"
+assert usable(grading={"models": VALID_GRADING["models"]}) is False, \
+    "a grading with no summary key must not be usable"
+assert usable(grading={"summary": "not-a-dict", "models": VALID_GRADING["models"]}) is False, \
+    "a grading whose summary is not a dict must not be usable"
+
+print("cache_entry_is_usable: R3-R6 and R8's 7-day boundary all hold; future-dated "
+      "and malformed-shape entries degrade to a cache miss rather than raising")
+PY
+pass
+
+# 14g. --validate-only stays entirely independent of the cache index -- even
+#     one pointed at a bogus, nonexistent `claude` binary must not make
+#     --validate-only fail, because claude_cli_version() (the only thing that
+#     would invoke it) is gated on `not args.validate_only` and so is never
+#     reached from this path (R5).
+rm -f "$TMP/idx-should-not-be-touched.json"
+V_RC=0
+BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/does-not-exist-claude" python3 "$CACHE_RUNNER" \
+  --case "$TMP/case/evals.json" --out "$TMP/out-cache-validate" \
+  --validate-only --no-session-probe \
+  --cache-index "$TMP/idx-should-not-be-touched.json" \
+  >"$TMP/cache-validate.out" 2>&1 || V_RC=$?
+[ "$V_RC" = "0" ] \
+  || { cat "$TMP/cache-validate.out"; fail "--validate-only with --cache-index failed, even though the cache path should never be reached"; }
+[ -f "$TMP/idx-should-not-be-touched.json" ] \
+  && fail "--validate-only wrote to the cache index; it must never touch it"
+pass
+
+# 14h (U5, R6). A mixed night -- one leg a cache hit, the other a fresh
+#     execution -- must show up in `_run_summary` as 1 hit + 1 miss, with
+#     each leg's own cache_hit flag matching the branch it actually took.
+#     This is the case a naive "compare against the newest last_executed
+#     timestamp" heuristic gets wrong in the OTHER direction from 14a's
+#     all-hit run: here a fresh write really did happen this run, so the
+#     failure mode to rule out is mislabelling which leg it was, not
+#     whether one happened at all.
+seed_cache_index "$TMP/idx-mixed.json" "$CACHE_KEY_WS" \
+  "2026-08-16T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "fake-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-mixed" "$TMP/idx-mixed.json" "$NOW" --configs with_skill,without_skill)"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "a mixed hit/miss run did not exit 0"; }
+[ -d "$TMP/out-cache-mixed/eval-case-0/with_skill" ] \
+  && fail "the cache-hit leg of a mixed run created its run_dir"
+[ -f "$TMP/out-cache-mixed/eval-case-0/without_skill/run-1/grading.json" ] \
+  || fail "the fresh leg of a mixed run did not execute"
+python3 -c "
+import json
+idx = json.load(open('$TMP/idx-mixed.json'))
+s = idx['_run_summary']
+assert s['hits'] == 1, s
+assert s['misses'] == 1, s
+legs = {leg['config']: leg['cache_hit'] for leg in s['legs']}
+assert legs == {'with_skill': True, 'without_skill': False}, s
+" || fail "a mixed hit/miss run did not record per-leg hit/miss correctly in _run_summary"
+pass
+
+# 14i. The same-executor-model confound guard (§8, run 31229964963) must
+#     still fire when the two arms' models diverge THROUGH a cache hit, not
+#     just through two fresh executions. 14h's mixed run seeds the cached
+#     with_skill leg's executor model as "fake-executor-model" -- identical
+#     to EXECUTOR_MODEL, the fake claude script's own fixed output -- so
+#     that test's two arms always agree and the guard never has anything to
+#     catch. Here the cached leg is seeded with a DIFFERENT model
+#     ("stale-executor-model", as if it were cached from a night that ran on
+#     an older model), so a healthy guard must still detect the mismatch
+#     against the fresh without_skill leg's live "fake-executor-model" --
+#     proving record_leg_bookkeeping's cache-hit call site (main(), the
+#     stored_grading branch) feeds executors_by_config just as faithfully as
+#     its fresh-execution call site does.
+seed_cache_index "$TMP/idx-mixed-model.json" "$CACHE_KEY_WS" \
+  "2026-08-16T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stale-executor-model" 4 4
+MIXED_MODEL_RC="$(run_cache "$TMP/out-cache-mixed-model" "$TMP/idx-mixed-model.json" "$NOW" --configs with_skill,without_skill)"
+if [ "$MIXED_MODEL_RC" = "0" ] \
+   || ! grep -q "did not run on the same executor model" "$TMP/cache-run.err"; then
+  cat "$TMP/cache-run.err"
+  fail "a cache hit whose stored model differed from a same-run fresh leg's model was accepted (exit $MIXED_MODEL_RC)"
+fi
+python3 -c "
+import json
+m = json.load(open('$TMP/out-cache-mixed-model/run_metadata.json'))['executor_models_by_config']
+assert m['with_skill'] == ['stale-executor-model'], m
+assert m['without_skill'] == ['fake-executor-model'], m
+" || fail "run_metadata did not record the cache-hit leg's stored model under a divergent mixed run"
+pass
+
+# 15 (maintainability #10). discover_shared_references() (this file) claims
+# in its own docstring to replicate skills-lint.sh check 1's backticked-path
+# resolution rule EXACTLY, but nothing proved the two stay in sync -- a
+# future edit to either regex or resolution rule could silently drift with
+# no test noticing. This builds ONE small fixture skill exercising every
+# resolution depth check 1 and discover_shared_references both handle (a
+# same-directory citation, a citation resolved from the repo root, a
+# citation one level deeper via references/, and a citation that does not
+# resolve at all) and asserts both tools agree on every one of them.
+PARITY_TMP="$(mktemp -d)"
+mkdir -p "$PARITY_TMP"/{commands,agents,skills/demo/references,skills/shared,evals}
+cat > "$PARITY_TMP/skills/demo/SKILL.md" <<'EOF'
+---
+name: demo
+description: A demo skill.
+status: draft
+version: 1.0.0
+---
+Loads `../shared/same-dir.md` (resolves relative to this file's own directory)
+and `skills/shared/from-root.md` (resolves only from the repo root) and
+`../shared/does-not-exist.md` (resolves under neither base).
+EOF
+cat > "$PARITY_TMP/skills/demo/references/deep.md" <<'EOF'
+Loads `../../shared/one-level-deeper.md`, one level deeper than SKILL.md.
+EOF
+printf '# same-dir\n' > "$PARITY_TMP/skills/shared/same-dir.md"
+printf '# from-root\n' > "$PARITY_TMP/skills/shared/from-root.md"
+printf '# one-level-deeper\n' > "$PARITY_TMP/skills/shared/one-level-deeper.md"
+printf '# allowlist\n' > "$PARITY_TMP/evals/lint-allow-paths.txt"
+printf '# forward references\n' > "$PARITY_TMP/evals/forward-references.txt"
+git -C "$PARITY_TMP" init -q 2>/dev/null
+git -C "$PARITY_TMP" config user.email t@t.t; git -C "$PARITY_TMP" config user.name t
+git -C "$PARITY_TMP" add -A && git -C "$PARITY_TMP" commit -qm init >/dev/null
+
+# skills-lint.sh's verdict: run check 1 alone (skip 2-7) and read which of the
+# three backtick targets it flags as unresolved. Anything NOT flagged is, by
+# check 1's own logic, resolved.
+SKILLS_LINT_SKIP=2,3,4,5,6,7 SKILLS_LINT_ROOT="$PARITY_TMP" \
+  bash "$HERE/skills-lint.sh" > "$TMP/parity-lint.out" 2>&1
+LINT_UNRESOLVED="$(grep -oE '[a-z-]+\.md$' "$TMP/parity-lint.out" | sort -u)"
+python3 -c "
+import sys
+unresolved = set('''$LINT_UNRESOLVED'''.split())
+assert 'does-not-exist.md' in unresolved, \
+    f'skills-lint check 1 did not flag the genuinely-missing target: {unresolved}'
+assert 'same-dir.md' not in unresolved, \
+    f'skills-lint check 1 flagged a same-directory citation that does resolve: {unresolved}'
+assert 'from-root.md' not in unresolved, \
+    f'skills-lint check 1 flagged a repo-root citation that does resolve: {unresolved}'
+assert 'one-level-deeper.md' not in unresolved, \
+    f'skills-lint check 1 flagged a references/-nested citation that does resolve: {unresolved}'
+" || fail "the parity fixture itself did not exercise skills-lint check 1 as expected"
+
+# discover_shared_references()'s verdict over the identical fixture.
+python3 - "$RUNNER" "$PARITY_TMP" <<'PY' || fail "discover_shared_references did not agree with skills-lint check 1 on the parity fixture"
+import importlib.util, pathlib, sys
+
+spec = importlib.util.spec_from_file_location("parity_runner", sys.argv[1])
+runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
+repo = pathlib.Path(sys.argv[2])
+skill_dir = repo / "skills" / "demo"
+
+found = {p.name for p in runner.discover_shared_references(skill_dir, repo)}
+assert found == {"same-dir.md", "from-root.md", "one-level-deeper.md"}, (
+    "discover_shared_references's resolved set does not match skills-lint "
+    f"check 1's verdict on the identical fixture: got {found}, expected "
+    "{'same-dir.md', 'from-root.md', 'one-level-deeper.md'} (does-not-exist.md "
+    "correctly excluded by both)")
+print("discover_shared_references: agrees with skills-lint.sh check 1 on same-dir, "
+      "repo-root, references/-nested, and unresolvable targets")
+PY
+rm -rf "$PARITY_TMP"
 pass
 
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

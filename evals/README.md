@@ -208,6 +208,46 @@ the eval exercises the real MCP path rather than a simulation of it.
 ± stddev and the delta. High-variance cases are flaky, not hard — treat a wide
 stddev as a defect in the case, not a finding about the skill.
 
+## Change-aware skip cache
+
+The nightly `graded` job (`.github/workflows/skills-eval.yml`) does not re-execute
+every leg every night. Pass `--cache-index <path>` to `run-behavioural-eval.py` and
+it computes a content-addressed key per `(case, config)` leg — case content, the
+skill's declared `version:`, the shared reference files that skill loads, the
+`commands/*.md` and `agents/*.md` files a `with_skill` leg's `--plugin-dir` session
+can reach (a `without_skill` leg never loads `--plugin-dir`, so these never affect
+its key), the fixture, the runner script itself, `runs`, `model`, the stub, and the
+invoked CLI's version — and skips a leg outright when a fresh, successful result is
+already stored under that key. A key that has never been seen, or whose stored
+result failed, always executes. `--cache-index` is opt-in and off by default; every
+other caller (the regression suite included) sees identical behavior to before this
+existed.
+
+A leg is still forced back through a real execution **at least once every 7
+nights**, even when its key never changes, so a stable skill can't go
+unverified against live model behavior indefinitely. `scripts/eval-report.py
+--cache-index <path>` renders the resulting hit/miss counts as a section in the
+nightly `$GITHUB_STEP_SUMMARY`, independent of the aggregator's `benchmark.json`
+table — the cache index is a file this repo owns; `benchmark.json`'s schema is
+not (see `.github/workflows/skills-eval.yml`'s `AGGREGATOR_SHA` comment).
+
+The index lives on a dedicated, unprotected `eval-cache-index` branch rather
+than `main`: `main` carries an active branch-protection ruleset requiring
+PR-mediated merges with no bypass actor, so a direct commit from the nightly
+job would be rejected every night. `scripts/cache-key-completeness-check.sh`
+is a mutation-tested static check (parallel to `skills-lint.sh` check 4) that
+the key's enumerated input classes and the code that actually hashes them
+stay in sync — it catches drift between the two, not a wholly new
+result-moving input nobody has enumerated yet, which still depends on manual
+review. `commands/**` and `agents/**` were added to the enumeration after code
+review found the original five-entry list never hashed the actual eval
+surfaces (`commands/*.md`, plus any `agents/*.md` subagent a command
+dispatches). `hooks/**` and `hooks-handlers/**` can also run during a
+`with_skill` session (the plugin's own `SessionStart` hook is live there) and
+are **not yet** in the enumeration — a disclosed, deliberately scoped gap
+rather than an oversight, since a general "which files can move this leg's
+result" detector was already settled as unimplementable (KTD2).
+
 ## Status
 
 | Piece | State |

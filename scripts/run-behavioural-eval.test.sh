@@ -68,6 +68,18 @@ argv = sys.argv[1:]
 def opt(name):
     return argv[argv.index(name) + 1] if name in argv else None
 
+# FIRST, before anything reads FAKE_PLAN or PLUGIN_NS. `cli_version()` shells
+# out to `<bin> --version`, and without this branch that call falls through to
+# the plan-replay path below and dies on a missing file -- so the version would
+# silently record as null in every offline run and #237's stamp would be
+# untested.
+if "--version" in argv:
+    if os.environ.get("FAKE_NO_VERSION"):
+        sys.stderr.write("simulated: unknown flag --version\n")
+        sys.exit(2)
+    print("1.2.3-fake (Claude Code)")
+    sys.exit(0)
+
 # Deliberately NOT whatever --model asked for. The runner must record what
 # answered, not what was requested, and identical strings would let a runner
 # that echoed the request pass § 9.
@@ -129,8 +141,17 @@ if "--json-schema" in argv:
         sys.exit(4)
     plan = json.load(open(os.environ["FAKE_PLAN"]))
     verdicts = plan.get("grader", [])
+    # The grader is a second full model call per graded eval -- roughly half the
+    # tier's spend -- so it reports usage exactly as the executor does. Before
+    # the cost ledger this payload carried modelUsage alone, and the rest was
+    # never read.
     print(json.dumps({"type": "result",
-                      "modelUsage": {ANALYZER_MODEL: {"inputTokens": 10}},
+                      "modelUsage": {ANALYZER_MODEL: {"inputTokens": 10,
+                                                      "costUSD": 0.002}},
+                      "usage": {"input_tokens": 10, "output_tokens": 20,
+                                "cache_creation_input_tokens": 5,
+                                "cache_read_input_tokens": 45},
+                      "total_cost_usd": 0.002,
                       "result": json.dumps({"expectations": verdicts})}))
     sys.exit(0)
 
@@ -175,10 +196,39 @@ print(json.dumps({"type": "assistant",
                   "message": {"model": EXECUTOR_MODEL, "content": content}}))
 if results:
     print(json.dumps({"type": "user", "message": {"content": results}}))
+# Cache-bearing by default, because a usage object without cache fields cannot
+# exercise the one ratio the ledger exists to report.
+usage = {"input_tokens": 100, "output_tokens": 200,
+         "cache_creation_input_tokens": 40, "cache_read_input_tokens": 360}
+model_usage = {EXECUTOR_MODEL: {"inputTokens": 100, "costUSD": 0.01}}
+
+# The shapes a derivation must survive, each reproducing something the real API
+# actually emits rather than a hypothetical:
+#   service_tier      a STRING in an object otherwise full of token counts
+#   cache_creation    the 1-hour tier's nested breakdown, reported ALONGSIDE
+#                     the flat cache_creation_input_tokens it decomposes, so
+#                     summing "every field" double-counts it
+#   server_tool_use   a counter that is not a token count at all
+#   a novel scalar    whatever the API adds next
+if os.environ.get("FAKE_EXOTIC_USAGE"):
+    usage.update({
+        "service_tier": "standard",
+        "cache_creation": {"ephemeral_5m_input_tokens": 30,
+                           "ephemeral_1h_input_tokens": 10},
+        "server_tool_use": {"web_search_requests": 2},
+        "some_future_tokens": 7,
+    })
+
+# One pass, two models: the eval tool set offers Task, and a subagent turn can
+# be served by a different model. Taking the first key would drop the second.
+if os.environ.get("FAKE_MULTI_MODEL"):
+    model_usage["fake-subagent-model"] = {"inputTokens": 15, "costUSD": 0.003}
+
 print(json.dumps({"type": "result", "is_error": False,
                   "result": leg.get("final", "done"),
-                  "modelUsage": {EXECUTOR_MODEL: {"inputTokens": 100}},
-                  "usage": {"input_tokens": 100, "output_tokens": 200}}))
+                  "modelUsage": model_usage,
+                  "total_cost_usd": 0.01,
+                  "usage": usage}))
 PY
 chmod +x "$TMP/fake-claude.py"
 
@@ -727,6 +777,131 @@ mut_b="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id
   "$TMP/out-metaid-mut/eval-suite-b-0/eval_metadata.json")"
 [ "$mut_a" = "$mut_b" ] \
   || fail "the bare-id mutant produced distinct eval_ids ('$mut_a' vs '$mut_b'); this case no longer proves the qualifier is load-bearing"
+pass
+
+# ---------------------------------------------------------------------------
+# 8c. cost.json records both passes raw, with each pass's terminal state.
+# ---------------------------------------------------------------------------
+# The ledger's whole premise: usage_tokens() sums four fields into one integer
+# at the point of capture, so the cache-read/cache-creation ratio -- the number
+# that says whether caching works -- is destroyed before anything persists.
+# cost.json keeps the objects instead.
+cost_of() {  # $1 = run dir, $2 = python expression over `c`
+  python3 -c "
+import json,sys
+c = json.load(open(sys.argv[1] + '/cost.json'))
+print($2)" "$1"
+}
+
+# A graded run: both passes invoked, both reporting usage. The judged case is
+# required here -- the mechanical-only case file has no judged assertions, so
+# its grader is legitimately never invoked and could not report usage.
+rm -rf "$TMP/out-cost"
+FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case-judged/evals.json" --out "$TMP/out-cost" \
+    --configs with_skill >/dev/null 2>&1
+COST_RUN="$TMP/out-cost/eval-case-judged-0/with_skill/run-1"
+[ -f "$COST_RUN/cost.json" ] || fail "no cost.json was written"
+pass
+
+# Raw, not summed: the four executor fields survive as themselves. Asserting
+# the cache pair specifically, because those are the two usage_tokens() adds
+# together and thereby makes unrecoverable.
+[ "$(cost_of "$COST_RUN" "c['passes']['executor']['usage']['cache_read_input_tokens']")" = "360" ] \
+  || fail "cache_read_input_tokens did not survive into cost.json"
+[ "$(cost_of "$COST_RUN" "c['passes']['executor']['usage']['cache_creation_input_tokens']")" = "40" ] \
+  || fail "cache_creation_input_tokens did not survive into cost.json"
+pass
+
+# The grader's usage is recorded at all -- before this it was parsed for the
+# model name and the rest discarded, so half the tier's spend was invisible.
+[ "$(cost_of "$COST_RUN" "c['passes']['grader']['status']")" = "ok" ] \
+  || fail "grader status is not ok on a run whose grader succeeded"
+[ "$(cost_of "$COST_RUN" "c['passes']['grader']['usage']['output_tokens']")" = "20" ] \
+  || fail "the grader pass recorded no usage"
+pass
+
+# #237: the CLI that produced the figures is named.
+[ "$(cost_of "$COST_RUN" "c['cli_version']")" = "1.2.3-fake (Claude Code)" ] \
+  || fail "cost.json does not name the CLI version"
+pass
+
+# An unreachable --version records null rather than a guess.
+rm -rf "$TMP/out-nover"
+FAKE_NO_VERSION=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-nover" \
+    --configs with_skill --no-grade >/dev/null 2>&1
+[ "$(cost_of "$TMP/out-nover/eval-case-0/with_skill/run-1" "c['cli_version']")" = "None" ] \
+  || fail "an unresolvable CLI version was recorded as something other than null"
+pass
+
+# The three grader states are distinguishable. This is the one that under-reports
+# spend if collapsed: `failed` means the subprocess launched and was BILLED --
+# a full-timeout generation thrown away -- while `not_invoked` cost nothing.
+[ "$(cost_of "$TMP/out-nover/eval-case-0/with_skill/run-1" "c['passes']['grader']['status']")" = "not_invoked" ] \
+  || fail "--no-grade did not record the grader as not_invoked"
+rm -rf "$TMP/out-gdie"
+FAKE_GRADER_DIE=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case-judged/evals.json" --out "$TMP/out-gdie" \
+    --configs with_skill >/dev/null 2>&1
+gdie="$TMP/out-gdie/eval-case-judged-0/with_skill/run-1"
+[ "$(cost_of "$gdie" "c['passes']['grader']['status']")" = "failed" ] \
+  || fail "a grader that died was not recorded as failed"
+[ "$(cost_of "$gdie" "c['passes']['grader']['usage']")" = "None" ] \
+  || fail "a failed grader reported usage it could not have had"
+pass
+
+# An executor that errored still records whatever it billed, and says it failed.
+rm -rf "$TMP/out-edie"
+FAKE_CLAUDE_AUTH_FAIL=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-edie" \
+    --configs with_skill --no-grade >/dev/null 2>&1
+[ "$(cost_of "$TMP/out-edie/eval-case-0/with_skill/run-1" "c['passes']['executor']['status']")" = "failed" ] \
+  || fail "an executor that errored was not recorded as failed"
+pass
+
+# Unrecognised fields are STORED. Whether they reach a derived figure is
+# eval-cost.py's contract, not this file's -- the point here is that nothing in
+# the runner filters the object on its way to disk.
+rm -rf "$TMP/out-exotic"
+FAKE_EXOTIC_USAGE=1 FAKE_MULTI_MODEL=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-exotic" \
+    --configs with_skill --no-grade >/dev/null 2>&1
+exotic="$TMP/out-exotic/eval-case-0/with_skill/run-1"
+[ "$(cost_of "$exotic" "c['passes']['executor']['usage']['service_tier']")" = "standard" ] \
+  || fail "a non-numeric usage field was dropped on the way to cost.json"
+[ "$(cost_of "$exotic" "c['passes']['executor']['usage']['cache_creation']['ephemeral_1h_input_tokens']")" = "10" ] \
+  || fail "the nested cache_creation breakdown was dropped"
+[ "$(cost_of "$exotic" "c['passes']['executor']['usage']['some_future_tokens']")" = "7" ] \
+  || fail "an unrecognised scalar field was dropped"
+# Both models survive; taking the first key would lose the subagent's.
+[ "$(cost_of "$exotic" "len(c['passes']['executor']['model_usage'])")" = "2" ] \
+  || fail "a two-model pass was collapsed to one entry"
+pass
+
+# Mutation: restore the summing capture. cost.json then carries an integer
+# where the object was, and the cache ratio is unrecoverable again.
+python3 - "$RUNNER" "$TMP/mut/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace('"usage": event.get("usage"),',
+                       '"usage": usage_tokens([event]),')
+assert mutated != text, "mutation target not found: raw_usage's usage capture moved"
+dst.write_text(mutated)
+PY
+rm -rf "$TMP/out-cost-mut"
+FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$TMP/mut/scripts/run-behavioural-eval.py" --case "$TMP/case/evals.json" \
+    --out "$TMP/out-cost-mut" --configs with_skill --no-grade >/dev/null 2>&1
+mut_usage="$(cost_of "$TMP/out-cost-mut/eval-case-0/with_skill/run-1" \
+  "type(c['passes']['executor']['usage']).__name__")"
+[ "$mut_usage" = "int" ] \
+  || fail "the summing mutant stored a $mut_usage; expected the collapsed int that makes this case load-bearing"
 pass
 
 # ---------------------------------------------------------------------------

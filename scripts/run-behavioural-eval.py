@@ -10,6 +10,7 @@ skill-creator plugin) consumes:
     <out>/eval-<suite>-<id>/eval_metadata.json
     <out>/eval-<suite>-<id>/<config>/run-<k>/grading.json
     <out>/eval-<suite>-<id>/<config>/run-<k>/timing.json
+    <out>/eval-<suite>-<id>/<config>/run-<k>/cost.json
     <out>/eval-<suite>-<id>/<config>/run-<k>/outputs/{transcript.md,writes.jsonl,metrics.json}
 
 `<suite>` is the case file's directory name. It is part of the key because
@@ -561,6 +562,67 @@ def usage_tokens(events: list) -> int:
     return 0
 
 
+def raw_usage(events: list) -> dict:
+    """Both usage structures off the last result event, copied verbatim.
+
+    `usage_tokens` above sums four fields into one integer, which is why cache
+    reads and cache creations are indistinguishable in everything downstream of
+    it: the ratio between them is the number that says whether caching works,
+    and it is destroyed at the point of capture. This returns the objects
+    instead, unaltered.
+
+    Verbatim is load-bearing rather than lazy. A fixed field list silently
+    drops whatever the API adds next -- the 1-hour cache tier already reports a
+    nested `cache_creation` breakdown that a flat list would discard -- and the
+    whole point of storing raw is that a derivation-rule change can be re-run
+    over retained artifacts instead of costing another graded run. Deriving
+    named figures from this is `scripts/eval-cost.py`'s job, not this
+    function's; nothing here interprets, renames, or sums.
+
+    `usage` and `modelUsage` disagree on key convention (snake_case vs
+    camelCase) because they come from different layers upstream. Both are kept
+    as-is; normalizing here would be interpretation.
+    """
+    for event in reversed(events):
+        if event.get("type") != "result":
+            continue
+        return {
+            "usage": event.get("usage"),
+            "model_usage": event.get("modelUsage"),
+            "total_cost_usd": event.get("total_cost_usd"),
+        }
+    return {"usage": None, "model_usage": None, "total_cost_usd": None}
+
+
+_CLI_VERSION: str | None | bool = False
+
+
+def cli_version() -> str | None:
+    """The CLI that produced this run's figures, resolved once per process.
+
+    A benchmark that cannot name its CLI cannot be compared across one (#237):
+    two `claude` binaries on the same machine differ in which events they emit,
+    and CI installs latest on every run while a laptop pins whatever it has.
+    The same argument `evals/benchmark.json` already makes for the model.
+
+    Cached because a graded run makes ~48 executor calls and the answer cannot
+    change mid-run; shelling out per run would add 48 subprocesses for a
+    constant. Returns None rather than a guess when the binary cannot be
+    reached -- an unidentifiable CLI must stay legibly absent, the same
+    discipline `observed_model` applies one field over.
+    """
+    global _CLI_VERSION
+    if _CLI_VERSION is not False:
+        return _CLI_VERSION  # type: ignore[return-value]
+    try:
+        proc = subprocess.run([CLAUDE_BIN, "--version"], capture_output=True,
+                              text=True, timeout=30)
+        _CLI_VERSION = proc.stdout.strip() or None
+    except (subprocess.SubprocessError, OSError):
+        _CLI_VERSION = None
+    return _CLI_VERSION  # type: ignore[return-value]
+
+
 def observed_model(events: list) -> str | None:
     """Which model actually answered, read off the stream rather than requested.
 
@@ -740,15 +802,31 @@ Return one entry per expectation, in the order given.
 
 def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
                  ground_truth: str, model: str | None,
-                 timeout: int) -> tuple[list[dict], str | None]:
-    """Returns (verdicts, the model that actually graded them).
+                 timeout: int) -> tuple[list[dict], str | None, dict]:
+    """Returns (verdicts, the model that actually graded them, the cost record).
 
     The analyzer model is reported separately from the executor's because they
     are separately substitutable -- `--model` sets both today, but a benchmark
     that names only one cannot say which half of a delta moved.
+
+    The third return value exists because this pass has THREE terminal states
+    and two of them look identical from outside:
+
+      not_invoked  no judged assertions -- no API call, so a structural zero
+      failed       the except branch below -- the call was made and BILLED,
+                   including a `timeout`-second generation that produced
+                   nothing readable, and its usage is unrecoverable
+      ok           usage available
+
+    Recording the first two as the same null under-reports spend on exactly the
+    runs that wasted it, which is backwards for a cost ledger. The `failed`
+    branch returns before `payload` is ever assigned, so there is no usage
+    object on that path even in principle -- the honest record is "cost
+    incurred, amount unknown", not zero.
     """
     if not assertions:
-        return [], None
+        return [], None, {"status": "not_invoked", "reason": "no judged assertions",
+                          "usage": None, "model_usage": None, "total_cost_usd": None}
 
     prompt = GRADER_PROMPT.format(
         ground_truth=ground_truth or "(none recorded)",
@@ -788,9 +866,17 @@ def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
             KeyError, TypeError) as exc:
         # A grader that cannot be reached must not silently pass the run. Every
         # judged assertion fails with the reason attached.
+        #
+        # `failed`, never a zero: reaching here means the subprocess was
+        # launched, so the call was billed whatever it returned -- a
+        # TimeoutExpired at the full timeout is a complete generation that was
+        # paid for and thrown away. `payload` is unbound on this path, so the
+        # amount is genuinely unknown rather than absent.
         return ([{"text": a["text"], "passed": False,
                   "evidence": f"grader unavailable: {exc}"} for a in assertions],
-                None)
+                None,
+                {"status": "failed", "reason": str(exc),
+                 "usage": None, "model_usage": None, "total_cost_usd": None})
     finally:
         shutil.rmtree(sandbox, ignore_errors=True)
 
@@ -807,7 +893,15 @@ def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
             "passed": bool(entry.get("passed", False)),
             "evidence": str(entry.get("evidence", "grader returned no entry for this expectation")),
         })
-    return out, analyzer
+    # `--output-format json` returns the result object itself, so the usage
+    # structures sit at its top level rather than on a result event.
+    return out, analyzer, {
+        "status": "ok",
+        "reason": None,
+        "usage": payload.get("usage") if isinstance(payload, dict) else None,
+        "model_usage": payload.get("modelUsage") if isinstance(payload, dict) else None,
+        "total_cost_usd": payload.get("total_cost_usd") if isinstance(payload, dict) else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -855,12 +949,18 @@ def run_once(case: dict, config: str, run_dir: Path, model: str | None,
         judged = [{"text": a["text"], "passed": False,
                    "evidence": f"not graded — the run did not execute: {outcome['error']}"}
                   for a in judged_specs]
+        grader_cost = {"status": "not_invoked",
+                       "reason": f"the run did not execute: {outcome['error']}",
+                       "usage": None, "model_usage": None, "total_cost_usd": None}
     elif grade:
-        judged, analyzer_model = grade_judged(judged_specs, transcript, writes,
-                                              case.get("ground_truth", ""), model, timeout)
+        judged, analyzer_model, grader_cost = grade_judged(
+            judged_specs, transcript, writes,
+            case.get("ground_truth", ""), model, timeout)
     else:
         judged = [{"text": a["text"], "passed": False,
                    "evidence": "grading disabled (--no-grade)"} for a in judged_specs]
+        grader_cost = {"status": "not_invoked", "reason": "grading disabled (--no-grade)",
+                       "usage": None, "model_usage": None, "total_cost_usd": None}
 
     # Preserve the case's own assertion order so a grading.json reads against
     # the case file it came from.
@@ -877,6 +977,32 @@ def run_once(case: dict, config: str, run_dir: Path, model: str | None,
         "total_tokens": usage_tokens(outcome["events"]),
     }
     (run_dir / "timing.json").write_text(json.dumps(timing, indent=2))
+
+    # The cost record: raw only, both passes, never blended.
+    #
+    # Separate from timing.json rather than folded into it because the raw
+    # usage is the expensive-to-rebuild half -- it exists only while a graded
+    # run is in flight, and rebuilding it costs another paid run -- while
+    # timing.json is derivable from a clock. Keeping it its own artifact also
+    # keeps the derivation out of this file entirely: scripts/eval-cost.py
+    # reads this and computes the named figures, so an unrecognised field can
+    # be stored here without any risk of it reaching an arithmetic path.
+    #
+    # The executor's usage is recorded whether or not the run errored. A
+    # session that died mid-way still billed for what it generated, and
+    # discarding that on the error path would under-report exactly the runs
+    # that spent money for nothing.
+    executor_cost = raw_usage(outcome["events"])
+    executor_cost["status"] = "failed" if outcome["error"] else "ok"
+    executor_cost["reason"] = outcome["error"]
+    cost = {
+        "schema": 1,
+        "cli_version": cli_version(),
+        "eval_name": case["eval_name"],
+        "config": config,
+        "passes": {"executor": executor_cost, "grader": grader_cost},
+    }
+    (run_dir / "cost.json").write_text(json.dumps(cost, indent=2))
 
     grading = {
         "eval_name": case["eval_name"],

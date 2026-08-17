@@ -324,6 +324,48 @@ jobs:
         # naive suite would leave unproven.
         run: bash scripts/eval-report.test.sh
 
+      - name: Fetch skill-creator's aggregator
+        # The cost ledger's correction rewrites three figures in the OUTPUT of a
+        # script this repo does not own. Verifying that against a fixture proves
+        # only that the fixture and the correction agree; a pin bump that
+        # changes the real shape would still ship green and be found by a paid
+        # nightly.
+        #
+        # NETWORK ON THE PER-PR GATE, DELIBERATELY. That gate already downloads
+        # shellcheck from a GitHub release URL, pinned by version and SHA256 and
+        # identity-asserted before use. A commit-SHA-pinned sparse checkout is
+        # the same posture, not a new class of dependency — see ADR-0012, whose
+        # tier description was corrected in the same change that added this.
+        #
+        # Sparse and blobless so this costs a few hundred KB, not a clone.
+        #
+        # Hard-fail, matching the shellcheck download. Soft-failing here would
+        # let a BAD PIN degrade silently to the committed fixture, which is the
+        # one thing this step exists to catch — and it would do so while
+        # reporting green. An upstream outage reddening a PR is the accepted
+        # cost of that, and it is the exposure this gate already carries.
+        run: |
+          set -euo pipefail
+          AGGREGATOR_SHA="$(grep -v '^#' evals/aggregator-pin.txt | tr -d '[:space:]')"
+          [ -n "$AGGREGATOR_SHA" ] || { echo "::error::empty aggregator pin"; exit 1; }
+          spc="$RUNNER_TEMP/spc"
+          git init -q "$spc"
+          git -C "$spc" remote add origin \
+            https://github.com/anthropics/claude-plugins-official.git
+          git -C "$spc" sparse-checkout set --cone \
+            plugins/skill-creator/skills/skill-creator/scripts
+          git -C "$spc" fetch -q --depth 1 --filter=blob:none origin "$AGGREGATOR_SHA"
+          git -C "$spc" checkout -q FETCH_HEAD
+          resolved=$(git -C "$spc" rev-parse HEAD)
+          if [ "$resolved" != "$AGGREGATOR_SHA" ]; then
+            echo "::error::aggregator pin is ${AGGREGATOR_SHA} but HEAD resolved to ${resolved}"
+            exit 1
+          fi
+          AGGREGATOR="$spc/plugins/skill-creator/skills/skill-creator/scripts/aggregate_benchmark.py"
+          test -f "$AGGREGATOR"
+          echo "AGGREGATOR=$AGGREGATOR" >> "$GITHUB_ENV"
+          echo "aggregator pinned at $resolved"
+
       - name: eval cost ledger regression suite
         # The cost ledger's arithmetic: which usage fields are summed, how the
         # cache ratio is computed, and how the aggregator's mislabelled `tokens`

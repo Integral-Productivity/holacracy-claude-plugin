@@ -194,21 +194,21 @@ jobs:
         # exported once, so a move is a one-line fix rather than three edits with
         # a chance of a partial one.
         #
-        # TO BUMP: set AGGREGATOR_SHA to the new commit, then re-verify by
-        # dispatching a graded run — the offline job does not exercise this step
-        # at all, so a bad pin is invisible until a graded run touches it. Read
+        # TO BUMP: edit evals/aggregator-pin.txt, which is now the single source
+        # for both this job and the per-PR suite in scripts-test.yml. Read
         # upstream's diff for aggregate_benchmark.py before bumping: the "Report
         # against the committed baseline" step below parses the schema this
         # script writes, and #199 was a crash caused by that schema, not by the
         # path. A pin does not protect that step; it only decides when the
         # schema change arrives.
         #
-        #   gh api repos/anthropics/claude-plugins-official/commits/main -q .sha
-        env:
-          # Tip of anthropics/claude-plugins-official main as of 2026-08-06.
-          AGGREGATOR_SHA: "36b00173da517876f9e574ef98f3564b0e86c25d"
+        # A bad pin is no longer invisible until a graded run: scripts-test.yml
+        # fetches the same commit on every PR and runs the correction against
+        # its real output.
         run: |
           set -euo pipefail
+          AGGREGATOR_SHA="$(grep -v '^#' evals/aggregator-pin.txt | tr -d '[:space:]')"
+          [ -n "$AGGREGATOR_SHA" ] || { echo "::error::empty aggregator pin"; exit 1; }
           # init + fetch <sha> rather than `clone --depth 1`, because a shallow
           # clone can only resolve a branch or tag name. Fetching the commit
           # directly keeps the shallow, blobless, sparse shape while making the

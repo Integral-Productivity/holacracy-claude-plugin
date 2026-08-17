@@ -10,7 +10,7 @@ skill-creator plugin) consumes:
     <out>/eval-<suite>-<id>/eval_metadata.json
     <out>/eval-<suite>-<id>/<config>/run-<k>/grading.json
     <out>/eval-<suite>-<id>/<config>/run-<k>/timing.json
-    <out>/eval-<suite>-<id>/<config>/run-<k>/outputs/{transcript.md,writes.jsonl,metrics.json}
+    <out>/eval-<suite>-<id>/<config>/run-<k>/outputs/{transcript.md,writes.jsonl,metrics.json,events.jsonl}
 
 `<suite>` is the case file's directory name. It is part of the key because
 `eval_id` is unique only within one case file, and without it two suites'
@@ -561,6 +561,31 @@ def usage_tokens(events: list) -> int:
     return 0
 
 
+# The event types observed_model() actually reads (system for the init model,
+# assistant for message.model, result for modelUsage). `user` events carry tool
+# results, which are already rendered into transcript.md and are typically the
+# bulkiest part of a stream -- dropping them is a deliberate size reduction,
+# not an oversight. Kept as a module constant so the filter and the function it
+# serves cannot silently drift apart.
+EVENTS_WORTH_KEEPING = ("system", "assistant", "result")
+
+
+def write_events(path: Path, events: list) -> None:
+    """Persist the events observed_model() can be re-derived from (#221).
+
+    Without this, a question like "did modelUsage name an auxiliary model
+    rather than the one that answered" can only be settled by spending another
+    graded run -- the raw stream a completed run parsed is gone the moment the
+    process exits, and only the already-derived `grading.json` survives. Full
+    events were considered and rejected: the `user` events include tool
+    results, which are the largest single piece of most sessions and are
+    already retained via transcript.md, so this filters to the three types
+    `observed_model` actually reads and nothing else.
+    """
+    kept = [e for e in events if e.get("type") in EVENTS_WORTH_KEEPING]
+    path.write_text("\n".join(json.dumps(e) for e in kept))
+
+
 def observed_model(events: list) -> str | None:
     """Which model actually answered, read off the stream rather than requested.
 
@@ -832,6 +857,7 @@ def run_once(case: dict, config: str, run_dir: Path, model: str | None,
     metrics["output_chars"] = len(transcript)
     metrics["writes"] = len(writes)
     (outputs / "metrics.json").write_text(json.dumps(metrics, indent=2))
+    write_events(outputs / "events.jsonl", outcome["events"])
 
     mechanical, judged_specs = [], []
     for assertion in case["assertions"]:

@@ -743,6 +743,73 @@ assert g['models']['executor']=='requested-model-not-used', g['models']
 pass
 
 # ---------------------------------------------------------------------------
+# 9a. The raw events observed_model() reads survive the run (#221).
+# ---------------------------------------------------------------------------
+# A completed run's grading.json is already-derived data. Deciding whether
+# `executor` named an auxiliary model rather than the one that answered (#222)
+# requires the events observed_model() actually looked at, and until this
+# they were discarded the moment the process exited. Reuses $TMP/out-model
+# from § 9 — same run, one more file to check.
+python3 -c "
+import json
+p = '$TMP/out-model/eval-case-model-0/with_skill/run-1/outputs/events.jsonl'
+lines = [json.loads(l) for l in open(p) if l.strip()]
+types = {e['type'] for e in lines}
+assert 'system' in types, types
+assert 'assistant' in types, types
+assert 'result' in types, types
+# 'user' events carry tool results, already retained via transcript.md, and
+# are excluded on purpose (see EVENTS_WORTH_KEEPING) to bound artifact size.
+assert 'user' not in types, f\"user events were not filtered out: {types}\"
+" || fail "events.jsonl did not survive the run with the expected system/assistant/result shape"
+pass
+
+# Mutation: skip writing events.jsonl entirely. This is the defect #221 exists
+# to fix — a completed run leaves nothing to answer a model-resolution question
+# with, and only a new graded run could settle it.
+mkdir -p "$TMP/mut-no-events/scripts"
+ln -s "$REPO/evals" "$TMP/mut-no-events/evals"
+ln -s "$REPO/.claude-plugin" "$TMP/mut-no-events/.claude-plugin"
+python3 - "$RUNNER" "$TMP/mut-no-events/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace('write_events(outputs / "events.jsonl", outcome["events"])', 'pass')
+assert mutated != text, "mutation target not found: the events.jsonl write call moved"
+dst.write_text(mutated)
+PY
+record_models "$TMP/mut-no-events/scripts/run-behavioural-eval.py" "$TMP/out-model-noevents"
+if [ -f "$TMP/out-model-noevents/eval-case-model-0/with_skill/run-1/outputs/events.jsonl" ]; then
+  fail "the events.jsonl-skipping mutant still produced the file, so this case does not prove the write is load-bearing"
+fi
+pass
+
+# Mutation: keep every event type instead of filtering. Proves the exclusion of
+# 'user' events is what the assertion above depends on, not an accident of this
+# particular case's plan.
+mkdir -p "$TMP/mut-all-events/scripts"
+ln -s "$REPO/evals" "$TMP/mut-all-events/evals"
+ln -s "$REPO/.claude-plugin" "$TMP/mut-all-events/.claude-plugin"
+python3 - "$RUNNER" "$TMP/mut-all-events/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace(
+    'EVENTS_WORTH_KEEPING = ("system", "assistant", "result")',
+    'EVENTS_WORTH_KEEPING = ("system", "assistant", "result", "user")')
+assert mutated != text, "mutation target not found: EVENTS_WORTH_KEEPING moved"
+dst.write_text(mutated)
+PY
+record_models "$TMP/mut-all-events/scripts/run-behavioural-eval.py" "$TMP/out-model-allevents"
+python3 -c "
+import json
+p = '$TMP/out-model-allevents/eval-case-model-0/with_skill/run-1/outputs/events.jsonl'
+types = {json.loads(l)['type'] for l in open(p) if l.strip()}
+assert 'user' in types, 'the all-events mutant did not reproduce an unfiltered stream: ' + str(types)
+" || fail "the unfiltered-events mutant did not reproduce the defect, so the 'user' exclusion is not proven load-bearing"
+pass
+
+# ---------------------------------------------------------------------------
 # 10. THE SESSION HAD THE SHAPE ITS CONFIGURATION CLAIMS.
 # ---------------------------------------------------------------------------
 # The defect these catch is the one this suite could not previously see: a

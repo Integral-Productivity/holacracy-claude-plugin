@@ -354,6 +354,29 @@ jobs:
             'import json;print(json.load(open(".claude-plugin/plugin.json"))["name"])')
           python3 "$AGGREGATOR" "$RUNNER_TEMP/benchmark" \
             --skill-name "$SKILL_NAME" --skill-path "$GITHUB_REPOSITORY"
+
+          # Cost, BEFORE the heredoc below. Placement is the whole trick here.
+          #
+          # There are four consumers of benchmark.json and three of them are
+          # inside this one step: the heredoc re-renders benchmark.md from it,
+          # the `cp` at the end of this step produces benchmark-current.json,
+          # and the report step reads THAT. A correction landing in a new step
+          # after this one would fix the JSON and leave benchmark.md and
+          # benchmark-current.json stale -- so the uploaded artifact and the
+          # step summary would carry the character count while the JSON carried
+          # tokens. That is precisely the disagreement this is meant to prevent,
+          # and it is the DEFAULT outcome of the obvious implementation.
+          #
+          # Correcting here means the existing generate_markdown re-render and
+          # the existing cp both pick up corrected figures, with no second
+          # render and nothing to keep in sync.
+          python3 scripts/eval-cost.py aggregate \
+            --run-tree "$RUNNER_TEMP/benchmark" \
+            --out "$RUNNER_TEMP/benchmark/cost-summary.json"
+          python3 scripts/eval-cost.py correct \
+            --benchmark "$RUNNER_TEMP/benchmark/benchmark.json" \
+            --cost "$RUNNER_TEMP/benchmark/cost-summary.json"
+
           python3 - <<'PY'
           import importlib.util, json, os, pathlib
           bench = pathlib.Path(os.environ["RUNNER_TEMP"], "benchmark")
@@ -431,7 +454,8 @@ jobs:
           set -euo pipefail
           python3 scripts/eval-report.py \
             --current "$RUNNER_TEMP/benchmark-current.json" \
-            --baseline evals/benchmark.json >> "$GITHUB_STEP_SUMMARY"
+            --baseline evals/benchmark.json \
+            --cost "$RUNNER_TEMP/benchmark/cost-summary.json" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the benchmark
         # always(), because a failed run is exactly when this matters. A graded
@@ -447,10 +471,19 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: behavioural-benchmark
+          # The cost records are enumerated here explicitly, and this is the
+          # only thing that ships them: `if-no-files-found: warn` below means
+          # forgetting a path produces a GREEN run with the artifact silently
+          # missing. The raw per-run records are the expensive half -- they
+          # exist only while the run is in flight, and rebuilding them costs
+          # another paid nightly -- so leaving them out of the upload would
+          # discard exactly what cannot be recovered later.
           path: |
             ${{ runner.temp }}/benchmark/benchmark.json
             ${{ runner.temp }}/benchmark/benchmark.md
+            ${{ runner.temp }}/benchmark/cost-summary.json
             ${{ runner.temp }}/benchmark/**/grading.json
+            ${{ runner.temp }}/benchmark/**/cost.json
             ${{ runner.temp }}/benchmark/**/transcript.md
           retention-days: 30
           # warn, not error: with always() this step legitimately runs in states

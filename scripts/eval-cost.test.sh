@@ -473,6 +473,56 @@ print(d['runs'][0]['result']['tokens'])")" = "4321" ] \
 pass
 
 # ---------------------------------------------------------------------------
+# 12. The workflow corrects BEFORE it re-renders and copies.
+# ---------------------------------------------------------------------------
+# Not a unit test of this script -- a guard on the one wiring decision that is
+# silently wrong when made the obvious way. benchmark.json has four consumers
+# and three of them sit inside the Aggregate step: the heredoc re-renders
+# benchmark.md from it, the `cp` produces benchmark-current.json, and the report
+# reads that copy. Move the correction into a step of its own -- the tidier
+# arrangement, and the one a reviewer would suggest -- and the JSON gets tokens
+# while the markdown, the artifact, and the step summary keep the character
+# count.
+#
+# Checked by reading the workflow rather than executing it: the graded job needs
+# an API key and ~25 minutes, so the alternative is discovering this on a paid
+# nightly.
+WF="$REPO/.github/workflows/skills-eval.yml"
+if [ -f "$WF" ]; then
+  python3 - "$WF" <<'PY' || exit 1
+import pathlib, sys, re
+text = pathlib.Path(sys.argv[1]).read_text()
+def at(needle, label):
+    i = text.find(needle)
+    if i < 0:
+        print(f"FAIL: {label} not found in skills-eval.yml")
+        raise SystemExit(1)
+    return i
+agg  = at('python3 "$AGGREGATOR"', "the aggregator invocation")
+cost = at("eval-cost.py aggregate", "the cost aggregation")
+corr = at("eval-cost.py correct", "the token correction")
+here = at("python3 - <<'PY'", "the metadata heredoc")
+cp   = at('cp "$RUNNER_TEMP/benchmark/benchmark.json"', "the benchmark-current copy")
+if not (agg < cost < corr < here < cp):
+    print("FAIL: the correction is not between the aggregator and the re-render; "
+          "benchmark.md and benchmark-current.json would keep the character count")
+    raise SystemExit(1)
+# The upload must actually carry the records, or R5 fails silently:
+# if-no-files-found is `warn`, so a forgotten path produces a green run.
+for path in ("**/cost.json", "cost-summary.json"):
+    if path not in text:
+        print(f"FAIL: {path} is not in the upload globs; the run would ship without it")
+        raise SystemExit(1)
+if "--cost " not in text and "--cost \\" not in text and "--cost" not in text:
+    print("FAIL: the report is not passed --cost")
+    raise SystemExit(1)
+PY
+  pass
+else
+  fail "skills-eval.yml not found; the wiring guard cannot run"
+fi
+
+# ---------------------------------------------------------------------------
 # Mutations.
 # ---------------------------------------------------------------------------
 mutate() {  # $1=label $2=find $3=replace

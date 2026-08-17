@@ -724,10 +724,22 @@ pass
 # proving the suite qualifier is what prevents it rather than some incidental
 # property of the run. The runner resolves REPO from its own location and
 # fixtures relative to it, so the mutant needs a shadow root with evals/.
-mkdir -p "$TMP/mut/scripts"
-ln -s "$REPO/evals" "$TMP/mut/evals"
-ln -s "$REPO/.claude-plugin" "$TMP/mut/.claude-plugin"
-python3 - "$RUNNER" "$TMP/mut/scripts/run-behavioural-eval.py" <<'PY'
+# One shadow root PER mutant. Three cases used to share a single path, each
+# overwriting the last, so a build that failed left the PREVIOUS case's mutant
+# behind and the case silently exercised the wrong one -- a stale mutant being
+# worse than an absent one, because it still produces plausible output. The
+# runner resolves REPO from its own location, hence the symlinked evals/ and
+# manifest.
+new_mut_root() {  # $1 = label; echoes the root
+  local root="$TMP/mut-$1"
+  mkdir -p "$root/scripts"
+  ln -sfn "$REPO/evals" "$root/evals"
+  ln -sfn "$REPO/.claude-plugin" "$root/.claude-plugin"
+  rm -f "$root/scripts/run-behavioural-eval.py"
+  echo "$root"
+}
+MUT_FLATKEY="$(new_mut_root flatkey)"
+python3 - "$RUNNER" "$MUT_FLATKEY/scripts/run-behavioural-eval.py" <<'PY'
 import pathlib, sys
 src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 text = src.read_text()
@@ -737,9 +749,11 @@ mutated = text.replace("eval-{suite}-{", "eval-{")
 assert mutated != text, "mutation target not found: the eval dir naming moved"
 dst.write_text(mutated)
 PY
+[ -s "$MUT_FLATKEY/scripts/run-behavioural-eval.py" ] \
+  || fail "could not build the flat-key mutant: its target moved. This case would otherwise run a stale or absent mutant and pass vacuously."
 rm -rf "$TMP/out-collide-mut"
 FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
-  python3 "$TMP/mut/scripts/run-behavioural-eval.py" \
+  python3 "$MUT_FLATKEY/scripts/run-behavioural-eval.py" \
     --case "$TMP/suite-a/evals.json" --case "$TMP/suite-b/evals.json" \
     --out "$TMP/out-collide-mut" --configs with_skill --no-grade >/dev/null 2>&1
 mut_dirs="$(find "$TMP/out-collide-mut" -maxdepth 1 -type d -name 'eval-*' | wc -l | tr -d ' ')"
@@ -778,7 +792,8 @@ pass
 # Mutation: write the bare local id back into the metadata. The directories stay
 # distinct (§ 8's fix is untouched), so ONLY this case can catch it -- which is
 # exactly the point, since that is the state that shipped after #201.
-python3 - "$RUNNER" "$TMP/mut/scripts/run-behavioural-eval.py" <<'PY'
+MUT_METAID="$(new_mut_root metaid)"
+python3 - "$RUNNER" "$MUT_METAID/scripts/run-behavioural-eval.py" <<'PY'
 import pathlib, sys
 src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 text = src.read_text()
@@ -787,9 +802,11 @@ mutated = text.replace('"eval_id": f"{suite}-{case[\'eval_id\']}",',
 assert mutated != text, "mutation target not found: the eval_id metadata write moved"
 dst.write_text(mutated)
 PY
+[ -s "$MUT_METAID/scripts/run-behavioural-eval.py" ] \
+  || fail "could not build the bare-metadata-id mutant: its target moved. This case would otherwise run a stale or absent mutant and pass vacuously."
 rm -rf "$TMP/out-metaid-mut"
 FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
-  python3 "$TMP/mut/scripts/run-behavioural-eval.py" \
+  python3 "$MUT_METAID/scripts/run-behavioural-eval.py" \
     --case "$TMP/suite-a/evals.json" --case "$TMP/suite-b/evals.json" \
     --out "$TMP/out-metaid-mut" --configs with_skill --no-grade >/dev/null 2>&1
 mut_a="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' \
@@ -919,7 +936,8 @@ pass
 
 # Mutation: restore the summing capture. cost.json then carries an integer
 # where the object was, and the cache ratio is unrecoverable again.
-python3 - "$RUNNER" "$TMP/mut/scripts/run-behavioural-eval.py" <<'PY'
+MUT_SUMUSAGE="$(new_mut_root sumusage)"
+python3 - "$RUNNER" "$MUT_SUMUSAGE/scripts/run-behavioural-eval.py" <<'PY'
 import pathlib, sys
 src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 text = src.read_text()
@@ -928,9 +946,11 @@ mutated = text.replace('"usage": event.get("usage"),',
 assert mutated != text, "mutation target not found: raw_usage's usage capture moved"
 dst.write_text(mutated)
 PY
+[ -s "$MUT_SUMUSAGE/scripts/run-behavioural-eval.py" ] \
+  || fail "could not build the summing-usage mutant: its target moved. This case would otherwise run a stale or absent mutant and pass vacuously."
 rm -rf "$TMP/out-cost-mut"
 FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
-  python3 "$TMP/mut/scripts/run-behavioural-eval.py" --case "$TMP/case/evals.json" \
+  python3 "$MUT_SUMUSAGE/scripts/run-behavioural-eval.py" --case "$TMP/case/evals.json" \
     --out "$TMP/out-cost-mut" --configs with_skill --no-grade >/dev/null 2>&1
 mut_usage="$(cost_of "$TMP/out-cost-mut/eval-case-0/with_skill/run-1" \
   "type(c['passes']['executor']['usage']).__name__")"

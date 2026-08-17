@@ -175,9 +175,17 @@ print(json.dumps({"type": "assistant",
                   "message": {"model": EXECUTOR_MODEL, "content": content}}))
 if results:
     print(json.dumps({"type": "user", "message": {"content": results}}))
+
+# Reproduces diagnostic run 32055798335: every without_skill leg billed an
+# auxiliary model that answered no visible turn, listed FIRST in modelUsage,
+# ahead of the model that actually produced the assistant event above. #222.
+model_usage = {EXECUTOR_MODEL: {"inputTokens": 100}}
+if os.environ.get("FAKE_AUX_MODEL_FIRST"):
+    model_usage = {"fake-auxiliary-model": {"inputTokens": 5}, **model_usage}
+
 print(json.dumps({"type": "result", "is_error": False,
                   "result": leg.get("final", "done"),
-                  "modelUsage": {EXECUTOR_MODEL: {"inputTokens": 100}},
+                  "modelUsage": model_usage,
                   "usage": {"input_tokens": 100, "output_tokens": 200}}))
 PY
 chmod +x "$TMP/fake-claude.py"
@@ -743,7 +751,75 @@ assert g['models']['executor']=='requested-model-not-used', g['models']
 pass
 
 # ---------------------------------------------------------------------------
-# 9a. The raw events observed_model() reads survive the run (#221).
+# 9a. modelUsage's first key can name a model that answered nothing (#222).
+# ---------------------------------------------------------------------------
+# Diagnostic run 32055798335 showed every without_skill leg billing an
+# auxiliary model ahead of the one that produced every visible assistant turn
+# — modelUsage's first-key heuristic named the wrong model on 9 consecutive
+# nightly runs. assistant.message.model is now tried FIRST; modelUsage is the
+# fallback for a stream with no assistant event at all (e.g. an auth failure).
+export FAKE_AUX_MODEL_FIRST=1
+record_models "$RUNNER" "$TMP/out-model-aux"
+python3 -c "
+import json
+g=json.load(open('$TMP/out-model-aux/eval-case-model-0/with_skill/run-1/grading.json'))
+assert g['models']['executor']=='fake-executor-model', (
+  'observed_model named the auxiliary billed-but-silent model instead of the '
+  'one that actually answered: ' + str(g['models']))
+" || fail "an auxiliary model listed first in modelUsage was recorded as the executor"
+unset FAKE_AUX_MODEL_FIRST
+pass
+
+# Mutation: restore the old modelUsage-first order. This is the exact defect
+# #222 fixes — without it, the assertion above would name the auxiliary model,
+# which is what every without_skill leg did against production for nine nights.
+mkdir -p "$TMP/mut-modelusage-first/scripts"
+ln -s "$REPO/evals" "$TMP/mut-modelusage-first/evals"
+ln -s "$REPO/.claude-plugin" "$TMP/mut-modelusage-first/.claude-plugin"
+python3 - "$RUNNER" "$TMP/mut-modelusage-first/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+old = '''    for event in events:
+        if event.get("type") == "assistant":
+            name = (event.get("message") or {}).get("model")
+            if name:
+                return str(name)
+    for event in reversed(events):
+        if event.get("type") == "result":
+            for name in (event.get("modelUsage") or {}):
+                if name:
+                    return str(name)
+    for event in events:
+        if event.get("type") == "system" and event.get("model"):'''
+new = '''    for event in reversed(events):
+        if event.get("type") == "result":
+            for name in (event.get("modelUsage") or {}):
+                if name:
+                    return str(name)
+    for event in events:
+        if event.get("type") == "assistant":
+            name = (event.get("message") or {}).get("model")
+            if name:
+                return str(name)
+    for event in events:
+        if event.get("type") == "system" and event.get("model"):'''
+mutated = text.replace(old, new)
+assert mutated != text, "mutation target not found: observed_model's resolution order moved"
+dst.write_text(mutated)
+PY
+export FAKE_AUX_MODEL_FIRST=1
+record_models "$TMP/mut-modelusage-first/scripts/run-behavioural-eval.py" "$TMP/out-model-aux-mut"
+python3 -c "
+import json
+g=json.load(open('$TMP/out-model-aux-mut/eval-case-model-0/with_skill/run-1/grading.json'))
+assert g['models']['executor']=='fake-auxiliary-model', g['models']
+" || fail "the modelUsage-first mutant did not reproduce the defect, so § 9a no longer proves the resolution order is load-bearing"
+unset FAKE_AUX_MODEL_FIRST
+pass
+
+# ---------------------------------------------------------------------------
+# 9b. The raw events observed_model() reads survive the run (#221).
 # ---------------------------------------------------------------------------
 # A completed run's grading.json is already-derived data. Deciding whether
 # `executor` named an auxiliary model rather than the one that answered (#222)

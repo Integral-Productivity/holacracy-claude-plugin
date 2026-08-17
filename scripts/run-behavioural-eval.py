@@ -595,27 +595,41 @@ def observed_model(events: list) -> str | None:
     cannot name its model makes a model upgrade indistinguishable from a skill
     regression -- which is what #173's alarm would then misattribute (#203).
 
-    Three independent places in a real stream carry it. They are tried in order
-    of how directly they report what the API actually billed:
+    Three independent places in a real stream carry it, tried in this order:
 
-      1. the result event's `modelUsage`, keyed by model name
-      2. an assistant event's `message.model`
+      1. an assistant event's `message.model` -- the model on the turn that
+         actually answered
+      2. the result event's `modelUsage`, keyed by model name
       3. the system init event's `model`
+
+    `modelUsage` is NOT primary, despite billing the API most directly (#222).
+    Diagnostic run 32055798335 (dispatched once #221 gave a completed run
+    somewhere to keep its raw events) settled this with real evidence: every
+    `without_skill` leg across all four eval cases billed an auxiliary
+    `claude-haiku-4-5-20251001` alongside the requested `claude-sonnet-5`, with
+    haiku listed FIRST in `modelUsage` -- yet every single `assistant` event in
+    every one of those same runs had `message.model == "claude-sonnet-5"`. The
+    auxiliary call never produced a visible turn; `modelUsage`'s first-key
+    heuristic named the model that did not do the work, which is exactly why
+    every graded run since #243 pinned `--model` still failed the "did the arms
+    run on the same model" check for nine consecutive nights. `with_skill` legs
+    never billed the auxiliary model at all, so the two orderings previously
+    agreed by coincidence on that leg and diverged only on the control.
 
     Returns None when none of them is present, and the caller records that as
     JSON null. An unresolvable model must stay legibly absent: substituting a
     guess is the same defect as the `<model-name>` placeholder, one layer down.
     """
-    for event in reversed(events):
-        if event.get("type") == "result":
-            for name in (event.get("modelUsage") or {}):
-                if name:
-                    return str(name)
     for event in events:
         if event.get("type") == "assistant":
             name = (event.get("message") or {}).get("model")
             if name:
                 return str(name)
+    for event in reversed(events):
+        if event.get("type") == "result":
+            for name in (event.get("modelUsage") or {}):
+                if name:
+                    return str(name)
     for event in events:
         if event.get("type") == "system" and event.get("model"):
             return str(event["model"])

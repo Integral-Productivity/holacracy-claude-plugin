@@ -111,7 +111,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -356,6 +356,142 @@ def compute_cache_key(case: dict, *, skill_dirs: list[Path] = (), fixture_path: 
     canonical = json.dumps(components, sort_keys=True, default=str)
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
     return f"leg_{digest}"
+
+
+# ---------------------------------------------------------------------------
+# Cache index: storage, lookup, and the skip/execute decision (U2 + U3)
+#
+# WHAT THIS ADDS ON TOP OF compute_cache_key
+# -------------------------------------------
+# compute_cache_key (above) answers "what is this leg's key" -- a pure
+# function of its inputs. This section answers "given that key, do we need to
+# run the leg again tonight", by consulting a small JSON index that persists
+# ACROSS nightly runs. The index lives outside this checkout, on a dedicated
+# `eval-cache-index` branch this script never has to know about -- the
+# workflow checks it out to a path and hands that path in via --cache-index
+# (see .github/workflows/skills-eval.yml). This script only ever sees a path
+# on disk; it has no git awareness of its own.
+#
+# CACHING IS OPT-IN, NOT A DEFAULT
+# ---------------------------------
+# --cache-index is None unless a caller passes it. Every EXISTING caller of
+# this script -- the regression suite chief among them, which invokes the
+# same case/config repeatedly across different plans and expects fresh
+# execution every time -- must see IDENTICAL behaviour to before this file
+# existed. Defaulting caching on would silently break that: a second
+# invocation with the same case would read the first invocation's stored
+# result instead of running the plan it was just given. So every function
+# below is inert unless the caller opts in by passing --cache-index.
+#
+# BOUNDED LIFETIME (U3, R8)
+# --------------------------
+# A cache entry's freshness is judged against `now` (real time by default, or
+# --now for a synthetic clock in tests -- the same affordance this repo's
+# other alarm scripts use, e.g. release-latency-alarm.py). An entry is usable
+# only if it is BOTH successful and younger than --cache-max-age-days
+# (default 7): a leg whose key never changes is still forced back through a
+# real execution at least once a week, so "nothing on disk changed" cannot
+# turn into "never re-verified against live model behaviour" (R8).
+# ---------------------------------------------------------------------------
+
+DEFAULT_CACHE_MAX_AGE_DAYS = 7
+
+
+def load_cache_index(path: Path) -> dict:
+    """Read the leg cache index, tolerating absence or corruption.
+
+    A missing file is the ordinary case on the very first nightly run, or the
+    first run after the eval-cache-index branch is created (R3): every leg
+    simply has no entry and executes. A corrupt file -- a bad manual edit, a
+    partial write from an interrupted job -- is treated the same way rather
+    than raising: a broken index must degrade to "cache nothing tonight",
+    never to a crashed nightly run.
+    """
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_cache_index(path: Path, index: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
+
+
+def resolve_skill_dirs_for_leg(config: str, repo: Path = REPO) -> list[Path]:
+    """Which skills/<dir> a leg's cache key should be sensitive to.
+
+    without_skill legs exercise no skill content -- an empty list is the
+    documented-valid input for exactly that case (see compute_cache_key's
+    docstring: "an empty tuple is valid for a leg that engages none"). A
+    with_skill leg can reach any skill this plugin ships: the case files'
+    `skill` field names the PLUGIN ("holacracy"), not a skills/<dir>, and
+    there is no per-case mapping onto a narrower set. Rather than guess one,
+    this hashes every shipped skill directory, which is coarser than a
+    precise per-case mapping would be but never UNDER-hashes -- a change to
+    any skill invalidates every with_skill cache entry, and over-invalidating
+    is the safe direction to be wrong in.
+    """
+    if config != "with_skill":
+        return []
+    skills_root = repo / "skills"
+    if not skills_root.is_dir():
+        return []
+    return sorted(
+        p for p in skills_root.iterdir()
+        if p.is_dir() and p.name != "shared" and (p / "SKILL.md").exists())
+
+
+def cache_entry_is_usable(entry: dict | None, *, now: datetime, max_age_days: int) -> bool:
+    """R3-R6 plus R8: is a stored entry fresh enough to skip re-execution?
+
+    False whenever any of the following holds, each corresponding to one of
+    the plan's skip/execute decision-tree cases:
+
+      entry is None                    no prior attempt under this key (R3)
+      not entry["successful"]          the prior attempt errored (R4/R6)
+      no/unparseable last_executed     a malformed entry, treated as absent
+      now - last_executed >= max_age   the entry is stale (R5, U3's R8)
+
+    Only a successful entry executed within the window returns True (case 6
+    in the plan's decision tree). This is the ONLY place that combines the
+    four checks, so a later change to the freshness rule has one function to
+    edit rather than every call site.
+    """
+    if entry is None or not entry.get("successful"):
+        return False
+    last_executed = entry.get("last_executed")
+    if not last_executed:
+        return False
+    try:
+        executed_at = datetime.fromisoformat(last_executed)
+    except (ValueError, TypeError):
+        return False
+    if executed_at.tzinfo is None:
+        executed_at = executed_at.replace(tzinfo=timezone.utc)
+    return (now - executed_at) < timedelta(days=max_age_days)
+
+
+def record_leg_bookkeeping(grading: dict, config: str, executors: set, analyzers: set,
+                           executors_by_config: dict) -> None:
+    """Update the run-wide bookkeeping sets from one leg's grading dict.
+
+    Shared between the skip and execute branches of main()'s per-config loop
+    -- a skipped leg's stored result must feed executors/analyzers/
+    executors_by_config exactly as a freshly executed one would, or a cached
+    leg silently vanishes from run_metadata.json and from the
+    same-executor-model check that reads executors_by_config afterwards.
+    """
+    for which, seen in (("executor", executors), ("analyzer", analyzers)):
+        name = grading["models"].get(which)
+        if name:
+            seen.add(name)
+    executor = grading["models"].get("executor")
+    if executor:
+        executors_by_config.setdefault(config, set()).add(executor)
 
 
 # ---------------------------------------------------------------------------
@@ -1171,11 +1307,48 @@ def main() -> int:
     parser.add_argument("--no-session-probe", action="store_true",
                         help="skip the session-shape probe under --validate-only "
                              "(it needs the real `claude` binary on PATH)")
+    parser.add_argument("--cache-index", default=None,
+                        help="path to a JSON file used as the change-aware cache index "
+                             "for the graded loop. Omit to disable caching entirely -- "
+                             "every leg executes fresh, exactly as before this flag "
+                             "existed. The workflow points this at a checkout of the "
+                             "dedicated eval-cache-index branch; this script has no git "
+                             "awareness of its own.")
+    parser.add_argument("--cache-max-age-days", type=int, default=DEFAULT_CACHE_MAX_AGE_DAYS,
+                        help="force a fresh execution at least this often even when a "
+                             "leg's cache key has not changed (R8)")
+    parser.add_argument("--now", default=None,
+                        help="ISO8601 timestamp to treat as the current time for cache "
+                             "freshness decisions; defaults to the real time. A test-only "
+                             "affordance for deterministic cache-lifetime assertions, same "
+                             "shape as this repo's other alarm scripts' --now.")
     args = parser.parse_args()
 
     configs = [c.strip() for c in args.configs.split(",") if c.strip()]
     out_root = Path(args.out)
     failures = 0
+
+    # Cache index: opt-in (only when --cache-index is passed), and inert under
+    # --validate-only -- that preflight is a wholly separate path that never
+    # reaches the per-config loop below, and it must stay unaffected by any of
+    # this (R5): a `--no-session-probe` caller has promised itself no `claude`
+    # binary is needed, and claude_cli_version() would break that promise.
+    # cli_version is read once here rather than once per leg -- the binary
+    # does not change mid-run, and shelling out per leg would be a wasted
+    # process spawn repeated across the whole matrix (see claude_cli_version's
+    # own docstring).
+    cache_index_path: Path | None = None
+    cache_index: dict | None = None
+    cli_version: str | None = None
+    cache_now: datetime | None = None
+    if args.cache_index and not args.validate_only:
+        cache_index_path = Path(args.cache_index)
+        cache_index = load_cache_index(cache_index_path)
+        cli_version = claude_cli_version()
+        cache_now = (datetime.fromisoformat(args.now) if args.now
+                    else datetime.now(timezone.utc))
+        if cache_now.tzinfo is None:
+            cache_now = cache_now.replace(tzinfo=timezone.utc)
 
     # The session-shape preflight. Free, keyless, and the thing that would have
     # caught #226 before four graded runs were spent on a harness measuring the
@@ -1240,6 +1413,43 @@ def main() -> int:
             }, indent=2))
 
             for config in configs:
+                # The skip/execute decision is made ONCE per (case, config)
+                # leg -- i.e. once per iteration of this loop, wrapping the
+                # entire run-range loop below -- not once per run. The key
+                # already folds `runs` in as one of its nine inputs, so every
+                # run within a leg shares one decision.
+                cache_key = None
+                cache_entry = None
+                if cache_index is not None:
+                    skill_dirs = resolve_skill_dirs_for_leg(config)
+                    cache_key = compute_cache_key(
+                        case, skill_dirs=skill_dirs, fixture_path=fixture,
+                        runs=args.runs, model=args.model, cli_version=cli_version)
+                    cache_entry = cache_index.get(cache_key)
+
+                if cache_key is not None and cache_entry_is_usable(
+                        cache_entry, now=cache_now, max_age_days=args.cache_max_age_days):
+                    # Case 6: a fresh, successful result already exists for
+                    # this leg's current key. Reuse it for every one of this
+                    # leg's runs -- no run_once, no touching run_dir, no
+                    # subprocess of any kind. That is the entire savings this
+                    # unit exists to produce.
+                    stored_grading = cache_entry["grading"]
+                    record_leg_bookkeeping(stored_grading, config, executors,
+                                           analyzers, executors_by_config)
+                    summary = stored_grading["summary"]
+                    for run in range(1, args.runs + 1):
+                        print(f"{case['eval_name']} / {config} / run-{run}: "
+                              f"{summary['passed']}/{summary['total']}  "
+                              f"[cache hit, last executed "
+                              f"{cache_entry.get('last_executed', '?')}]")
+                    continue
+
+                # Cases 3-5: no entry for the current key, a stored entry
+                # whose result was not successful, or a stored entry that has
+                # aged past --cache-max-age-days. Execute the leg exactly as
+                # this loop always has.
+                leg_gradings = []
                 for run in range(1, args.runs + 1):
                     run_dir = eval_dir / config / f"run-{run}"
                     if run_dir.exists():
@@ -1247,18 +1457,45 @@ def main() -> int:
                     run_dir.mkdir(parents=True)
                     grading = run_once(case, config, run_dir, args.model,
                                        args.timeout, not args.no_grade)
-                    for which, seen in (("executor", executors),
-                                        ("analyzer", analyzers)):
-                        name = grading["models"].get(which)
-                        if name:
-                            seen.add(name)
-                    executor = grading["models"].get("executor")
-                    if executor:
-                        executors_by_config.setdefault(config, set()).add(executor)
+                    if cache_key is not None:
+                        # Tagged only when caching is enabled, so a run that
+                        # never opted into the cache index sees an identical
+                        # grading.json to before this unit existed. U5 (a
+                        # later unit) reads this to tell a cached leg from a
+                        # freshly executed one; written back to the file run_once
+                        # already wrote, so the on-disk artifact matches what
+                        # gets folded into the cache index below.
+                        grading["cache_hit"] = False
+                        (run_dir / "grading.json").write_text(json.dumps(grading, indent=2))
+                    leg_gradings.append(grading)
+                    record_leg_bookkeeping(grading, config, executors,
+                                           analyzers, executors_by_config)
                     summary = grading["summary"]
                     note = f"  [{grading['execution_error']}]" if grading["execution_error"] else ""
                     print(f"{case['eval_name']} / {config} / run-{run}: "
                           f"{summary['passed']}/{summary['total']}{note}")
+
+                if cache_key is not None:
+                    # "Successful" here means the leg's runs all EXECUTED
+                    # cleanly (no execution_error) -- not that every assertion
+                    # passed. A leg that ran correctly but failed a real
+                    # assertion is still a trustworthy result to reuse; a leg
+                    # that crashed, timed out, or never made a tool call is
+                    # not evidence of anything and must not be cached as if
+                    # it were (this mirrors run_once's own treatment of
+                    # execution_error for mechanical checks, and matches R3's
+                    # framing of "a prior attempt under the current key
+                    # failed"). The most recent run's grading is stored as
+                    # the leg's representative result -- what a skip reuses
+                    # and prints next time.
+                    leg_successful = all(g["execution_error"] is None for g in leg_gradings)
+                    cache_index[cache_key] = {
+                        "last_executed": cache_now.isoformat(),
+                        "successful": leg_successful,
+                        "grading": leg_gradings[-1],
+                        "case": case["eval_name"],
+                        "config": config,
+                    }
 
     if not args.validate_only:
         (out_root / "run_metadata.json").write_text(json.dumps({
@@ -1279,6 +1516,14 @@ def main() -> int:
             "executor_models_by_config": {c: sorted(m) for c, m
                                           in sorted(executors_by_config.items())},
         }, indent=2))
+
+        # Persist the cache index for tonight's writes -- new entries for
+        # every leg that executed, replaced entries for anything that failed
+        # or aged out, untouched entries for everything that was skipped.
+        # cache_index_path is None whenever --cache-index was not passed, so
+        # this is a no-op for every existing caller of this script.
+        if cache_index_path is not None:
+            save_cache_index(cache_index_path, cache_index)
 
         # The arms must have run on the SAME executor model, or the delta
         # between them is a fact about the models rather than about the plugin.

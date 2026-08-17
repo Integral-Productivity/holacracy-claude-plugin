@@ -114,6 +114,23 @@ jobs:
     # workflow — the range check asserts exactly one exists and fails loudly
     # rather than silently reading the wrong job's ceiling.
     timeout-minutes: 90
+    # Overrides the workflow's top-level `contents: read`, scoped to THIS job
+    # only — `offline` and every other job in this file stays read-only. The
+    # cache index push at the end of this job is a direct commit to the
+    # dedicated `eval-cache-index` branch (KTD1), and that needs write.
+    permissions:
+      contents: write
+    # A manual workflow_dispatch overlapping the nightly cron must not race
+    # the cache-index push: two concurrent `graded` runs both reading the
+    # index as of the same fetch, then both pushing, would silently drop
+    # whichever one lost the race rather than fast-forwarding cleanly.
+    # cancel-in-progress: false — a dispatched run should queue behind an
+    # in-flight one and still complete, not be killed by it; this job pays
+    # real API cost per run and throwing one away is not free the way
+    # cancelling an in-progress lint job would be.
+    concurrency:
+      group: skills-eval-graded
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
 
@@ -236,6 +253,51 @@ jobs:
           test -f "$AGGREGATOR"
           echo "AGGREGATOR=$AGGREGATOR" >> "$GITHUB_ENV"
 
+      - name: Prepare the eval-cache-index checkout
+        if: steps.key.outputs.present == 'true'
+        # The change-aware cache index (scripts/run-behavioural-eval.py's
+        # --cache-index) lives on a DEDICATED, UNPROTECTED branch, not
+        # `main` -- `main` carries an active org branch-protection ruleset
+        # requiring PR-mediated merges with no bypass actor (verified live
+        # via `gh api` while planning this), so a direct commit to `main`
+        # from this job would be rejected every night. `eval-cache-index`
+        # sits outside that ruleset's scope, so this job can push to it
+        # directly, no PR, no bypass actor needed.
+        #
+        # A SEPARATE, freshly-initialized checkout in $RUNNER_TEMP -- not a
+        # second `actions/checkout@v7` pointed at this ref -- because that
+        # step fails the whole job outright when the ref does not exist, and
+        # the branch genuinely may not exist yet (this is the first unit to
+        # write to it). Its own `origin` remote carries an explicit
+        # token-authenticated URL rather than relying on whatever credential
+        # state the primary actions/checkout@v7 step above left behind in
+        # $GITHUB_WORKSPACE's .git config -- this repo is public, so an
+        # unauthenticated fetch of an EXISTING branch would still work, but
+        # the later push needs write credentials, and this keeps the fetch
+        # and push halves using the identical, explicit auth setup rather
+        # than one of them depending on an implementation detail of the
+        # other checkout.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          WORKTREE="$RUNNER_TEMP/eval-cache-index"
+          mkdir -p "$WORKTREE"
+          git -C "$WORKTREE" init -q
+          git -C "$WORKTREE" remote add origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git -C "$WORKTREE" fetch -q --depth 1 origin eval-cache-index; then
+            git -C "$WORKTREE" checkout -q FETCH_HEAD
+            echo "checked out the existing eval-cache-index branch"
+          else
+            echo "eval-cache-index branch does not exist yet; starting with an empty index"
+          fi
+          if [ ! -f "$WORKTREE/cache-index.json" ]; then
+            echo '{}' > "$WORKTREE/cache-index.json"
+          fi
+          echo "CACHE_INDEX_WORKTREE=$WORKTREE" >> "$GITHUB_ENV"
+          echo "CACHE_INDEX_PATH=$WORKTREE/cache-index.json" >> "$GITHUB_ENV"
+
       - name: Run the behavioural evals
         if: steps.key.outputs.present == 'true'
         env:
@@ -327,6 +389,13 @@ jobs:
           # The runner now refuses such a benchmark outright; this is the half
           # that stops it happening rather than only catching it.
           if [ -n "$MODEL" ]; then args+=(--model "$MODEL"); fi
+          # CACHE_INDEX_PATH is set by the "Prepare the eval-cache-index
+          # checkout" step above, which runs under the same `if` guard as this
+          # step, so it is always present here -- the `-n` check is defensive
+          # rather than expected to trigger. Its absence must degrade to "run
+          # everything fresh", never to a crash: caching is a savings on top
+          # of the graded tier, not a precondition for it.
+          if [ -n "${CACHE_INDEX_PATH:-}" ]; then args+=(--cache-index "$CACHE_INDEX_PATH"); fi
           python3 scripts/run-behavioural-eval.py \
             --out "$RUNNER_TEMP/benchmark" --runs "$RUNS" "${args[@]}"
 
@@ -432,6 +501,54 @@ jobs:
           python3 scripts/eval-report.py \
             --current "$RUNNER_TEMP/benchmark-current.json" \
             --baseline evals/benchmark.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push the updated eval cache index
+        # always(), same reasoning as the Upload step below: the runner
+        # writes the cache index after EACH case's per-config loop finishes
+        # (right alongside run_metadata.json), not only on a clean exit, so a
+        # run that times out or dies partway through may still have legs
+        # worth keeping. A plain `if:` here would let a late failure — in
+        # Aggregate or Report, both of which run after this point in the
+        # step list but must not block it — throw those away, which is
+        # exactly the #199 shape: a step that cannot change the result must
+        # not be able to destroy work upstream of it either. Guarded on
+        # steps.key.outputs.present so a keyless night (no ANTHROPIC_API_KEY)
+        # has nothing to push.
+        if: always() && steps.key.outputs.present == 'true'
+        # Committed under the standard github-actions[bot] identity. This
+        # repo's other automated writers — release-please, the App-based
+        # promote-stable — use release-please-action or a dedicated GitHub
+        # App identity, and neither commits via a hand-rolled `git commit`,
+        # so there is no existing in-repo convention to mirror here.
+        # github-actions[bot] is GitHub's own documented identity for exactly
+        # this case (a workflow committing on the repo's behalf), so it is
+        # used as-is rather than inventing a repo-specific one.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CACHE_INDEX_WORKTREE:-}" ] || [ ! -d "$CACHE_INDEX_WORKTREE" ]; then
+            echo "no eval-cache-index checkout to push (the prepare step did not run or did not complete)"
+            exit 0
+          fi
+          cd "$CACHE_INDEX_WORKTREE"
+          git add cache-index.json
+          if git diff --cached --quiet; then
+            echo "cache index unchanged tonight; nothing to push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "chore(eval-cache): update graded eval cache index"
+          # HEAD:refs/heads/eval-cache-index rather than a plain `git push
+          # origin eval-cache-index` -- this local checkout may be on a
+          # detached HEAD (the "branch already existed" path checks out
+          # FETCH_HEAD directly, never naming a local branch) or on whatever
+          # git's init.defaultBranch produced for a from-scratch first commit
+          # (the "branch did not exist yet" path). Naming the destination ref
+          # explicitly makes the push correct in both cases without having to
+          # know which one happened.
+          git push origin HEAD:refs/heads/eval-cache-index
 
       - name: Upload the benchmark
         # always(), because a failed run is exactly when this matters. A graded

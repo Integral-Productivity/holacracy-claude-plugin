@@ -68,6 +68,15 @@ argv = sys.argv[1:]
 def opt(name):
     return argv[argv.index(name) + 1] if name in argv else None
 
+# claude_cli_version() shells out to `claude --version` once per invocation of
+# the runner, independent of every other env knob in this file, so the cache
+# tests (§ 13/14) can compute the SAME cli_version the runner folds into its
+# cache key. Fixed and unconditional -- this must answer identically whether
+# or not any FAKE_* mutation below is active.
+if "--version" in argv:
+    print("2.5.0 (Claude Code)")
+    sys.exit(0)
+
 # Deliberately NOT whatever --model asked for. The runner must record what
 # answered, not what was requested, and identical strings would let a runner
 # that echoed the request pass § 9.
@@ -189,6 +198,20 @@ cat > "$TMP/fake-claude" <<EOF
 exec $FAKE "\$@"
 EOF
 chmod +x "$TMP/fake-claude"
+
+# A logging variant used only by § 14 (the cache index). It records every
+# invocation's argv to $CACHE_INVOKE_LOG before delegating to the same fake
+# executor above, so a cache-hit test can assert the CLI was invoked exactly
+# once (the --version probe used to compute the cache key) rather than the
+# full session/grading calls a fresh execution would make.
+cat > "$TMP/fake-claude-logged" <<EOF
+#!/usr/bin/env bash
+if [ -n "\${CACHE_INVOKE_LOG:-}" ]; then
+  printf '%s\n' "\$*" >> "\$CACHE_INVOKE_LOG"
+fi
+exec $FAKE "\$@"
+EOF
+chmod +x "$TMP/fake-claude-logged"
 
 # A case file carrying exactly the mechanical checks under test, and nothing
 # judged — so a section can only go red for the reason it is named after.
@@ -1187,6 +1210,285 @@ finally:
 print("compute_cache_key: all nine inputs independently discriminating; "
       "shared-file discovery walks references/; CACHE_KEY_INPUT_CLASSES intact")
 PY
+pass
+
+# ---------------------------------------------------------------------------
+# 14. CACHE INDEX SKIP/EXECUTE DECISION (U2 + U3) -- the change-aware skip
+#     wrapped around the per-config loop in main(), and its bounded lifetime.
+#
+# These run the REAL main() loop (not just compute_cache_key in isolation)
+# against a "cache root" that mirrors this checkout closely enough for
+# resolve_skill_dirs_for_leg and discover_shared_references to see the real
+# shipped skills, but with its OWN copy of skills/ so one skill's version can
+# be bumped without touching this checkout's actual files. evals/ and
+# .claude-plugin/ are symlinked (their content does not need to be mutated),
+# and scripts/run-behavioural-eval.py is a plain copy of $RUNNER so its own
+# REPO constant resolves inside the cache root -- the same technique § 10's
+# make_mutant uses, extended to also copy skills/ rather than leave it absent.
+# ---------------------------------------------------------------------------
+CACHE_ROOT="$TMP/cache-root"
+mkdir -p "$CACHE_ROOT/scripts"
+cp "$RUNNER" "$CACHE_ROOT/scripts/run-behavioural-eval.py"
+ln -s "$REPO/evals" "$CACHE_ROOT/evals"
+ln -s "$REPO/.claude-plugin" "$CACHE_ROOT/.claude-plugin"
+cp -R "$REPO/skills" "$CACHE_ROOT/skills"
+CACHE_RUNNER="$CACHE_ROOT/scripts/run-behavioural-eval.py"
+# Fixed and matched by the "--version" branch added to fake-claude.py above --
+# claude_cli_version() is one of the nine inputs compute_cache_key hashes, so
+# the test's own key computation and the runner's must agree on it exactly.
+CLI_VERSION="2.5.0 (Claude Code)"
+
+# Computes the SAME key main() will compute for (case, config) in a cache
+# root, using the runner's own resolve_skill_dirs_for_leg + compute_cache_key
+# rather than recomputing the logic by hand -- the whole point is to prove
+# the runner's internal decision, not a parallel guess at it.
+cache_key_for() {  # $1=cache_root $2=case_file $3=eval_id $4=config $5=runs $6=model(or "") $7=cli_version
+  python3 - "$@" <<'PY'
+import importlib.util, json, pathlib, sys
+cache_root, case_file, eval_id, config, runs, model, cli_version = sys.argv[1:8]
+spec = importlib.util.spec_from_file_location(
+    "cache_runner", pathlib.Path(cache_root) / "scripts" / "run-behavioural-eval.py")
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+doc = json.load(open(case_file))
+case = next(c for c in doc["evals"] if str(c["eval_id"]) == str(eval_id))
+skill_dirs = runner.resolve_skill_dirs_for_leg(config, repo=pathlib.Path(cache_root))
+fixture_path = pathlib.Path(cache_root) / case["fixture"]
+print(runner.compute_cache_key(
+    case=case, skill_dirs=skill_dirs, fixture_path=fixture_path,
+    runs=int(runs), model=(model or None), cli_version=cli_version))
+PY
+}
+
+# Seeds one entry into a cache index file, creating it if absent. The stored
+# "grading" is deliberately minimal -- only the fields cache_entry_is_usable
+# and record_leg_bookkeeping actually read (summary, models, execution_error)
+# -- matching the plan's "keep it simple" instruction for the index schema.
+seed_cache_index() {  # $1=index_path $2=key $3=last_executed $4=successful(true|false) $5=eval_name $6=config $7=executor_model $8=passed $9=total
+  python3 - "$@" <<'PY'
+import json, sys
+path, key, last_executed, successful, eval_name, config, executor_model, passed, total = sys.argv[1:10]
+try:
+    idx = json.load(open(path))
+except (FileNotFoundError, json.JSONDecodeError):
+    idx = {}
+passed_i, total_i = int(passed), int(total)
+idx[key] = {
+    "last_executed": last_executed,
+    "successful": successful == "true",
+    "grading": {
+        "eval_name": eval_name,
+        "config": config,
+        "models": {"requested": None, "executor": executor_model, "analyzer": None},
+        "expectations": [],
+        "summary": {"passed": passed_i, "failed": total_i - passed_i, "total": total_i,
+                    "pass_rate": (passed_i / total_i) if total_i else 0.0},
+        "execution_metrics": {}, "timing": {}, "execution_error": None,
+        "cache_hit": True,
+    },
+    "case": eval_name,
+    "config": config,
+}
+with open(path, "w") as f:
+    json.dump(idx, f, indent=2)
+PY
+}
+
+# Runs the cache root's runner over the clean plan (§ 1's plan-clean.json --
+# it satisfies every mechanical check, so a leg that DOES execute is a leg
+# that passes cleanly rather than one whose result is incidentally a fresh
+# defect). Logs every CLI invocation to $TMP/cache-invoke.log and captures
+# stdout/stderr for the caller to inspect; prints the exit code.
+run_cache() {  # $1=out_dir $2=index_path $3=now rest=extra args
+  local out="$1" idx="$2" now="$3"; shift 3
+  rm -rf "$out"
+  : > "$TMP/cache-invoke.log"
+  CACHE_INVOKE_LOG="$TMP/cache-invoke.log" FAKE_PLAN="$TMP/plan-clean.json" \
+    BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude-logged" \
+    python3 "$CACHE_RUNNER" --case "$TMP/case/evals.json" --out "$out" \
+      --configs with_skill --no-grade --cache-index "$idx" --now "$now" "$@" \
+      >"$TMP/cache-run.out" 2>"$TMP/cache-run.err"
+  echo $?
+}
+
+NOW="2026-08-17T00:00:00+00:00"
+CACHE_KEY_WS="$(cache_key_for "$CACHE_ROOT" "$TMP/case/evals.json" 0 with_skill 1 "" "$CLI_VERSION")"
+
+# 14a (AE1). A fresh, successful entry under the leg's CURRENT key is reused:
+#     the CLI is invoked exactly once (the --version probe used to compute
+#     the key -- never a real session or grading call), run_dir is never
+#     created, and the stored result feeds run_metadata.json exactly as a
+#     fresh execution's would.
+seed_cache_index "$TMP/idx-hit.json" "$CACHE_KEY_WS" \
+  "2026-08-16T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stored-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-hit" "$TMP/idx-hit.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "a cache-hit run did not exit 0"; }
+[ -d "$TMP/out-cache-hit/eval-case-0/with_skill" ] \
+  && fail "a skipped leg created its run_dir"
+grep -q "cache hit" "$TMP/cache-run.out" \
+  || { cat "$TMP/cache-run.out"; fail "a cache-hit run did not report a cache hit"; }
+INVOCATIONS="$(wc -l < "$TMP/cache-invoke.log" | tr -d ' ')"
+[ "$INVOCATIONS" = "1" ] \
+  || { cat "$TMP/cache-invoke.log"; fail "expected exactly one CLI invocation (the --version probe) on a cache hit, got $INVOCATIONS"; }
+grep -q -- "--version" "$TMP/cache-invoke.log" \
+  || { cat "$TMP/cache-invoke.log"; fail "the one invocation on a cache hit was not the --version probe"; }
+python3 -c "
+import json
+m = json.load(open('$TMP/out-cache-hit/run_metadata.json'))
+assert m['executor_models'] == ['stored-executor-model'], m
+assert m['executor_models_by_config']['with_skill'] == ['stored-executor-model'], m
+" || fail "a cache-hit leg's stored result did not feed run_metadata.json"
+pass
+
+# 14b (AE2). Bumping a shipped skill's version: changes the computed key
+#     (proving the leg's cache key really is sensitive to it, same as § 13's
+#     unit-level proof, but now observed through the whole main() loop), so
+#     an entry seeded under the OLD (pre-bump) key is a miss under the new
+#     one. The leg executes fresh, and a new entry lands under the CURRENT
+#     key; the superseded old entry is left in place rather than deleted --
+#     only the key that matters now is the one main() looks up.
+FACILITATOR_SKILL_MD="$CACHE_ROOT/skills/holacracy-facilitator/SKILL.md"
+cp "$FACILITATOR_SKILL_MD" "$TMP/facilitator-SKILL.md.orig"
+python3 - "$FACILITATOR_SKILL_MD" <<'PY'
+import re, sys
+path = sys.argv[1]
+text = open(path).read()
+bumped = re.sub(r'^version:\s*[0-9]+\.[0-9]+\.[0-9]+\s*$', 'version: 99.0.0',
+                text, count=1, flags=re.MULTILINE)
+assert bumped != text, "no version: field found to bump"
+open(path, "w").write(bumped)
+PY
+CACHE_KEY_WS_BUMPED="$(cache_key_for "$CACHE_ROOT" "$TMP/case/evals.json" 0 with_skill 1 "" "$CLI_VERSION")"
+[ "$CACHE_KEY_WS_BUMPED" != "$CACHE_KEY_WS" ] \
+  || fail "bumping a shipped skill's version did not change the computed cache key"
+
+seed_cache_index "$TMP/idx-bumped.json" "$CACHE_KEY_WS" \
+  "2026-08-16T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stale-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-bumped" "$TMP/idx-bumped.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "a post-bump execution did not exit 0"; }
+grep -q "cache hit" "$TMP/cache-run.out" \
+  && { cat "$TMP/cache-run.out"; fail "a leg whose skill version bumped was skipped as a cache hit"; }
+[ -f "$TMP/out-cache-bumped/eval-case-0/with_skill/run-1/grading.json" ] \
+  || fail "a leg whose cache key changed did not execute (no grading.json written)"
+python3 -c "
+import json
+g = json.load(open('$TMP/out-cache-bumped/eval-case-0/with_skill/run-1/grading.json'))
+assert g['cache_hit'] is False, g
+idx = json.load(open('$TMP/idx-bumped.json'))
+assert idx['$CACHE_KEY_WS_BUMPED']['successful'] is True, idx.get('$CACHE_KEY_WS_BUMPED')
+assert '$CACHE_KEY_WS' in idx, 'the superseded entry under the old key should not be deleted'
+" || fail "the cache index was not updated correctly after a key-changing execution"
+cp "$TMP/facilitator-SKILL.md.orig" "$FACILITATOR_SKILL_MD"
+CACHE_KEY_WS_RESTORED="$(cache_key_for "$CACHE_ROOT" "$TMP/case/evals.json" 0 with_skill 1 "" "$CLI_VERSION")"
+[ "$CACHE_KEY_WS_RESTORED" = "$CACHE_KEY_WS" ] \
+  || fail "restoring the bumped skill's version did not restore the original cache key"
+pass
+
+# 14c (AE6). An entry under the CURRENT key whose stored result was NOT
+#     successful is not reused, however fresh it is -- the leg executes
+#     again, and the index is updated with the new (successful) outcome.
+seed_cache_index "$TMP/idx-unsuccessful.json" "$CACHE_KEY_WS" \
+  "$NOW" false "mechanical-checks" with_skill "stale-executor-model" 0 4
+RC="$(run_cache "$TMP/out-cache-unsuccessful" "$TMP/idx-unsuccessful.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "execution of an unsuccessful-entry leg did not exit 0"; }
+grep -q "cache hit" "$TMP/cache-run.out" \
+  && { cat "$TMP/cache-run.out"; fail "a leg with an unsuccessful stored entry was skipped as a cache hit"; }
+[ -f "$TMP/out-cache-unsuccessful/eval-case-0/with_skill/run-1/grading.json" ] \
+  || fail "a leg with an unsuccessful stored entry did not execute"
+python3 -c "
+import json
+idx = json.load(open('$TMP/idx-unsuccessful.json'))
+assert idx['$CACHE_KEY_WS']['successful'] is True, idx['$CACHE_KEY_WS']
+" || fail "the unsuccessful entry was not replaced with a successful one after re-execution"
+pass
+
+# 14d (AE5 / U3's bounded lifetime). An entry under the CURRENT key that IS
+#     successful but 8 nights old is stale and executes again -- the ceiling
+#     a static key alone would never enforce.
+seed_cache_index "$TMP/idx-stale.json" "$CACHE_KEY_WS" \
+  "2026-08-09T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stale-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-stale" "$TMP/idx-stale.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "execution of a stale-entry leg did not exit 0"; }
+grep -q "cache hit" "$TMP/cache-run.out" \
+  && { cat "$TMP/cache-run.out"; fail "an 8-night-old entry was reused as a cache hit"; }
+[ -f "$TMP/out-cache-stale/eval-case-0/with_skill/run-1/grading.json" ] \
+  || fail "a leg with a stale stored entry did not execute"
+pass
+
+# 14e. The mirror of 14d: an entry only 3 nights old, well inside the
+#     7-night default, still skips.
+seed_cache_index "$TMP/idx-fresh3.json" "$CACHE_KEY_WS" \
+  "2026-08-14T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "stored-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-fresh3" "$TMP/idx-fresh3.json" "$NOW")"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "a 3-night-old cache hit did not exit 0"; }
+grep -q "cache hit" "$TMP/cache-run.out" \
+  || { cat "$TMP/cache-run.out"; fail "a 3-night-old entry was not reused"; }
+[ -d "$TMP/out-cache-fresh3/eval-case-0/with_skill" ] \
+  && fail "a skipped (3-night-old) leg created its run_dir"
+pass
+
+# 14f. cache_entry_is_usable itself, at the boundary --the CLI-level tests
+#     above prove the loop wires it in correctly; this proves the ceiling is
+#     exactly 7 days rather than "roughly a week", including the exact-7
+#     boundary none of the CLI-level cases above exercises.
+python3 - "$CACHE_RUNNER" <<'PY' || fail "cache_entry_is_usable did not behave as required"
+import importlib.util, sys
+from datetime import datetime, timedelta, timezone
+
+spec = importlib.util.spec_from_file_location("cache_runner_unit", sys.argv[1])
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+
+now = datetime(2026, 8, 17, tzinfo=timezone.utc)
+
+def usable(**overrides):
+    entry = {"successful": True,
+             "last_executed": (now - timedelta(days=1)).isoformat()}
+    entry.update(overrides)
+    return runner.cache_entry_is_usable(entry, now=now, max_age_days=7)
+
+assert runner.cache_entry_is_usable(None, now=now, max_age_days=7) is False, \
+    "no entry must never be usable"
+assert usable(successful=False) is False, "an unsuccessful entry must never be usable"
+assert usable(last_executed=None) is False, "a missing last_executed must not be usable"
+assert usable(last_executed="not-a-timestamp") is False, \
+    "an unparseable last_executed must not be usable (and must not raise)"
+assert usable(last_executed=(now - timedelta(days=6, hours=23)).isoformat()) is True, \
+    "an entry just under 7 days old must be usable"
+assert usable(last_executed=(now - timedelta(days=7)).isoformat()) is False, \
+    "an entry exactly 7 days old must force re-execution (R8: at least once every 7 nights)"
+assert usable(last_executed=(now - timedelta(days=8)).isoformat()) is False, \
+    "an entry 8 days old must not be usable"
+# A naive (timezone-unaware) ISO string, as a hand-edited index might carry,
+# must be treated as UTC rather than raising or comparing wrong.
+naive = (now - timedelta(days=1)).replace(tzinfo=None).isoformat()
+assert usable(last_executed=naive) is True, \
+    "a timezone-naive last_executed must be treated as UTC, not rejected"
+
+print("cache_entry_is_usable: R3-R6 and R8's 7-day boundary all hold")
+PY
+pass
+
+# 14g. --validate-only stays entirely independent of the cache index -- even
+#     one pointed at a bogus, nonexistent `claude` binary must not make
+#     --validate-only fail, because claude_cli_version() (the only thing that
+#     would invoke it) is gated on `not args.validate_only` and so is never
+#     reached from this path (R5).
+rm -f "$TMP/idx-should-not-be-touched.json"
+V_RC=0
+BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/does-not-exist-claude" python3 "$CACHE_RUNNER" \
+  --case "$TMP/case/evals.json" --out "$TMP/out-cache-validate" \
+  --validate-only --no-session-probe \
+  --cache-index "$TMP/idx-should-not-be-touched.json" \
+  >"$TMP/cache-validate.out" 2>&1 || V_RC=$?
+[ "$V_RC" = "0" ] \
+  || { cat "$TMP/cache-validate.out"; fail "--validate-only with --cache-index failed, even though the cache path should never be reached"; }
+[ -f "$TMP/idx-should-not-be-touched.json" ] \
+  && fail "--validate-only wrote to the cache index; it must never touch it"
 pass
 
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

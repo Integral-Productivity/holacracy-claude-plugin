@@ -461,6 +461,23 @@ def resolve_skill_dirs_for_leg(config: str, repo: Path = REPO) -> list[Path]:
         if p.is_dir() and p.name != "shared" and (p / "SKILL.md").exists())
 
 
+def _parse_iso_as_utc(value: str) -> datetime:
+    """Parse an ISO8601 timestamp, treating a tz-naive one as UTC.
+
+    Shared by cache_entry_is_usable (a stored entry's last_executed) and
+    main()'s --now handling (the synthetic clock tests use) -- both need the
+    identical "naive means UTC" rule, and having it in one place means a
+    later change to that rule cannot apply to only one call site by mistake.
+    Raises ValueError/TypeError on an unparseable value, same as
+    datetime.fromisoformat -- each caller decides for itself whether that
+    should crash (main()'s --now, a test-only input worth failing loudly on)
+    or degrade gracefully (cache_entry_is_usable, a stored value that must
+    never turn a malformed entry into a crashed nightly run).
+    """
+    parsed = datetime.fromisoformat(value)
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+
+
 def cache_entry_is_usable(entry: dict | None, *, now: datetime, max_age_days: int) -> bool:
     """R3-R6 plus R8: is a stored entry fresh enough to skip re-execution?
 
@@ -483,11 +500,9 @@ def cache_entry_is_usable(entry: dict | None, *, now: datetime, max_age_days: in
     if not last_executed:
         return False
     try:
-        executed_at = datetime.fromisoformat(last_executed)
+        executed_at = _parse_iso_as_utc(last_executed)
     except (ValueError, TypeError):
         return False
-    if executed_at.tzinfo is None:
-        executed_at = executed_at.replace(tzinfo=timezone.utc)
     return (now - executed_at) < timedelta(days=max_age_days)
 
 
@@ -1361,10 +1376,8 @@ def main() -> int:
         cache_index_path = Path(args.cache_index)
         cache_index = load_cache_index(cache_index_path)
         cli_version = claude_cli_version()
-        cache_now = (datetime.fromisoformat(args.now) if args.now
+        cache_now = (_parse_iso_as_utc(args.now) if args.now
                     else datetime.now(timezone.utc))
-        if cache_now.tzinfo is None:
-            cache_now = cache_now.replace(tzinfo=timezone.utc)
 
     # The session-shape preflight. Free, keyless, and the thing that would have
     # caught #226 before four graded runs were spent on a harness measuring the
@@ -1525,6 +1538,14 @@ def main() -> int:
                     }
                     cache_run_legs.append({"case": case["eval_name"], "config": config,
                                            "cache_hit": False})
+                    if cache_index_path is not None:
+                        # Saved after EVERY fresh write, not only at the very
+                        # end of the run -- a leg that just executed and cost
+                        # real API time must survive a crash or timeout in a
+                        # later leg. Cheap: the index is small JSON, and a
+                        # cache hit never reaches this branch, so a quiet
+                        # night with mostly-skipped legs writes rarely.
+                        save_cache_index(cache_index_path, cache_index)
 
     if not args.validate_only:
         (out_root / "run_metadata.json").write_text(json.dumps({
@@ -1546,11 +1567,13 @@ def main() -> int:
                                           in sorted(executors_by_config.items())},
         }, indent=2))
 
-        # Persist the cache index for tonight's writes -- new entries for
-        # every leg that executed, replaced entries for anything that failed
-        # or aged out, untouched entries for everything that was skipped.
+        # Final save: every fresh leg already persisted itself as it ran (see
+        # the incremental save above), so this mainly stamps _run_summary
+        # (below) into the file -- the one thing that has to wait until every
+        # leg has reported in. It also covers the all-cache-hit case, where
+        # the incremental save above never fires because nothing executed.
         # cache_index_path is None whenever --cache-index was not passed, so
-        # this is a no-op for every existing caller of this script.
+        # this whole block is a no-op for every existing caller of this script.
         if cache_index_path is not None:
             # U5 (R6): this run's hit/miss accounting, stamped into the SAME
             # index file under a key that can never collide with a

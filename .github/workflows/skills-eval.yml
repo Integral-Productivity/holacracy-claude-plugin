@@ -521,10 +521,10 @@ jobs:
 
       - name: Push the updated eval cache index
         # always(), same reasoning as the Upload step below: the runner
-        # writes the cache index after EACH case's per-config loop finishes
-        # (right alongside run_metadata.json), not only on a clean exit, so a
-        # run that times out or dies partway through may still have legs
-        # worth keeping. A plain `if:` here would let a late failure — in
+        # saves the cache index after EVERY leg that executes fresh, not
+        # only at the very end, so a run that times out or dies partway
+        # through still has every leg it actually paid for on disk. A plain
+        # `if:` here would let a late failure — in
         # Aggregate or Report, both of which run after this point in the
         # step list but must not block it — throw those away, which is
         # exactly the #199 shape: a step that cannot change the result must

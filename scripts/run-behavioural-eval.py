@@ -1014,8 +1014,27 @@ def main() -> int:
 
             eval_dir = out_root / f"eval-{suite}-{case['eval_id']}"
             eval_dir.mkdir(parents=True, exist_ok=True)
+            # The SAME collision, one layer up. #201 qualified the directory
+            # name; this field kept the bare number, and the aggregator reads
+            # it verbatim into every `runs[]` row and into
+            # `metadata.evals_run`. So two suites' eval 0 became two rows keyed
+            # `(0, <config>, <run>)` with no field telling them apart, and a
+            # four-eval suite reported three ids (#244).
+            #
+            # Qualified HERE rather than by post-processing the aggregated
+            # output, which is what #244 proposed. That works only because the
+            # aggregator never coerces this value -- it is a plain
+            # `json.load(mf).get("eval_id", eval_idx)` -- so the qualified form
+            # flows through untouched and no seam in the workflow has to
+            # re-derive the suite from the directory name.
+            #
+            # `eval_id_local` and `suite` are kept alongside so a reader of the
+            # artifact can recover the suite-local number without parsing the
+            # composite back apart. The aggregator ignores both.
             (eval_dir / "eval_metadata.json").write_text(json.dumps({
-                "eval_id": case["eval_id"],
+                "eval_id": f"{suite}-{case['eval_id']}",
+                "eval_id_local": case["eval_id"],
+                "suite": suite,
                 "eval_name": case["eval_name"],
                 "surface": doc.get("surface"),
                 "fixture": case["fixture"],

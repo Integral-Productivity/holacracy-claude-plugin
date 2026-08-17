@@ -589,7 +589,14 @@ import json, pathlib
 root = pathlib.Path('$TMP/out-clean')
 eval_dir = root / 'eval-case-0'
 assert (eval_dir / 'eval_metadata.json').exists()
-assert json.loads((eval_dir / 'eval_metadata.json').read_text())['eval_id'] == 0
+# Qualified, not the bare local number: the aggregator copies this value into
+# every runs[] row and into metadata.evals_run, where a suite-local id collides
+# across case files (#244). The directory is 'eval-case-0', so the suite is
+# 'case' and the id it reads must be 'case-0'.
+meta = json.loads((eval_dir / 'eval_metadata.json').read_text())
+assert meta['eval_id'] == 'case-0', meta['eval_id']
+assert meta['eval_id_local'] == 0, meta['eval_id_local']
+assert meta['suite'] == 'case', meta['suite']
 run = eval_dir / 'with_skill' / 'run-1'
 assert list(eval_dir.glob('*/run-*')), 'aggregator globs config/run-*'
 g = json.loads((run / 'grading.json').read_text())
@@ -667,6 +674,59 @@ FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" 
 mut_dirs="$(find "$TMP/out-collide-mut" -maxdepth 1 -type d -name 'eval-*' | wc -l | tr -d ' ')"
 [ "$mut_dirs" = "1" ] \
   || fail "the flat-key mutant produced $mut_dirs eval dirs; expected 1 collided dir, so this case no longer proves the fix is load-bearing"
+pass
+
+# ---------------------------------------------------------------------------
+# 8b. The eval_id the aggregator READS is qualified too, not just the dir name.
+# ---------------------------------------------------------------------------
+# § 8 proves the directory names no longer collide. The aggregator does not key
+# on directory names: it reads `eval_id` out of eval_metadata.json verbatim and
+# uses it for every `runs[]` row and for `metadata.evals_run`. So the same
+# collision survived at that layer -- distinct directories, identical row keys
+# (#244).
+#
+# This matters beyond tidiness because the cost correction writes per-run token
+# figures back into `runs[]`, and it can only find the right row if the key is
+# unique.
+meta_a="$TMP/out-collide/eval-suite-a-0/eval_metadata.json"
+meta_b="$TMP/out-collide/eval-suite-b-0/eval_metadata.json"
+if [ ! -f "$meta_a" ] || [ ! -f "$meta_b" ]; then
+  fail "expected eval_metadata.json in both suite dirs from the § 8 run"
+fi
+id_a="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' "$meta_a")"
+id_b="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' "$meta_b")"
+[ "$id_a" != "$id_b" ] \
+  || fail "both suites wrote eval_id '$id_a'; the aggregator cannot tell their runs apart"
+# The local number must still be recoverable, or the qualified form has thrown
+# away information rather than added to it.
+local_a="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id_local"])' "$meta_a")"
+[ "$local_a" = "0" ] \
+  || fail "eval_id_local is '$local_a'; expected the suite-local 0 to survive qualification"
+pass
+
+# Mutation: write the bare local id back into the metadata. The directories stay
+# distinct (§ 8's fix is untouched), so ONLY this case can catch it -- which is
+# exactly the point, since that is the state that shipped after #201.
+python3 - "$RUNNER" "$TMP/mut/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace('"eval_id": f"{suite}-{case[\'eval_id\']}",',
+                       '"eval_id": case["eval_id"],')
+assert mutated != text, "mutation target not found: the eval_id metadata write moved"
+dst.write_text(mutated)
+PY
+rm -rf "$TMP/out-metaid-mut"
+FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$TMP/mut/scripts/run-behavioural-eval.py" \
+    --case "$TMP/suite-a/evals.json" --case "$TMP/suite-b/evals.json" \
+    --out "$TMP/out-metaid-mut" --configs with_skill --no-grade >/dev/null 2>&1
+mut_a="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' \
+  "$TMP/out-metaid-mut/eval-suite-a-0/eval_metadata.json")"
+mut_b="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' \
+  "$TMP/out-metaid-mut/eval-suite-b-0/eval_metadata.json")"
+[ "$mut_a" = "$mut_b" ] \
+  || fail "the bare-id mutant produced distinct eval_ids ('$mut_a' vs '$mut_b'); this case no longer proves the qualifier is load-bearing"
 pass
 
 # ---------------------------------------------------------------------------

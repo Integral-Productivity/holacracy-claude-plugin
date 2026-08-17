@@ -345,3 +345,32 @@ jobs:
         # each scored every NEGATIVE assertion green, since a model that never
         # ran issues no forbidden write.
         run: bash scripts/run-behavioural-eval.test.sh
+
+      - name: cache-key-completeness-check regression suite
+        # Guards scripts/cache-key-completeness-check.sh (R7), the static
+        # assertion that CACHE_KEY_INPUT_CLASSES and compute_cache_key's own
+        # source in run-behavioural-eval.py agree about which file-tree input
+        # classes participate in the nightly eval's change-aware cache key.
+        #
+        # Parallel to skills-lint.sh check 4's skill-version enforcement: a
+        # documentation comment saying the enumeration is exhaustive "by
+        # design" is not enforcement, and this repo already learned that
+        # lesson once (skills-lint.sh's own header). Without this check,
+        # CACHE_KEY_INPUT_CLASSES could drift out of sync with
+        # compute_cache_key's body in either direction — a listed class the
+        # code stopped reading, or a newly hashed input nobody added to the
+        # list — and a cache hit would silently mask an actual change.
+        #
+        # Mutation-checked on the same contract as the suites above: for each
+        # of the two directions (enumeration -> code, code -> enumeration)
+        # there is a fixture violating only that direction, and the suite
+        # asserts both that the check fails on it and that it passes with
+        # that direction skipped, plus an explicit cross-isolation assertion
+        # that neither direction's fixture trips the other.
+        run: bash scripts/cache-key-completeness-check.test.sh
+
+      - name: cache-key-completeness-check on this ref
+        # The suite above proves the check works against fixtures. This runs
+        # it against the actual run-behavioural-eval.py, which is the point.
+        # Static, no --base needed — it reads one file's current source.
+        run: bash scripts/cache-key-completeness-check.sh

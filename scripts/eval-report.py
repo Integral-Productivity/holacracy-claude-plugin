@@ -39,9 +39,24 @@ Four shapes it must survive, each with a case in eval-report.test.sh:
   3. a config present in the run but missing from the baseline
   4. an empty (or absent) run_summary
 
+CACHE-SUMMARY SECTION (U5, R6)
+------------------------------
+Optional and independent of everything above: pass --cache-index to also
+render a "clean skip vs fresh execution" section, read from
+run-behavioural-eval.py's change-aware cache index rather than from
+benchmark.json. That index is a repo-owned file (unlike the aggregator's
+schema, which is external and pinned) -- see run-behavioural-eval.py's
+`_run_summary` docstring for why a leg's cache_hit/miss for THIS run has to
+be recorded by the runner itself rather than reconstructed after the fact.
+This section must survive the same style of malformed input as the rest of
+the file: a missing index file, an empty `{}` index (the very first run, or
+a run where caching was never enabled), and an index that predates the
+`_run_summary` key.
+
 Usage:
     python3 scripts/eval-report.py --current benchmark.json \
-        --baseline evals/benchmark.json
+        --baseline evals/benchmark.json \
+        [--cache-index cache-index.json]
 """
 
 import argparse
@@ -118,14 +133,93 @@ def render(cur, base):
     return lines
 
 
-def load(path):
-    """Parse a benchmark file, or {} when it is not there.
+def render_cache_summary(index):
+    """Return the change-aware cache's hit/miss section as a list of lines.
 
-    A missing baseline is the state this repo is actually in until a graded run
-    seeds one, so it is a normal path rather than an error.
+    `index` is whatever `load()` returned for --cache-index: {} for a missing
+    or unparseable file (same tolerant contract as run-behavioural-eval.py's
+    own load_cache_index), or the real parsed dict otherwise. Three shapes
+    beyond the happy path must not crash this, mirroring the rest of the
+    file's "informational, never fatal" contract:
+
+      - {} (no file, or an empty index -- the very first run ever, or a run
+        where --cache-index was never enabled)
+      - a real index that predates this unit, so it has `leg_*` entries but
+        no `_run_summary` key
+      - a `_run_summary` whose fields are missing or the wrong type (a
+        hand-edited index, or a schema this reader has not seen yet)
+
+    In all three, this renders a plain "no data" line rather than raising --
+    there is nothing else useful to say, and the caller's continue-on-error
+    posture exists precisely so a malformed report never costs the graded
+    run that produced it.
+    """
+    lines = ["\n## Change-aware eval cache\n"]
+    summary = index.get("_run_summary") if isinstance(index, dict) else None
+    if not isinstance(summary, dict):
+        lines.append("_No cache-run summary available (caching was not "
+                     "enabled for this run, or none has run since this "
+                     "report existed)._")
+        return lines
+
+    def as_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    hits = as_int(summary.get("hits"))
+    misses = as_int(summary.get("misses"))
+    total = hits + misses
+
+    lines.append("| | legs |")
+    lines.append("|---|---|")
+    lines.append(f"| cache hits (unchanged, skipped) | {hits} |")
+    lines.append(f"| fresh executions | {misses} |")
+    lines.append(f"| total | {total} |")
+
+    if total and misses == 0:
+        lines.append("\n_Clean skip: every leg's result was already cached "
+                     "-- nothing that could move a result has changed since "
+                     "the last run._")
+    elif total and hits == 0:
+        lines.append("\n_No cache hits: every leg executed fresh._")
+
+    legs = summary.get("legs")
+    by_config = {}
+    if isinstance(legs, list):
+        for leg in legs:
+            if not isinstance(leg, dict):
+                continue
+            config = leg.get("config")
+            if not isinstance(config, str) or not config:
+                config = "?"
+            counts = by_config.setdefault(config, {"hits": 0, "misses": 0})
+            counts["hits" if leg.get("cache_hit") else "misses"] += 1
+    if by_config:
+        lines.append("\n| config | hits | misses |")
+        lines.append("|---|---|---|")
+        for config, counts in sorted(by_config.items()):
+            lines.append(f"| {config} | {counts['hits']} | {counts['misses']} |")
+
+    return lines
+
+
+def load(path):
+    """Parse a JSON file, or {} when it is missing or unparseable.
+
+    A missing baseline is the state this repo is actually in until a graded
+    run seeds one, so it is a normal path rather than an error. Shared with
+    --cache-index for the same reason: the very first run has no cache index
+    on disk yet either, and that must render, not crash.
     """
     p = pathlib.Path(path)
-    return json.loads(p.read_text()) if p.exists() else {}
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except json.JSONDecodeError:
+        return {}
 
 
 def main(argv=None):
@@ -134,9 +228,16 @@ def main(argv=None):
                         help="benchmark.json produced by this run")
     parser.add_argument("--baseline", default="evals/benchmark.json",
                         help="the committed baseline to compare against")
+    parser.add_argument("--cache-index", default=None,
+                        help="optional: also render the change-aware cache's "
+                             "hit/miss summary, read from "
+                             "run-behavioural-eval.py's --cache-index file")
     args = parser.parse_args(argv)
 
-    print("\n".join(render(load(args.current), load(args.baseline))))
+    lines = render(load(args.current), load(args.baseline))
+    if args.cache_index:
+        lines += render_cache_summary(load(args.cache_index))
+    print("\n".join(lines))
     return 0
 
 

@@ -392,6 +392,22 @@ def compute_cache_key(case: dict, *, skill_dirs: list[Path] = (), fixture_path: 
 # (default 7): a leg whose key never changes is still forced back through a
 # real execution at least once a week, so "nothing on disk changed" cannot
 # turn into "never re-verified against live model behaviour" (R8).
+#
+# THE `_run_summary` KEY (U5, R6)
+# ---------------------------------
+# Every entry keyed `leg_<32hex>` is a per-leg cache record (see
+# compute_cache_key). A skip never rewrites the entry it reuses, so by the
+# time a run finishes, the stored entries alone cannot say which legs THIS
+# run actually skipped versus executed -- only what the entry's last WRITE
+# looked like, possibly nights ago. main() tracks that distinction itself as
+# it goes (`cache_run_legs`) and stamps it into the index under the single
+# reserved key `_run_summary` right before the index is saved. The leading
+# underscore keeps it unambiguous against the `leg_` prefix: any reader that
+# only knows to look for `leg_*` entries skips it for free, and a reader
+# built before this key existed simply never looks for it. It is overwritten
+# whole every run -- it describes the run that just finished, not a running
+# total -- and scripts/eval-report.py's cache-summary section is its only
+# consumer.
 # ---------------------------------------------------------------------------
 
 DEFAULT_CACHE_MAX_AGE_DAYS = 7
@@ -1367,6 +1383,15 @@ def main() -> int:
     # appear"; only the per-config split answers "did the two arms run on the
     # same one", which is the question a delta depends on.
     executors_by_config: dict = {}
+    # U5: this run's OWN record of which branch each leg actually took. A
+    # stored `leg_<hash>` entry's `successful`/`last_executed` describe the
+    # state as of whenever it was last WRITTEN, not "was this leg reused
+    # THIS run" -- a skip never rewrites its entry (see the cache-hit branch
+    # below), so by the time the run ends there is no way to tell "still
+    # valid from three nights ago" apart from "reused tonight" by reading
+    # stored entries alone. This list is recorded regardless of whether
+    # caching is enabled; it is simply empty when it is not.
+    cache_run_legs: list[dict] = []
 
     for case_path in args.case:
         doc = load_case_file(Path(case_path))
@@ -1434,6 +1459,8 @@ def main() -> int:
                     # leg's runs -- no run_once, no touching run_dir, no
                     # subprocess of any kind. That is the entire savings this
                     # unit exists to produce.
+                    cache_run_legs.append({"case": case["eval_name"], "config": config,
+                                           "cache_hit": True})
                     stored_grading = cache_entry["grading"]
                     record_leg_bookkeeping(stored_grading, config, executors,
                                            analyzers, executors_by_config)
@@ -1496,6 +1523,8 @@ def main() -> int:
                         "case": case["eval_name"],
                         "config": config,
                     }
+                    cache_run_legs.append({"case": case["eval_name"], "config": config,
+                                           "cache_hit": False})
 
     if not args.validate_only:
         (out_root / "run_metadata.json").write_text(json.dumps({
@@ -1523,6 +1552,21 @@ def main() -> int:
         # cache_index_path is None whenever --cache-index was not passed, so
         # this is a no-op for every existing caller of this script.
         if cache_index_path is not None:
+            # U5 (R6): this run's hit/miss accounting, stamped into the SAME
+            # index file under a key that can never collide with a
+            # `leg_<hash>` entry (see compute_cache_key) -- a reader that
+            # only knows the `leg_` prefix can skip it outright, and an
+            # older reader that predates this key simply never looks for it.
+            # Overwritten whole every run (it describes tonight, not a
+            # running total), so scripts/eval-report.py's cache-summary
+            # section always reflects the run that just finished rather than
+            # some earlier night's leftovers.
+            cache_index["_run_summary"] = {
+                "generated_at": cache_now.isoformat(),
+                "hits": sum(1 for leg in cache_run_legs if leg["cache_hit"]),
+                "misses": sum(1 for leg in cache_run_legs if not leg["cache_hit"]),
+                "legs": cache_run_legs,
+            }
             save_cache_index(cache_index_path, cache_index)
 
         # The arms must have run on the SAME executor model, or the delta

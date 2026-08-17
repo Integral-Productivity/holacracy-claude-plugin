@@ -495,12 +495,29 @@ jobs:
         # here, none of that was reachable by any test, and the crash was
         # discovered by a paid nightly instead. `continue-on-error` above limits
         # the damage of a crash; the suite is what stops it happening.
+        #
+        # --cache-index (U5, R6) adds a second, independent section: the
+        # change-aware cache's hit/miss summary for TONIGHT's run, read from
+        # the SAME index the "Run the behavioural evals" step just finished
+        # writing to (it must run after that step, and before "Push the
+        # updated eval cache index" below reads the same path). It never
+        # touches aggregate_benchmark.py's schema or benchmark.json — that
+        # section still reads only benchmark-current.json — so a reader
+        # cannot tell "everything was a clean skip tonight" apart from "the
+        # graded step produced nothing" without it (Success Criteria #1).
+        # Guarded the same way the eval-running step guards it: a keyless
+        # night still runs this step (present == 'true' gates BOTH), but
+        # CACHE_INDEX_PATH is set by the same "Prepare the eval-cache-index
+        # checkout" step under the same `if`, so it is always present here —
+        # the `-n` check is defensive rather than expected to trigger, same
+        # reasoning as the eval-running step's own.
         continue-on-error: true
         run: |
           set -euo pipefail
-          python3 scripts/eval-report.py \
-            --current "$RUNNER_TEMP/benchmark-current.json" \
-            --baseline evals/benchmark.json >> "$GITHUB_STEP_SUMMARY"
+          args=(--current "$RUNNER_TEMP/benchmark-current.json" \
+                --baseline evals/benchmark.json)
+          if [ -n "${CACHE_INDEX_PATH:-}" ]; then args+=(--cache-index "$CACHE_INDEX_PATH"); fi
+          python3 scripts/eval-report.py "${args[@]}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Push the updated eval cache index
         # always(), same reasoning as the Upload step below: the runner

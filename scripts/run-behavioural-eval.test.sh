@@ -1341,6 +1341,20 @@ assert m['executor_models_by_config']['with_skill'] == ['stored-executor-model']
 " || fail "a cache-hit leg's stored result did not feed run_metadata.json"
 pass
 
+# 14a-summary (U5, R6). An all-cache-hit night's run must record itself as
+#     such in the index's `_run_summary` -- 1 hit, 0 misses, and the one leg
+#     tagged cache_hit: true -- so a downstream reader can tell "everything
+#     was already cached" apart from "nothing ran at all".
+python3 -c "
+import json
+idx = json.load(open('$TMP/idx-hit.json'))
+s = idx['_run_summary']
+assert s['hits'] == 1, s
+assert s['misses'] == 0, s
+assert s['legs'] == [{'case': 'mechanical-checks', 'config': 'with_skill', 'cache_hit': True}], s
+" || fail "an all-cache-hit run did not record itself in _run_summary"
+pass
+
 # 14b (AE2). Bumping a shipped skill's version: changes the computed key
 #     (proving the leg's cache key really is sensitive to it, same as § 13's
 #     unit-level proof, but now observed through the whole main() loop), so
@@ -1379,6 +1393,10 @@ assert g['cache_hit'] is False, g
 idx = json.load(open('$TMP/idx-bumped.json'))
 assert idx['$CACHE_KEY_WS_BUMPED']['successful'] is True, idx.get('$CACHE_KEY_WS_BUMPED')
 assert '$CACHE_KEY_WS' in idx, 'the superseded entry under the old key should not be deleted'
+s = idx['_run_summary']
+assert s['hits'] == 0, s
+assert s['misses'] == 1, s
+assert s['legs'] == [{'case': 'mechanical-checks', 'config': 'with_skill', 'cache_hit': False}], s
 " || fail "the cache index was not updated correctly after a key-changing execution"
 cp "$TMP/facilitator-SKILL.md.orig" "$FACILITATOR_SKILL_MD"
 CACHE_KEY_WS_RESTORED="$(cache_key_for "$CACHE_ROOT" "$TMP/case/evals.json" 0 with_skill 1 "" "$CLI_VERSION")"
@@ -1489,6 +1507,34 @@ BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/does-not-exist-claude" python3 "$CACHE_RUNNER"
   || { cat "$TMP/cache-validate.out"; fail "--validate-only with --cache-index failed, even though the cache path should never be reached"; }
 [ -f "$TMP/idx-should-not-be-touched.json" ] \
   && fail "--validate-only wrote to the cache index; it must never touch it"
+pass
+
+# 14h (U5, R6). A mixed night -- one leg a cache hit, the other a fresh
+#     execution -- must show up in `_run_summary` as 1 hit + 1 miss, with
+#     each leg's own cache_hit flag matching the branch it actually took.
+#     This is the case a naive "compare against the newest last_executed
+#     timestamp" heuristic gets wrong in the OTHER direction from 14a's
+#     all-hit run: here a fresh write really did happen this run, so the
+#     failure mode to rule out is mislabelling which leg it was, not
+#     whether one happened at all.
+seed_cache_index "$TMP/idx-mixed.json" "$CACHE_KEY_WS" \
+  "2026-08-16T00:00:00+00:00" true "mechanical-checks" with_skill \
+  "fake-executor-model" 4 4
+RC="$(run_cache "$TMP/out-cache-mixed" "$TMP/idx-mixed.json" "$NOW" --configs with_skill,without_skill)"
+[ "$RC" = "0" ] || { cat "$TMP/cache-run.err"; fail "a mixed hit/miss run did not exit 0"; }
+[ -d "$TMP/out-cache-mixed/eval-case-0/with_skill" ] \
+  && fail "the cache-hit leg of a mixed run created its run_dir"
+[ -f "$TMP/out-cache-mixed/eval-case-0/without_skill/run-1/grading.json" ] \
+  || fail "the fresh leg of a mixed run did not execute"
+python3 -c "
+import json
+idx = json.load(open('$TMP/idx-mixed.json'))
+s = idx['_run_summary']
+assert s['hits'] == 1, s
+assert s['misses'] == 1, s
+legs = {leg['config']: leg['cache_hit'] for leg in s['legs']}
+assert legs == {'with_skill': True, 'without_skill': False}, s
+" || fail "a mixed hit/miss run did not record per-leg hit/miss correctly in _run_summary"
 pass
 
 echo "run-behavioural-eval.test.sh: $CASES cases passed"

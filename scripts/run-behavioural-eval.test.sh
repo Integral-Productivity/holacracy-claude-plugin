@@ -200,7 +200,12 @@ if results:
 # exercise the one ratio the ledger exists to report.
 usage = {"input_tokens": 100, "output_tokens": 200,
          "cache_creation_input_tokens": 40, "cache_read_input_tokens": 360}
-model_usage = {EXECUTOR_MODEL: {"inputTokens": 100, "costUSD": 0.01}}
+# The full per-model field set, summing to the same 700 `usage` reports. The
+# real CLI reports both and they should agree; carrying only inputTokens here
+# would make the agreement check unexercisable.
+model_usage = {EXECUTOR_MODEL: {"inputTokens": 100, "outputTokens": 200,
+                                "cacheCreationInputTokens": 40,
+                                "cacheReadInputTokens": 360, "costUSD": 0.01}}
 
 # The shapes a derivation must survive, each reproducing something the real API
 # actually emits rather than a hypothetical:
@@ -221,8 +226,18 @@ if os.environ.get("FAKE_EXOTIC_USAGE"):
 
 # One pass, two models: the eval tool set offers Task, and a subagent turn can
 # be served by a different model. Taking the first key would drop the second.
+# The totals are SPLIT rather than added, so the per-model map still sums to
+# what `usage` reports -- two models is not by itself a discrepancy.
 if os.environ.get("FAKE_MULTI_MODEL"):
-    model_usage["fake-subagent-model"] = {"inputTokens": 15, "costUSD": 0.003}
+    model_usage[EXECUTOR_MODEL]["inputTokens"] = 85
+    model_usage["fake-subagent-model"] = {"inputTokens": 15, "outputTokens": 0,
+                                          "cacheCreationInputTokens": 0,
+                                          "cacheReadInputTokens": 0, "costUSD": 0.003}
+
+# The two sources genuinely disagreeing, which must warn rather than let one
+# silently win.
+if os.environ.get("FAKE_USAGE_MISMATCH"):
+    model_usage[EXECUTOR_MODEL]["outputTokens"] = 999
 
 print(json.dumps({"type": "result", "is_error": False,
                   "result": leg.get("final", "done"),

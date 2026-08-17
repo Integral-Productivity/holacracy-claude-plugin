@@ -289,6 +289,190 @@ pass
 pass
 
 # ---------------------------------------------------------------------------
+# 10. The correction rewrites all three sites the aggregator writes.
+# ---------------------------------------------------------------------------
+# The figure is not one number. It is a {mean,stddev,min,max} block per config,
+# a PREFORMATTED STRING delta that is a sibling of the config keys, and a
+# per-run integer. Correcting a subset leaves the artifacts disagreeing.
+#
+# The fixture is the aggregator's real output shape. When $AGGREGATOR points at
+# the pinned upstream script (CI does this), it is produced BY that script over
+# the tree above, so the shape cannot drift from the thing being corrected.
+# Otherwise a committed shape stands in, so a local run still works offline.
+bench() { echo "$TMP/bench.json"; }
+if [ -n "${AGGREGATOR:-}" ] && [ -f "${AGGREGATOR:-}" ]; then
+  cp -r "$TREE" "$TMP/aggtree"
+  # The aggregator needs the grading.json rows it keys on; cost.json alone is
+  # invisible to it.
+  python3 - "$TMP/aggtree" <<'PY'
+import json, pathlib, sys
+for run in pathlib.Path(sys.argv[1]).glob("eval-*/*/run-*"):
+    (run / "outputs").mkdir(exist_ok=True)
+    (run / "outputs" / "transcript.md").write_text("x" * 4321)
+    (run / "grading.json").write_text(json.dumps({
+        "summary": {"passed": 1, "failed": 0, "total": 1, "pass_rate": 1.0},
+        "expectations": [{"text": "t", "passed": True, "evidence": "e"}],
+        # A NONZERO duration, which is what makes the aggregator skip its
+        # timing.json fallback and fall through to output_chars.
+        "timing": {"total_duration_seconds": 12.5, "total_tokens": 999},
+        "execution_metrics": {"total_tool_calls": 3, "output_chars": 4321},
+    }))
+    (run / "timing.json").write_text(json.dumps(
+        {"total_duration_seconds": 12.5, "total_tokens": 999}))
+PY
+  python3 "$AGGREGATOR" "$TMP/aggtree" --skill-name t --skill-path t >/dev/null 2>&1 \
+    || fail "the pinned aggregator failed on the synthetic tree"
+  cp "$TMP/aggtree/benchmark.json" "$TMP/bench.json"
+  echo "eval-cost.test.sh: using the real aggregator at $AGGREGATOR"
+else
+  echo "eval-cost.test.sh: AGGREGATOR unset; using the committed shape fixture"
+  cat > "$TMP/bench.json" <<'EOF'
+{
+  "metadata": {"skill_name": "t", "evals_run": ["suite-a-0"]},
+  "runs": [
+    {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 1,
+     "result": {"pass_rate": 1.0, "time_seconds": 12.5, "tokens": 4321,
+                "tool_calls": 3, "errors": 0},
+     "expectations": [], "notes": ""},
+    {"eval_id": "suite-a-0", "configuration": "without_skill", "run_number": 1,
+     "result": {"pass_rate": 1.0, "time_seconds": 12.5, "tokens": 4321,
+                "tool_calls": 3, "errors": 0},
+     "expectations": [], "notes": ""}
+  ],
+  "run_summary": {
+    "with_skill": {"pass_rate": {"mean": 1.0, "stddev": 0, "min": 1.0, "max": 1.0},
+                   "tokens": {"mean": 4321.0, "stddev": 0.0, "min": 4321.0, "max": 4321.0}},
+    "without_skill": {"pass_rate": {"mean": 1.0, "stddev": 0, "min": 1.0, "max": 1.0},
+                      "tokens": {"mean": 4321.0, "stddev": 0.0, "min": 4321.0, "max": 4321.0}},
+    "delta": {"pass_rate": "+0.0%", "tokens": "+0"}
+  }
+}
+EOF
+fi
+
+# The character count is really there before the correction runs. If this ever
+# stops holding, the cases below are asserting against a defect that is gone
+# and the whole section is measuring nothing.
+pre_tokens="$(python3 -c "
+import json;d=json.load(open('$TMP/bench.json'))
+print(int(float(d['run_summary']['with_skill']['tokens']['mean'])))")"
+[ "$pre_tokens" = "4321" ] \
+  || fail "the fixture's pre-correction tokens figure is $pre_tokens, not the 4321 character count these cases exist to correct"
+pass
+
+"$COST" correct --benchmark "$TMP/bench.json" --cost "$TMP/summary.json" >/dev/null 2>&1 \
+  || fail "correct exited non-zero"
+bq() { python3 -c "
+import json;d=json.load(open('$TMP/bench.json'));print($1)"; }
+
+# Site 1: per-config stats. with_skill runs total 780 tokens.
+[ "$(bq "int(float(d['run_summary']['with_skill']['tokens']['mean']))")" = "780" ] \
+  || fail "the per-config tokens block still holds the character count"
+# Site 2: per-run rows, joined on the qualified eval_id.
+[ "$(bq "[r['result']['tokens'] for r in d['runs'] if r['configuration']=='with_skill'][0]")" = "780" ] \
+  || fail "the per-run row still holds the character count"
+# Site 3: the delta, in the aggregator's own +/- format. without_skill totals
+# 280, so the delta is +500.
+[ "$(bq "d['run_summary']['delta']['tokens']")" = "+500" ] \
+  || fail "the delta string was not rewritten in the aggregator's format"
+pass
+
+# Idempotent: recomputed from the same source, so a second run changes nothing.
+cp "$TMP/bench.json" "$TMP/bench-once.json"
+"$COST" correct --benchmark "$TMP/bench.json" --cost "$TMP/summary.json" >/dev/null 2>&1
+cmp -s "$TMP/bench-once.json" "$TMP/bench.json" \
+  || fail "running the correction twice changed the benchmark"
+pass
+
+# An already-correct upstream figure warns about nothing. This is what makes
+# "the aggregator was fixed upstream" an observable state rather than an
+# unimplementable predicate about whether an int is a token count.
+quiet="$("$COST" correct --benchmark "$TMP/bench.json" --cost "$TMP/summary.json" 2>&1 >/dev/null)"
+case "$quiet" in
+  *"disagreed"*) fail "a correct figure still produced a disagreement warning" ;;
+  *) : ;;
+esac
+pass
+
+# A genuine zero survives as zero rather than becoming a character count. The
+# aggregator's guard is `if not result.get("tokens")` -- a truthiness test -- so
+# this is unreachable by any value the runner could write instead.
+ZERO="$TMP/zerotree"
+mk_run "$ZERO" suite-a 0 with_skill 1 '{"schema":1,"cli_version":"1.2.3",
+ "passes":{"executor":{"status":"ok","reason":null,
+   "usage":{"input_tokens":0,"output_tokens":0,
+            "cache_creation_input_tokens":0,"cache_read_input_tokens":0},
+   "model_usage":{},"total_cost_usd":0.0},
+  "grader":{"status":"not_invoked","reason":"none","usage":null,
+            "model_usage":null,"total_cost_usd":null}}}'
+"$COST" aggregate --run-tree "$ZERO" --out "$TMP/zero.json" >/dev/null 2>&1
+cat > "$TMP/bench-zero.json" <<'EOF'
+{"metadata": {}, "runs": [
+  {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}}],
+ "run_summary": {"with_skill": {"tokens": {"mean": 4321.0, "stddev": 0.0,
+                                           "min": 4321.0, "max": 4321.0}}}}
+EOF
+"$COST" correct --benchmark "$TMP/bench-zero.json" --cost "$TMP/zero.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/bench-zero.json'))
+print(int(float(d['run_summary']['with_skill']['tokens']['mean'])))")" = "0" ] \
+  || fail "a genuine zero was not written as zero"
+pass
+
+# ---------------------------------------------------------------------------
+# 11. Two suites sharing a local eval_id land on their own rows.
+# ---------------------------------------------------------------------------
+# The reason U1 exists. Before it, runs[] rows were keyed by a suite-local id
+# and two case files' eval 0 were indistinguishable -- so this join would put
+# one suite's figure on the other's row, silently.
+JOIN="$TMP/jointree"
+mk_run "$JOIN" suite-a 0 with_skill 1 "{\"schema\":1,\"cli_version\":\"1.2.3\",
+  \"passes\":{\"executor\":$(ok_pass 100 0 0 0 0.01 model-x),
+    \"grader\":{\"status\":\"not_invoked\",\"reason\":\"n\",\"usage\":null,
+                \"model_usage\":null,\"total_cost_usd\":null}}}"
+mk_run "$JOIN" suite-b 0 with_skill 1 "{\"schema\":1,\"cli_version\":\"1.2.3\",
+  \"passes\":{\"executor\":$(ok_pass 500 0 0 0 0.05 model-x),
+    \"grader\":{\"status\":\"not_invoked\",\"reason\":\"n\",\"usage\":null,
+                \"model_usage\":null,\"total_cost_usd\":null}}}"
+"$COST" aggregate --run-tree "$JOIN" --out "$TMP/join.json" >/dev/null 2>&1
+cat > "$TMP/bench-join.json" <<'EOF'
+{"metadata": {}, "runs": [
+  {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}},
+  {"eval_id": "suite-b-0", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}}],
+ "run_summary": {"with_skill": {"tokens": {"mean": 4321.0, "stddev": 0.0,
+                                           "min": 4321.0, "max": 4321.0}}}}
+EOF
+"$COST" correct --benchmark "$TMP/bench-join.json" --cost "$TMP/join.json" >/dev/null 2>&1
+joined="$(python3 -c "
+import json;d=json.load(open('$TMP/bench-join.json'))
+print(','.join(str(r['result']['tokens']) for r in d['runs']))")"
+[ "$joined" = "100,500" ] \
+  || fail "the join produced '$joined'; each suite's figure did not land on its own row"
+pass
+
+# A benchmark row with no cost record keeps its figure and says so, rather than
+# being silently zeroed.
+cat > "$TMP/bench-orphan.json" <<'EOF'
+{"metadata": {}, "runs": [
+  {"eval_id": "suite-ghost-9", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}}],
+ "run_summary": {}}
+EOF
+orphan="$("$COST" correct --benchmark "$TMP/bench-orphan.json" --cost "$TMP/join.json" 2>&1 >/dev/null)"
+case "$orphan" in
+  *"no cost record for run"*) : ;;
+  *) fail "an unmatched benchmark row produced no warning" ;;
+esac
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/bench-orphan.json'))
+print(d['runs'][0]['result']['tokens'])")" = "4321" ] \
+  || fail "an unmatched row was overwritten instead of left alone"
+pass
+
+# ---------------------------------------------------------------------------
 # Mutations.
 # ---------------------------------------------------------------------------
 mutate() {  # $1=label $2=find $3=replace
@@ -363,6 +547,52 @@ python3 "$TMP/mut-blend.py" aggregate --run-tree "$TREE" --out "$TMP/mut4.json" 
 [ "$(python3 -c "
 import json;d=json.load(open('$TMP/mut4.json'));print(d['runs'][0]['tokens_total'])")" != "780" ] \
   || fail "dropping the grader from the total still produced 780; case 1 is not load-bearing"
+pass
+
+# The delta rewrite is its own site. Drop it and the string keeps the value it
+# was computed from -- the exact "JSON and markdown disagree" state R12 exists
+# to prevent, and the one a reader is least likely to check.
+mutate delta \
+  'delta["tokens"] = f"{p_mean - b_mean:+.0f}"' \
+  'pass'
+cp "$TMP/bench-once.json" "$TMP/bench-delta.json"
+python3 - "$TMP/bench-delta.json" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); d = json.loads(p.read_text())
+d["run_summary"]["delta"]["tokens"] = "+0"
+for cfg in ("with_skill", "without_skill"):
+    if cfg in d["run_summary"]:
+        d["run_summary"][cfg]["tokens"] = {"mean": 4321, "stddev": 0, "min": 4321, "max": 4321}
+p.write_text(json.dumps(d, indent=2))
+PY
+python3 "$TMP/mut-delta.py" correct --benchmark "$TMP/bench-delta.json" \
+  --cost "$TMP/summary.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/bench-delta.json'))
+print(d['run_summary']['delta']['tokens'])")" = "+0" ] \
+  || fail "the delta mutant still rewrote the delta; that site is not separately covered"
+pass
+
+# The join key is the whole row identity. Drop the eval_id from it and two
+# suites' rows become indistinguishable again.
+mutate joinkey \
+  'key = (row.get("eval_id"), row.get("configuration"), row.get("run_number"))' \
+  'key = (row.get("configuration"), row.get("run_number"))'
+cat > "$TMP/bench-joinmut.json" <<'EOF'
+{"metadata": {}, "runs": [
+  {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}},
+  {"eval_id": "suite-b-0", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}}],
+ "run_summary": {}}
+EOF
+python3 "$TMP/mut-joinkey.py" correct --benchmark "$TMP/bench-joinmut.json" \
+  --cost "$TMP/join.json" >/dev/null 2>&1
+mut_join="$(python3 -c "
+import json;d=json.load(open('$TMP/bench-joinmut.json'))
+print(','.join(str(r['result']['tokens']) for r in d['runs']))")"
+[ "$mut_join" != "100,500" ] \
+  || fail "the join still resolved per-suite without eval_id in the key; case 11 is not load-bearing"
 pass
 
 echo "eval-cost.test.sh: $CASES cases passed"

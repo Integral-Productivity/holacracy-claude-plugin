@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import pathlib
 import sys
 
@@ -312,6 +313,133 @@ def cmd_aggregate(args) -> int:
     return 0
 
 
+def stats(values: list) -> dict:
+    """The aggregator's own {mean, stddev, min, max} shape, recomputed.
+
+    Matched to `calculate_stats` upstream rather than improved on: this
+    overwrites a block the aggregator wrote, and a differently-shaped
+    replacement would break every reader of it, including eval-report.py.
+    """
+    if not values:
+        return {"mean": 0.0, "stddev": 0.0, "min": 0.0, "max": 0.0}
+    n = len(values)
+    mean = sum(values) / n
+    # SAMPLE variance (n - 1), and 0.0 for a single value -- upstream's choice,
+    # mirrored rather than corrected. Using the population form here would make
+    # the corrected stddev differ from every other stddev in the same file for
+    # no reason a reader could see.
+    stddev = math.sqrt(sum((x - mean) ** 2 for x in values) / (n - 1)) if n > 1 else 0.0
+    return {
+        "mean": round(mean, 4),
+        "stddev": round(stddev, 4),
+        "min": round(min(values), 4),
+        "max": round(max(values), 4),
+    }
+
+
+def cmd_correct(args) -> int:
+    """Replace the aggregator's `tokens` figure with a real token count.
+
+    WHY THIS IS NEEDED AT ALL
+    -------------------------
+    The aggregator reads run duration from grading.json and only falls back to
+    timing.json -- the one place a token count lived -- when that duration is
+    zero. The runner always writes a nonzero duration, so the fallback never
+    fires, `tokens` is never assigned from a token count, and a later guard
+    fills it from `output_chars`. The column labelled tokens holds a transcript
+    character count.
+
+    That guard is `if not result.get("tokens")`, a TRUTHINESS test, so a
+    genuine zero falls through to output_chars too. Making the upstream
+    fallback fire is therefore not an available shortcut -- there is no value
+    the runner could write that survives it -- which is why the correction is
+    structurally required rather than a preference.
+
+    The defect is local plumbing, not an upstream mistake: the aggregator
+    documents output_chars as a deliberate proxy for callers with no real usage
+    data. This repo has it and simply never delivered it to the branch that
+    would consume it.
+
+    WHY IT IS UNCONDITIONAL
+    -----------------------
+    "Replace only when the figure is not already a token count" names a
+    condition no code can test: a token count and a character count are both
+    ints, with nothing distinguishing them. And an upstream figure that was
+    correct but executor-only would be left alone while still failing to
+    reconcile with an executor-plus-grader breakdown. Recomputing every time is
+    idempotent, reconciles by construction, and turns "upstream already
+    correct" into an assertion that the warning below stays silent.
+    """
+    bench_path = pathlib.Path(args.benchmark)
+    cost_path = pathlib.Path(args.cost)
+    benchmark = read_json(bench_path)
+    cost = read_json(cost_path)
+    if benchmark is None or cost is None:
+        print("benchmark or cost summary could not be read", file=sys.stderr)
+        return 2
+
+    # Keyed exactly as the aggregator keys its rows. The suite qualifier in
+    # eval_id is what makes this unambiguous; without it two case files' eval 0
+    # produce the same key and the figures land on the wrong rows.
+    by_key = {}
+    by_config: dict = {}
+    for run in cost.get("runs", []):
+        key = (run.get("eval_id"), run.get("config"), run.get("run_number"))
+        by_key[key] = run["tokens_total"]
+        by_config.setdefault(run.get("config"), []).append(run["tokens_total"])
+
+    changed, missed, disagreed = 0, 0, 0
+
+    # Site 1 of 3: the per-run rows.
+    for row in benchmark.get("runs", []):
+        key = (row.get("eval_id"), row.get("configuration"), row.get("run_number"))
+        if key not in by_key:
+            missed += 1
+            warn(f"no cost record for run {key}; leaving its tokens figure as reported")
+            continue
+        result = row.setdefault("result", {})
+        if result.get("tokens") != by_key[key]:
+            if result.get("tokens"):
+                disagreed += 1
+            result["tokens"] = by_key[key]
+            changed += 1
+
+    # Site 2 of 3: the per-config statistics block.
+    summary = benchmark.get("run_summary") or {}
+    for config, totals in by_config.items():
+        entry = summary.get(config)
+        if not isinstance(entry, dict):
+            warn(f"run_summary has no entry for config {config!r}; its tokens were not corrected")
+            continue
+        recomputed = stats(sorted(totals))
+        if entry.get("tokens") != recomputed:
+            entry["tokens"] = recomputed
+            changed += 1
+
+    # Site 3 of 3: the delta, which is a PREFORMATTED STRING and a sibling of
+    # the config keys -- the shape that crashed a paid run in #199. Rewritten in
+    # the aggregator's own f"{x:+.0f}" format so benchmark.md, which renders it
+    # verbatim, cannot disagree on format rather than value.
+    delta = summary.get("delta")
+    if isinstance(delta, dict) and len(by_config) >= 2:
+        primary = summary.get("with_skill") or {}
+        baseline = summary.get("without_skill") or {}
+        p_mean = (primary.get("tokens") or {}).get("mean", 0)
+        b_mean = (baseline.get("tokens") or {}).get("mean", 0)
+        delta["tokens"] = f"{p_mean - b_mean:+.0f}"
+        changed += 1
+
+    if disagreed:
+        warn(f"{disagreed} run(s) carried a tokens figure that disagreed with the "
+             f"recomputed token count; the recomputed value was written")
+    if missed:
+        warn(f"{missed} benchmark row(s) had no matching cost record")
+
+    bench_path.write_text(json.dumps(benchmark, indent=2))
+    print(f"corrected {changed} tokens figure(s) in {bench_path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -322,6 +450,13 @@ def build_parser() -> argparse.ArgumentParser:
                      help="the benchmark directory the runner produced")
     agg.add_argument("--out", required=True, help="where to write cost-summary.json")
     agg.set_defaults(func=cmd_aggregate)
+
+    fix = sub.add_parser("correct", help="rewrite the aggregator's tokens figure")
+    fix.add_argument("--benchmark", required=True,
+                     help="benchmark.json, rewritten in place")
+    fix.add_argument("--cost", required=True,
+                     help="the cost-summary.json produced by `aggregate`")
+    fix.set_defaults(func=cmd_correct)
 
     return parser
 

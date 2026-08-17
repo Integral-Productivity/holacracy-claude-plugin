@@ -1,0 +1,21 @@
+# The commit of anthropics/claude-plugins-official that supplies
+# plugins/skill-creator/skills/skill-creator/scripts/aggregate_benchmark.py.
+#
+# ONE FILE BECAUSE THERE ARE TWO CONSUMERS.
+# The graded job in skills-eval.yml runs the aggregator to produce a benchmark.
+# The per-PR job in scripts-test.yml runs the SAME aggregator so eval-cost.py's
+# correction is verified against real upstream output rather than a fixture.
+# Two copies of a SHA drift, and a drifted pin is invisible until the two jobs
+# disagree about a schema -- which is the failure mode pinning exists to remove.
+#
+# TO BUMP: change the line below, then read upstream's diff for
+# aggregate_benchmark.py. The correction in scripts/eval-cost.py rewrites three
+# figures in that script's output and eval-report.py parses its schema, so a
+# shape change lands on both. The per-PR suite now exercises that path, so a
+# bump that breaks it reddens the PR that bumps it rather than the next paid
+# nightly.
+#
+#   gh api repos/anthropics/claude-plugins-official/commits/main -q .sha
+#
+# Tip of anthropics/claude-plugins-official main as of 2026-08-06.
+36b00173da517876f9e574ef98f3564b0e86c25d

@@ -68,6 +68,24 @@ argv = sys.argv[1:]
 def opt(name):
     return argv[argv.index(name) + 1] if name in argv else None
 
+# FIRST, before anything reads FAKE_PLAN or PLUGIN_NS. `cli_version()` shells
+# out to `<bin> --version`, and without this branch that call falls through to
+# the plan-replay path below and dies on a missing file -- so the version would
+# silently record as null in every offline run and #237's stamp would be
+# untested.
+if "--version" in argv:
+    if os.environ.get("FAKE_NO_VERSION"):
+        sys.stderr.write("simulated: unknown flag --version\n")
+        sys.exit(2)
+    # A binary that prints a usage error to STDOUT and exits non-zero. This is
+    # the shape a returncode-blind reader records as the version string, since
+    # subprocess.run does not raise without check=True.
+    if os.environ.get("FAKE_VERSION_NONZERO"):
+        print("error: unknown option '--version'")
+        sys.exit(2)
+    print("1.2.3-fake (Claude Code)")
+    sys.exit(0)
+
 # Deliberately NOT whatever --model asked for. The runner must record what
 # answered, not what was requested, and identical strings would let a runner
 # that echoed the request pass § 9.
@@ -129,8 +147,17 @@ if "--json-schema" in argv:
         sys.exit(4)
     plan = json.load(open(os.environ["FAKE_PLAN"]))
     verdicts = plan.get("grader", [])
+    # The grader is a second full model call per graded eval -- roughly half the
+    # tier's spend -- so it reports usage exactly as the executor does. Before
+    # the cost ledger this payload carried modelUsage alone, and the rest was
+    # never read.
     print(json.dumps({"type": "result",
-                      "modelUsage": {ANALYZER_MODEL: {"inputTokens": 10}},
+                      "modelUsage": {ANALYZER_MODEL: {"inputTokens": 10,
+                                                      "costUSD": 0.002}},
+                      "usage": {"input_tokens": 10, "output_tokens": 20,
+                                "cache_creation_input_tokens": 5,
+                                "cache_read_input_tokens": 45},
+                      "total_cost_usd": 0.002,
                       "result": json.dumps({"expectations": verdicts})}))
     sys.exit(0)
 
@@ -175,18 +202,62 @@ print(json.dumps({"type": "assistant",
                   "message": {"model": EXECUTOR_MODEL, "content": content}}))
 if results:
     print(json.dumps({"type": "user", "message": {"content": results}}))
+# Cache-bearing by default, because a usage object without cache fields cannot
+# exercise the one ratio the ledger exists to report.
+usage = {"input_tokens": 100, "output_tokens": 200,
+         "cache_creation_input_tokens": 40, "cache_read_input_tokens": 360}
+# The full per-model field set, summing to the same 700 `usage` reports. The
+# real CLI reports both and they should agree; carrying only inputTokens here
+# would make the agreement check unexercisable.
+model_usage = {EXECUTOR_MODEL: {"inputTokens": 100, "outputTokens": 200,
+                                "cacheCreationInputTokens": 40,
+                                "cacheReadInputTokens": 360, "costUSD": 0.01}}
+
+# The shapes a derivation must survive, each reproducing something the real API
+# actually emits rather than a hypothetical:
+#   service_tier      a STRING in an object otherwise full of token counts
+#   cache_creation    the 1-hour tier's nested breakdown, reported ALONGSIDE
+#                     the flat cache_creation_input_tokens it decomposes, so
+#                     summing "every field" double-counts it
+#   server_tool_use   a counter that is not a token count at all
+#   a novel scalar    whatever the API adds next
+if os.environ.get("FAKE_EXOTIC_USAGE"):
+    usage.update({
+        "service_tier": "standard",
+        "cache_creation": {"ephemeral_5m_input_tokens": 30,
+                           "ephemeral_1h_input_tokens": 10},
+        "server_tool_use": {"web_search_requests": 2},
+        "some_future_tokens": 7,
+    })
+
+# One pass, two models: the eval tool set offers Task, and a subagent turn can
+# be served by a different model. Taking the first key would drop the second.
+# The totals are SPLIT rather than added, so the per-model map still sums to
+# what `usage` reports -- two models is not by itself a discrepancy.
+if os.environ.get("FAKE_MULTI_MODEL"):
+    model_usage[EXECUTOR_MODEL]["inputTokens"] = 85
+    model_usage["fake-subagent-model"] = {"inputTokens": 15, "outputTokens": 0,
+                                          "cacheCreationInputTokens": 0,
+                                          "cacheReadInputTokens": 0, "costUSD": 0.003}
+
+# The two sources genuinely disagreeing, which must warn rather than let one
+# silently win.
+if os.environ.get("FAKE_USAGE_MISMATCH"):
+    model_usage[EXECUTOR_MODEL]["outputTokens"] = 999
 
 # Reproduces diagnostic run 32055798335: every without_skill leg billed an
 # auxiliary model that answered no visible turn, listed FIRST in modelUsage,
 # ahead of the model that actually produced the assistant event above. #222.
-model_usage = {EXECUTOR_MODEL: {"inputTokens": 100}}
+# Prepended to the map built above rather than replacing it: the cost ledger
+# needs the cache-bearing entries, and #222's question is purely about ORDER.
 if os.environ.get("FAKE_AUX_MODEL_FIRST"):
     model_usage = {"fake-auxiliary-model": {"inputTokens": 5}, **model_usage}
 
 print(json.dumps({"type": "result", "is_error": False,
                   "result": leg.get("final", "done"),
                   "modelUsage": model_usage,
-                  "usage": {"input_tokens": 100, "output_tokens": 200}}))
+                  "total_cost_usd": 0.01,
+                  "usage": usage}))
 PY
 chmod +x "$TMP/fake-claude.py"
 
@@ -597,7 +668,14 @@ import json, pathlib
 root = pathlib.Path('$TMP/out-clean')
 eval_dir = root / 'eval-case-0'
 assert (eval_dir / 'eval_metadata.json').exists()
-assert json.loads((eval_dir / 'eval_metadata.json').read_text())['eval_id'] == 0
+# Qualified, not the bare local number: the aggregator copies this value into
+# every runs[] row and into metadata.evals_run, where a suite-local id collides
+# across case files (#244). The directory is 'eval-case-0', so the suite is
+# 'case' and the id it reads must be 'case-0'.
+meta = json.loads((eval_dir / 'eval_metadata.json').read_text())
+assert meta['eval_id'] == 'case-0', meta['eval_id']
+assert meta['eval_id_local'] == 0, meta['eval_id_local']
+assert meta['suite'] == 'case', meta['suite']
 run = eval_dir / 'with_skill' / 'run-1'
 assert list(eval_dir.glob('*/run-*')), 'aggregator globs config/run-*'
 g = json.loads((run / 'grading.json').read_text())
@@ -654,10 +732,22 @@ pass
 # proving the suite qualifier is what prevents it rather than some incidental
 # property of the run. The runner resolves REPO from its own location and
 # fixtures relative to it, so the mutant needs a shadow root with evals/.
-mkdir -p "$TMP/mut/scripts"
-ln -s "$REPO/evals" "$TMP/mut/evals"
-ln -s "$REPO/.claude-plugin" "$TMP/mut/.claude-plugin"
-python3 - "$RUNNER" "$TMP/mut/scripts/run-behavioural-eval.py" <<'PY'
+# One shadow root PER mutant. Three cases used to share a single path, each
+# overwriting the last, so a build that failed left the PREVIOUS case's mutant
+# behind and the case silently exercised the wrong one -- a stale mutant being
+# worse than an absent one, because it still produces plausible output. The
+# runner resolves REPO from its own location, hence the symlinked evals/ and
+# manifest.
+new_mut_root() {  # $1 = label; echoes the root
+  local root="$TMP/mut-$1"
+  mkdir -p "$root/scripts"
+  ln -sfn "$REPO/evals" "$root/evals"
+  ln -sfn "$REPO/.claude-plugin" "$root/.claude-plugin"
+  rm -f "$root/scripts/run-behavioural-eval.py"
+  echo "$root"
+}
+MUT_FLATKEY="$(new_mut_root flatkey)"
+python3 - "$RUNNER" "$MUT_FLATKEY/scripts/run-behavioural-eval.py" <<'PY'
 import pathlib, sys
 src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 text = src.read_text()
@@ -667,14 +757,213 @@ mutated = text.replace("eval-{suite}-{", "eval-{")
 assert mutated != text, "mutation target not found: the eval dir naming moved"
 dst.write_text(mutated)
 PY
+[ -s "$MUT_FLATKEY/scripts/run-behavioural-eval.py" ] \
+  || fail "could not build the flat-key mutant: its target moved. This case would otherwise run a stale or absent mutant and pass vacuously."
 rm -rf "$TMP/out-collide-mut"
 FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
-  python3 "$TMP/mut/scripts/run-behavioural-eval.py" \
+  python3 "$MUT_FLATKEY/scripts/run-behavioural-eval.py" \
     --case "$TMP/suite-a/evals.json" --case "$TMP/suite-b/evals.json" \
     --out "$TMP/out-collide-mut" --configs with_skill --no-grade >/dev/null 2>&1
 mut_dirs="$(find "$TMP/out-collide-mut" -maxdepth 1 -type d -name 'eval-*' | wc -l | tr -d ' ')"
 [ "$mut_dirs" = "1" ] \
   || fail "the flat-key mutant produced $mut_dirs eval dirs; expected 1 collided dir, so this case no longer proves the fix is load-bearing"
+pass
+
+# ---------------------------------------------------------------------------
+# 8b. The eval_id the aggregator READS is qualified too, not just the dir name.
+# ---------------------------------------------------------------------------
+# § 8 proves the directory names no longer collide. The aggregator does not key
+# on directory names: it reads `eval_id` out of eval_metadata.json verbatim and
+# uses it for every `runs[]` row and for `metadata.evals_run`. So the same
+# collision survived at that layer -- distinct directories, identical row keys
+# (#244).
+#
+# This matters beyond tidiness because the cost correction writes per-run token
+# figures back into `runs[]`, and it can only find the right row if the key is
+# unique.
+meta_a="$TMP/out-collide/eval-suite-a-0/eval_metadata.json"
+meta_b="$TMP/out-collide/eval-suite-b-0/eval_metadata.json"
+if [ ! -f "$meta_a" ] || [ ! -f "$meta_b" ]; then
+  fail "expected eval_metadata.json in both suite dirs from the § 8 run"
+fi
+id_a="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' "$meta_a")"
+id_b="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' "$meta_b")"
+[ "$id_a" != "$id_b" ] \
+  || fail "both suites wrote eval_id '$id_a'; the aggregator cannot tell their runs apart"
+# The local number must still be recoverable, or the qualified form has thrown
+# away information rather than added to it.
+local_a="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id_local"])' "$meta_a")"
+[ "$local_a" = "0" ] \
+  || fail "eval_id_local is '$local_a'; expected the suite-local 0 to survive qualification"
+pass
+
+# Mutation: write the bare local id back into the metadata. The directories stay
+# distinct (§ 8's fix is untouched), so ONLY this case can catch it -- which is
+# exactly the point, since that is the state that shipped after #201.
+MUT_METAID="$(new_mut_root metaid)"
+python3 - "$RUNNER" "$MUT_METAID/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace('"eval_id": f"{suite}-{case[\'eval_id\']}",',
+                       '"eval_id": case["eval_id"],')
+assert mutated != text, "mutation target not found: the eval_id metadata write moved"
+dst.write_text(mutated)
+PY
+[ -s "$MUT_METAID/scripts/run-behavioural-eval.py" ] \
+  || fail "could not build the bare-metadata-id mutant: its target moved. This case would otherwise run a stale or absent mutant and pass vacuously."
+rm -rf "$TMP/out-metaid-mut"
+FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$MUT_METAID/scripts/run-behavioural-eval.py" \
+    --case "$TMP/suite-a/evals.json" --case "$TMP/suite-b/evals.json" \
+    --out "$TMP/out-metaid-mut" --configs with_skill --no-grade >/dev/null 2>&1
+mut_a="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' \
+  "$TMP/out-metaid-mut/eval-suite-a-0/eval_metadata.json")"
+mut_b="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["eval_id"])' \
+  "$TMP/out-metaid-mut/eval-suite-b-0/eval_metadata.json")"
+[ "$mut_a" = "$mut_b" ] \
+  || fail "the bare-id mutant produced distinct eval_ids ('$mut_a' vs '$mut_b'); this case no longer proves the qualifier is load-bearing"
+pass
+
+# ---------------------------------------------------------------------------
+# 8c. cost.json records both passes raw, with each pass's terminal state.
+# ---------------------------------------------------------------------------
+# The ledger's whole premise: usage_tokens() sums four fields into one integer
+# at the point of capture, so the cache-read/cache-creation ratio -- the number
+# that says whether caching works -- is destroyed before anything persists.
+# cost.json keeps the objects instead.
+cost_of() {  # $1 = run dir, $2 = python expression over `c`
+  python3 -c "
+import json,sys
+c = json.load(open(sys.argv[1] + '/cost.json'))
+print($2)" "$1"
+}
+
+# A graded run: both passes invoked, both reporting usage. The judged case is
+# required here -- the mechanical-only case file has no judged assertions, so
+# its grader is legitimately never invoked and could not report usage.
+rm -rf "$TMP/out-cost"
+FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case-judged/evals.json" --out "$TMP/out-cost" \
+    --configs with_skill >/dev/null 2>&1
+COST_RUN="$TMP/out-cost/eval-case-judged-0/with_skill/run-1"
+[ -f "$COST_RUN/cost.json" ] || fail "no cost.json was written"
+pass
+
+# Raw, not summed: the four executor fields survive as themselves. Asserting
+# the cache pair specifically, because those are the two usage_tokens() adds
+# together and thereby makes unrecoverable.
+[ "$(cost_of "$COST_RUN" "c['passes']['executor']['usage']['cache_read_input_tokens']")" = "360" ] \
+  || fail "cache_read_input_tokens did not survive into cost.json"
+[ "$(cost_of "$COST_RUN" "c['passes']['executor']['usage']['cache_creation_input_tokens']")" = "40" ] \
+  || fail "cache_creation_input_tokens did not survive into cost.json"
+pass
+
+# The grader's usage is recorded at all -- before this it was parsed for the
+# model name and the rest discarded, so half the tier's spend was invisible.
+[ "$(cost_of "$COST_RUN" "c['passes']['grader']['status']")" = "ok" ] \
+  || fail "grader status is not ok on a run whose grader succeeded"
+[ "$(cost_of "$COST_RUN" "c['passes']['grader']['usage']['output_tokens']")" = "20" ] \
+  || fail "the grader pass recorded no usage"
+pass
+
+# #237: the CLI that produced the figures is named.
+[ "$(cost_of "$COST_RUN" "c['cli_version']")" = "1.2.3-fake (Claude Code)" ] \
+  || fail "cost.json does not name the CLI version"
+pass
+
+# An unreachable --version records null rather than a guess.
+rm -rf "$TMP/out-nover"
+FAKE_NO_VERSION=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-nover" \
+    --configs with_skill --no-grade >/dev/null 2>&1
+[ "$(cost_of "$TMP/out-nover/eval-case-0/with_skill/run-1" "c['cli_version']")" = "None" ] \
+  || fail "an unresolvable CLI version was recorded as something other than null"
+pass
+
+# A binary that prints to STDOUT and exits non-zero must also record null.
+# subprocess.run does not raise without check=True, so a reader that only tests
+# for empty output would stamp "error: unknown option '--version'" into every
+# cost record as the CLI version -- confidently wrong, which is worse than absent.
+rm -rf "$TMP/out-verfail"
+FAKE_VERSION_NONZERO=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-verfail" \
+    --configs with_skill --no-grade >/dev/null 2>&1
+[ "$(cost_of "$TMP/out-verfail/eval-case-0/with_skill/run-1" "c['cli_version']")" = "None" ] \
+  || fail "a non-zero --version exit had its stdout recorded as the CLI version"
+pass
+
+# The three grader states are distinguishable. This is the one that under-reports
+# spend if collapsed: `failed` means the subprocess launched and was BILLED --
+# a full-timeout generation thrown away -- while `not_invoked` cost nothing.
+[ "$(cost_of "$TMP/out-nover/eval-case-0/with_skill/run-1" "c['passes']['grader']['status']")" = "not_invoked" ] \
+  || fail "--no-grade did not record the grader as not_invoked"
+rm -rf "$TMP/out-gdie"
+FAKE_GRADER_DIE=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case-judged/evals.json" --out "$TMP/out-gdie" \
+    --configs with_skill >/dev/null 2>&1
+gdie="$TMP/out-gdie/eval-case-judged-0/with_skill/run-1"
+[ "$(cost_of "$gdie" "c['passes']['grader']['status']")" = "failed" ] \
+  || fail "a grader that died was not recorded as failed"
+[ "$(cost_of "$gdie" "c['passes']['grader']['usage']")" = "None" ] \
+  || fail "a failed grader reported usage it could not have had"
+pass
+
+# An executor that errored still records whatever it billed, and says it failed.
+rm -rf "$TMP/out-edie"
+FAKE_CLAUDE_AUTH_FAIL=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-edie" \
+    --configs with_skill --no-grade >/dev/null 2>&1
+[ "$(cost_of "$TMP/out-edie/eval-case-0/with_skill/run-1" "c['passes']['executor']['status']")" = "failed" ] \
+  || fail "an executor that errored was not recorded as failed"
+pass
+
+# Unrecognised fields are STORED. Whether they reach a derived figure is
+# eval-cost.py's contract, not this file's -- the point here is that nothing in
+# the runner filters the object on its way to disk.
+rm -rf "$TMP/out-exotic"
+FAKE_EXOTIC_USAGE=1 FAKE_MULTI_MODEL=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-exotic" \
+    --configs with_skill --no-grade >/dev/null 2>&1
+exotic="$TMP/out-exotic/eval-case-0/with_skill/run-1"
+[ "$(cost_of "$exotic" "c['passes']['executor']['usage']['service_tier']")" = "standard" ] \
+  || fail "a non-numeric usage field was dropped on the way to cost.json"
+[ "$(cost_of "$exotic" "c['passes']['executor']['usage']['cache_creation']['ephemeral_1h_input_tokens']")" = "10" ] \
+  || fail "the nested cache_creation breakdown was dropped"
+[ "$(cost_of "$exotic" "c['passes']['executor']['usage']['some_future_tokens']")" = "7" ] \
+  || fail "an unrecognised scalar field was dropped"
+# Both models survive; taking the first key would lose the subagent's.
+[ "$(cost_of "$exotic" "len(c['passes']['executor']['model_usage'])")" = "2" ] \
+  || fail "a two-model pass was collapsed to one entry"
+pass
+
+# Mutation: restore the summing capture. cost.json then carries an integer
+# where the object was, and the cache ratio is unrecoverable again.
+MUT_SUMUSAGE="$(new_mut_root sumusage)"
+python3 - "$RUNNER" "$MUT_SUMUSAGE/scripts/run-behavioural-eval.py" <<'PY'
+import pathlib, sys
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+text = src.read_text()
+mutated = text.replace('"usage": event.get("usage"),',
+                       '"usage": usage_tokens([event]),')
+assert mutated != text, "mutation target not found: raw_usage's usage capture moved"
+dst.write_text(mutated)
+PY
+[ -s "$MUT_SUMUSAGE/scripts/run-behavioural-eval.py" ] \
+  || fail "could not build the summing-usage mutant: its target moved. This case would otherwise run a stale or absent mutant and pass vacuously."
+rm -rf "$TMP/out-cost-mut"
+FAKE_PLAN="$TMP/plan-clean.json" BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$MUT_SUMUSAGE/scripts/run-behavioural-eval.py" --case "$TMP/case/evals.json" \
+    --out "$TMP/out-cost-mut" --configs with_skill --no-grade >/dev/null 2>&1
+mut_usage="$(cost_of "$TMP/out-cost-mut/eval-case-0/with_skill/run-1" \
+  "type(c['passes']['executor']['usage']).__name__")"
+[ "$mut_usage" = "int" ] \
+  || fail "the summing mutant stored a $mut_usage; expected the collapsed int that makes this case load-bearing"
 pass
 
 # ---------------------------------------------------------------------------

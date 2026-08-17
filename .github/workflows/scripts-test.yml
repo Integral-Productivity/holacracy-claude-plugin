@@ -324,6 +324,51 @@ jobs:
         # naive suite would leave unproven.
         run: bash scripts/eval-report.test.sh
 
+      - name: Fetch skill-creator's aggregator
+        # The cost ledger's correction rewrites three figures in the OUTPUT of a
+        # script this repo does not own. Verifying that against a fixture proves
+        # only that the fixture and the correction agree; a pin bump that
+        # changes the real shape would still ship green and be found by a paid
+        # nightly.
+        #
+        # NETWORK ON THE PER-PR GATE, DELIBERATELY. That gate already downloads
+        # shellcheck from a GitHub release URL, pinned by version and SHA256 and
+        # identity-asserted before use. A commit-SHA-pinned sparse checkout is
+        # the same posture, not a new class of dependency — see ADR-0012, whose
+        # tier description was corrected in the same change that added this.
+        #
+        # Sparse and blobless so this costs a few hundred KB, not a clone.
+        #
+        # Hard-fail, matching the shellcheck download. Soft-failing here would
+        # let a BAD PIN degrade silently to the committed fixture, which is the
+        # one thing this step exists to catch — and it would do so while
+        # reporting green. An upstream outage reddening a PR is the accepted
+        # cost of that, and it is the exposure this gate already carries.
+        run: |
+          set -euo pipefail
+          AGGREGATOR="$(bash scripts/fetch-pinned-aggregator.sh "$RUNNER_TEMP/spc")"
+          echo "AGGREGATOR=$AGGREGATOR" >> "$GITHUB_ENV"
+
+      - name: eval cost ledger regression suite
+        # The cost ledger's arithmetic: which usage fields are summed, how the
+        # cache ratio is computed, and how the aggregator's mislabelled `tokens`
+        # figure is corrected.
+        #
+        # It authors cost records directly rather than driving a session, so it
+        # needs no CLI, no stub, and no API key — which is the point. The shapes
+        # that matter most here are the ones a live run produces rarely: a
+        # billed grader failure, the 1-hour tier's nested cache breakdown, a
+        # two-model pass. Waiting for a nightly to emit them is how they go
+        # untested.
+        #
+        # REQUIRE_AGGREGATOR turns the suite's "use the real aggregator when one
+        # is available" branch into an assertion here. Without it, a fetch step
+        # that silently produced nothing would leave this gate verifying the
+        # correction against its own fixture while still reporting green.
+        env:
+          REQUIRE_AGGREGATOR: "1"
+        run: bash scripts/eval-cost.test.sh
+
       - name: behavioural eval runner regression suite
         # Guards scripts/run-behavioural-eval.py (#171), the runner that turns a
         # golden case into a grading.json.

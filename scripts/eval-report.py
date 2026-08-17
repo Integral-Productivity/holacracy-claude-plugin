@@ -39,9 +39,17 @@ Four shapes it must survive, each with a case in eval-report.test.sh:
   3. a config present in the run but missing from the baseline
   4. an empty (or absent) run_summary
 
+The cost section added later is held to a stronger version of the same rule.
+#199 was none of those four shapes: it was a well-formed file carrying an
+UNANTICIPATED TYPE. So the cost section renders behind its own failure
+boundary and degrades alone -- the shape that breaks a renderer is by
+definition the one nobody wrote a guard for, and a cost table is not worth
+deleting the paid run's pass-rate table over.
+
 Usage:
     python3 scripts/eval-report.py --current benchmark.json \
-        --baseline evals/benchmark.json
+        --baseline evals/benchmark.json \
+        --cost cost-summary.json
 """
 
 import argparse
@@ -81,7 +89,7 @@ def stats_of(entry):
     return (entry or {}).get("pass_rate") or {}
 
 
-def render(cur, base):
+def render(cur, base, cost=None, base_cost=None):
     """Return the report as a list of lines."""
     cur_summary = configs_only(cur.get("run_summary"))
     base_summary = configs_only(base.get("run_summary"))
@@ -115,7 +123,92 @@ def render(cur, base):
                      "case is a defect in the case, not a finding about the skill: "
                      + ", ".join(f"`{c}` ({s:.2f})" for c, s in sorted(wide)))
 
+    # Appended last and behind its own boundary, so everything above is already
+    # built by the time the newest and least-proven code runs.
+    if cost is not None:
+        lines.extend(render_cost(cost, base_cost))
+
     return lines
+
+
+def fmt_tokens(value):
+    """A token count, or an explicit absence. Never a zero standing in for one."""
+    return f"{value:,}" if isinstance(value, (int, float)) else "n/a"
+
+
+def fmt_rate(value):
+    return f"{value:.0%}" if isinstance(value, (int, float)) else "n/a"
+
+
+def fmt_usd(value):
+    return f"${value:.4f}" if isinstance(value, (int, float)) else "n/a"
+
+
+def cost_rows(cost, base_cost):
+    """The cost table's lines, per config, both passes, never blended."""
+    configs = (cost or {}).get("configs") or {}
+    base_configs = (base_cost or {}).get("configs") or {}
+    if not configs:
+        return ["\n### Cost\n", "_No cost data in this run._"]
+
+    lines = ["\n### Cost\n",
+             "| config | pass | tokens | cache hit | USD | Δ tokens |",
+             "|---|---|---|---|---|---|"]
+    unknown = 0
+    for config, entry in sorted(configs.items()):
+        passes = (entry or {}).get("passes") or {}
+        base_passes = ((base_configs.get(config) or {}).get("passes")) or {}
+        for name in ("executor", "grader"):
+            pass_entry = passes.get(name) or {}
+            tokens = (pass_entry.get("tokens") or {}).get("total")
+            base_tokens = ((base_passes.get(name) or {}).get("tokens") or {}).get("total")
+            # .get on the baseline, never [] -- a config or pass the comparison
+            # has never seen is normal the first time a case is added, and reads
+            # as an absence rather than a delta against nothing.
+            if isinstance(tokens, (int, float)) and isinstance(base_tokens, (int, float)):
+                delta = f"{tokens - base_tokens:+,}"
+            else:
+                delta = "n/a"
+            unknown += pass_entry.get("unknown_cost") or 0
+            lines.append(f"| {config} | {name} | {fmt_tokens(tokens)} | "
+                         f"{fmt_rate(pass_entry.get('cache_hit_rate'))} | "
+                         f"{fmt_usd(pass_entry.get('usd'))} | {delta} |")
+
+    if unknown:
+        # Spend that was incurred and cannot be recovered. Saying so is the
+        # whole reason `failed` is distinguished from `not_invoked` upstream:
+        # reporting it as zero would understate the total silently.
+        noun = "pass was" if unknown == 1 else "passes were"
+        lines.append(f"\n> **{unknown} {noun} billed but reported no usage.** "
+                     "That cost is real and is missing from the totals above.")
+
+    versions = (cost or {}).get("cli_versions") or []
+    if len(versions) > 1:
+        lines.append("\n> **More than one CLI version produced these figures** ("
+                     + ", ".join(f"`{v}`" for v in versions)
+                     + "), so they are not strictly comparable.")
+    return lines
+
+
+def render_cost(cost, base_cost):
+    """The cost section, isolated so its failure cannot take the report with it.
+
+    #199 was not a missing file or malformed JSON. It was a well-formed file
+    carrying an UNANTICIPATED TYPE -- a preformatted string where a stats dict
+    was assumed -- meeting `.get("mean")`. Handling the two named absence cases
+    is therefore not enough on its own; the shape that breaks a renderer is by
+    definition the one nobody wrote a guard for.
+
+    The consequence of getting it wrong is asymmetric. This step is
+    `continue-on-error: true`, so an exception raised here would turn the step
+    yellow and silently delete the paid run's headline pass-rate table from the
+    step summary. A cost section is not worth that, so it degrades alone.
+    """
+    try:
+        return cost_rows(cost, base_cost)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring; this is the boundary
+        return ["\n### Cost\n",
+                f"_Cost data could not be rendered: {type(exc).__name__}: {exc}_"]
 
 
 def load(path):
@@ -134,9 +227,18 @@ def main(argv=None):
                         help="benchmark.json produced by this run")
     parser.add_argument("--baseline", default="evals/benchmark.json",
                         help="the committed baseline to compare against")
+    parser.add_argument("--cost", default=None,
+                        help="cost-summary.json from this run; omitted means no cost section")
+    # Supplied by path, never discovered. There is no committed cost baseline to
+    # find, and a discovery heuristic inside a script whose contract is "never
+    # crash" adds a failure mode to the one place that must not have one.
+    parser.add_argument("--cost-baseline", default=None,
+                        help="a cost summary to compare against; omitted means no delta column")
     args = parser.parse_args(argv)
 
-    print("\n".join(render(load(args.current), load(args.baseline))))
+    cost = load(args.cost) if args.cost else None
+    base_cost = load(args.cost_baseline) if args.cost_baseline else None
+    print("\n".join(render(load(args.current), load(args.baseline), cost, base_cost)))
     return 0
 
 

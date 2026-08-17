@@ -235,4 +235,131 @@ report "$TMP/real.json" "$TMP/measured-baseline.json" "$M" >/dev/null 2>&1 \
   || fail "the empty-summary mutant also broke case 1, so case 4 is not isolating that defense"
 pass
 
+# ---------------------------------------------------------------------------
+# 6. The cost section renders, and its failure degrades ALONE.
+# ---------------------------------------------------------------------------
+# The pass-rate table is the paid run's headline. Because this step is
+# `continue-on-error: true`, an exception raised while rendering cost would turn
+# the step yellow and silently delete that table from the step summary -- so the
+# cost section is held to a stronger rule than the four shapes above.
+cat > "$TMP/cost.json" <<'EOF'
+{"schema": 1, "cli_versions": ["1.2.3"],
+ "configs": {
+   "with_skill": {"runs": 1, "tokens_total": 780, "usd": 0.012,
+     "passes_with_unknown_cost": 0,
+     "passes": {"executor": {"tokens": {"total": 700}, "cache_hit_rate": 0.9,
+                             "usd": 0.01, "unknown_cost": 0, "not_invoked": 0},
+                "grader": {"tokens": {"total": 80}, "cache_hit_rate": 0.9,
+                           "usd": 0.002, "unknown_cost": 0, "not_invoked": 0}},
+     "models": {}},
+   "without_skill": {"runs": 1, "tokens_total": 280, "usd": 0.01,
+     "passes_with_unknown_cost": 0,
+     "passes": {"executor": {"tokens": {"total": 200}, "cache_hit_rate": null,
+                             "usd": 0.008, "unknown_cost": 0, "not_invoked": 0},
+                "grader": {"tokens": {"total": 80}, "cache_hit_rate": 0.9,
+                           "usd": 0.002, "unknown_cost": 0, "not_invoked": 0}},
+     "models": {}}},
+ "runs": []}
+EOF
+
+cost_report() {  # $1=cost $2=cost-baseline ("" for none) $3=interpreter override
+  local script="${3:-$REPORT}"
+  if [ -n "$2" ]; then
+    python3 "$script" --current "$TMP/real.json" --baseline "$TMP/measured-baseline.json" \
+      --cost "$1" --cost-baseline "$2" 2>&1
+  else
+    python3 "$script" --current "$TMP/real.json" --baseline "$TMP/measured-baseline.json" \
+      --cost "$1" 2>&1
+  fi
+}
+
+# Cache hit rate is readable from ONE run, with no baseline. That is the whole
+# motivating question -- it is a ratio inside a single run, so it does not wait
+# on a committed baseline that does not exist yet.
+OUT="$(cost_report "$TMP/cost.json" "")" || { echo "$OUT"; fail "the cost section crashed the report"; }
+echo "$OUT" | grep -q "### Cost" || { echo "$OUT"; fail "no cost section was rendered"; }
+echo "$OUT" | grep -q "90%" || { echo "$OUT"; fail "cache hit rate is not rendered"; }
+echo "$OUT" | grep -q "## Behavioural eval results" \
+  || { echo "$OUT"; fail "the pass-rate table vanished when cost was added"; }
+pass
+
+# No comparison supplied means no delta, not a delta against nothing.
+echo "$OUT" | grep -q '| n/a |$' || { echo "$OUT"; fail "an absent comparison did not render as n/a"; }
+pass
+
+# A config the comparison has never seen reads as an absence. Same rule the
+# pass-rate table already follows for a newly added case.
+python3 -c "
+import json
+d = json.load(open('$TMP/cost.json'))
+del d['configs']['without_skill']
+json.dump(d, open('$TMP/cost-partial.json', 'w'))"
+OUT="$(cost_report "$TMP/cost.json" "$TMP/cost-partial.json")" \
+  || { echo "$OUT"; fail "a partial comparison crashed the report"; }
+# The USD column is deliberately left out of this pattern: a literal dollar sign
+# is either a shellcheck SC2016 warning in single quotes or a positional
+# expansion in double quotes, and the assertion is about the delta.
+echo "$OUT" | grep -q '^| with_skill | executor | 700 | 90% | .* | +0 |' \
+  || { echo "$OUT"; fail "a known config produced no delta against the comparison"; }
+pass
+
+# Billed-but-unrecoverable spend is stated, never folded in as zero.
+python3 -c "
+import json
+d = json.load(open('$TMP/cost.json'))
+d['configs']['with_skill']['passes']['grader']['unknown_cost'] = 1
+json.dump(d, open('$TMP/cost-unknown.json', 'w'))"
+OUT="$(cost_report "$TMP/cost-unknown.json" "")"
+echo "$OUT" | grep -q "billed but reported no usage" \
+  || { echo "$OUT"; fail "a billed pass with no usage was not surfaced"; }
+pass
+
+# Absent and malformed both state the absence rather than crashing.
+echo '{}' > "$TMP/cost-empty.json"
+OUT="$(cost_report "$TMP/cost-empty.json" "")" || { echo "$OUT"; fail "an empty cost file crashed the report"; }
+echo "$OUT" | grep -q "No cost data" || { echo "$OUT"; fail "an empty cost file did not say so"; }
+printf 'not json at all' > "$TMP/cost-bad.json"
+OUT="$(python3 "$REPORT" --current "$TMP/real.json" --baseline "$TMP/measured-baseline.json" \
+  --cost "$TMP/cost-bad.json" 2>&1)" \
+  && { echo "$OUT"; fail "an unparseable cost file should fail at load, not render silently"; }
+pass
+
+# THE ONE THAT MATTERS: a cost summary that PARSES but carries a shape nobody
+# guarded -- a null where a mapping was assumed. This is #199's actual profile,
+# and the pass-rate table must survive it intact.
+cat > "$TMP/cost-weird.json" <<'EOF'
+{"schema": 1, "cli_versions": ["1.2.3"],
+ "configs": {"with_skill": {"passes": {"executor": null, "grader": 42}}}}
+EOF
+OUT="$(cost_report "$TMP/cost-weird.json" "")" \
+  || { echo "$OUT"; fail "an unexpected cost shape crashed the whole report"; }
+echo "$OUT" | grep -q "## Behavioural eval results" \
+  || { echo "$OUT"; fail "an unexpected cost shape deleted the pass-rate table"; }
+echo "$OUT" | grep -qE "Cost data could not be rendered|### Cost" \
+  || { echo "$OUT"; fail "an unexpected cost shape produced no cost section at all"; }
+pass
+
+# Omitting --cost leaves the report exactly as it was, so every consumer that
+# does not pass it is unaffected.
+OUT="$(report "$TMP/real.json" "$TMP/measured-baseline.json")"
+echo "$OUT" | grep -q "### Cost" && fail "a report with no --cost still rendered a cost section"
+pass
+
+# 6-mut. Remove the failure boundary. The unexpected shape must then take the
+# whole report down, proving the boundary is what saves it.
+M="$(mutate boundary 'try:
+        return cost_rows(cost, base_cost)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring; this is the boundary
+        return ["\n### Cost\n",
+                f"_Cost data could not be rendered: {type(exc).__name__}: {exc}_"]' \
+  'return cost_rows(cost, base_cost)')" || fail "could not build the boundary mutant"
+cost_report "$TMP/cost-weird.json" "" "$M" >/dev/null 2>&1 \
+  && fail "the unexpected shape survived without the boundary, so that case proves nothing"
+pass
+# ...and the boundary is specific: the well-formed cost file still renders on
+# the same mutant, so it is not masking an ordinary bug.
+cost_report "$TMP/cost.json" "" "$M" >/dev/null 2>&1 \
+  || fail "the boundary mutant also broke the well-formed case; the boundary is hiding a real defect"
+pass
+
 echo "eval-report.test.sh: $CASES cases passed"

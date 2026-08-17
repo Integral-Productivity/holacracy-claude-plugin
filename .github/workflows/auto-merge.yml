@@ -23,12 +23,16 @@
 # close-linked-issues — resolving closingIssuesReferences needs both
 # pull-requests:read and issues:read, which neither github.token nor
 # ip-labeler alone carries. See devops-excellence#536-538 and ADR-078.
+#
+# `labeled`/`unlabeled` are included (devops-excellence#520 / ADR-080) so the
+# reusable's hold-for-review check re-evaluates when that label is applied to
+# or removed from an already-open PR, not only at open/push time.
 
 name: Auto-Merge
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened, closed, labeled, unlabeled]
 
 permissions:
   contents: write

@@ -77,6 +77,12 @@ if "--version" in argv:
     if os.environ.get("FAKE_NO_VERSION"):
         sys.stderr.write("simulated: unknown flag --version\n")
         sys.exit(2)
+    # A binary that prints a usage error to STDOUT and exits non-zero. This is
+    # the shape a returncode-blind reader records as the version string, since
+    # subprocess.run does not raise without check=True.
+    if os.environ.get("FAKE_VERSION_NONZERO"):
+        print("error: unknown option '--version'")
+        sys.exit(2)
     print("1.2.3-fake (Claude Code)")
     sys.exit(0)
 
@@ -849,6 +855,19 @@ FAKE_NO_VERSION=1 FAKE_PLAN="$TMP/plan-clean.json" \
     --configs with_skill --no-grade >/dev/null 2>&1
 [ "$(cost_of "$TMP/out-nover/eval-case-0/with_skill/run-1" "c['cli_version']")" = "None" ] \
   || fail "an unresolvable CLI version was recorded as something other than null"
+pass
+
+# A binary that prints to STDOUT and exits non-zero must also record null.
+# subprocess.run does not raise without check=True, so a reader that only tests
+# for empty output would stamp "error: unknown option '--version'" into every
+# cost record as the CLI version -- confidently wrong, which is worse than absent.
+rm -rf "$TMP/out-verfail"
+FAKE_VERSION_NONZERO=1 FAKE_PLAN="$TMP/plan-clean.json" \
+  BEHAVIOURAL_EVAL_CLAUDE_BIN="$TMP/fake-claude" \
+  python3 "$RUNNER" --case "$TMP/case/evals.json" --out "$TMP/out-verfail" \
+    --configs with_skill --no-grade >/dev/null 2>&1
+[ "$(cost_of "$TMP/out-verfail/eval-case-0/with_skill/run-1" "c['cli_version']")" = "None" ] \
+  || fail "a non-zero --version exit had its stdout recorded as the CLI version"
 pass
 
 # The three grader states are distinguishable. This is the one that under-reports

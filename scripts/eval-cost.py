@@ -92,6 +92,11 @@ MODEL_FIELDS = {
 
 PASSES = ("executor", "grader")
 
+# The two configurations the aggregator computes its delta between. Named here
+# rather than inline so the delta site and its guard cannot drift apart.
+PRIMARY_CONFIG = "with_skill"
+BASELINE_CONFIG = "without_skill"
+
 
 def warn(message: str) -> None:
     """A GitHub Actions annotation that is still readable outside CI."""
@@ -159,9 +164,22 @@ def derive_pass(record: dict | None, label: str) -> dict:
     usd = record.get("total_cost_usd")
     usd = float(usd) if isinstance(usd, (int, float)) and not isinstance(usd, bool) else None
 
-    # A pass that was launched and failed has real, unrecoverable spend. Flagged
-    # so a total can say how much of itself is missing instead of implying zero.
-    cost_unknown = status == "failed"
+    # Spend that happened but cannot be totalled. Flagged so a total can say how
+    # much of itself is missing instead of implying zero.
+    #
+    # Two ways in, and keying only on `failed` missed the second. A pass can be
+    # recorded `ok` and still carry no usage object: the runner marks the
+    # executor `ok` whenever no execution error was set, even when the stream
+    # held no result event to read usage from, and the grader's success path
+    # takes whatever `payload.get("usage")` returns. Treating that as a measured
+    # zero is precisely the "unmeasured presented as measured" failure this
+    # ledger exists to prevent -- and it is worse than a visible gap, because a
+    # zero averages into a total and quietly drags it down.
+    cost_unknown = status == "failed" or (status != "not_invoked"
+                                          and record.get("usage") is None)
+    if cost_unknown and status != "failed":
+        warn(f"{label}: pass reported status {status!r} with no usage object; "
+             "recording its cost as unknown rather than zero")
 
     # AE10: the two sources should agree. Compared only when the per-model map
     # carries the full field set -- a partial map is a reporting difference, not
@@ -187,9 +205,18 @@ def derive_pass(record: dict | None, label: str) -> dict:
 
 
 def read_json(path: pathlib.Path):
+    """One unreadable record must not take the whole run tree with it.
+
+    `UnicodeDecodeError` is in the list because a job killed mid-write leaves
+    exactly that: a file with a truncated multi-byte sequence. It is a subclass
+    of ValueError, not of OSError or JSONDecodeError, so catching only those two
+    let a single corrupt record abort the aggregation of every other record --
+    the opposite of what the skip-with-warning design promises, on the one
+    occasion it is most needed.
+    """
     try:
         return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         warn(f"{path}: unreadable ({exc}); skipping")
         return None
 
@@ -208,7 +235,17 @@ def collect(tree: pathlib.Path) -> dict:
         if not eval_dir.is_dir():
             continue
         meta = read_json(eval_dir / "eval_metadata.json") or {}
-        eval_id = meta.get("eval_id", eval_dir.name)
+        # The fallback has to produce a key that could actually JOIN. The
+        # directory is `eval-<suite>-<id>` while the runner writes
+        # `<suite>-<id>`, so falling back to the bare directory name yields an
+        # id that matches nothing in the benchmark -- a guaranteed mis-join,
+        # silently, exactly when the metadata could not be read.
+        eval_id = meta.get("eval_id")
+        if not eval_id:
+            eval_id = eval_dir.name[len("eval-"):] if eval_dir.name.startswith("eval-") \
+                else eval_dir.name
+            warn(f"{eval_dir}: no eval_id in eval_metadata.json; "
+                 f"deriving {eval_id!r} from the directory name")
         for run_dir in sorted(eval_dir.glob("*/run-*")):
             record = read_json(run_dir / "cost.json")
             if record is None:
@@ -382,35 +419,51 @@ def cmd_correct(args) -> int:
     # eval_id is what makes this unambiguous; without it two case files' eval 0
     # produce the same key and the figures land on the wrong rows.
     by_key = {}
-    by_config: dict = {}
     for run in cost.get("runs", []):
         key = (run.get("eval_id"), run.get("config"), run.get("run_number"))
         by_key[key] = run["tokens_total"]
-        by_config.setdefault(run.get("config"), []).append(run["tokens_total"])
 
     changed, missed, disagreed = 0, 0, 0
+    # Accumulated from the rows ACTUALLY corrected, not from the cost records.
+    # Summarizing a different population than the rows produced a block whose
+    # max sat below a row in the same file -- internally inconsistent output
+    # that no reader could reconcile, which is exactly what the reconciliation
+    # requirement forbids.
+    corrected: dict = {}
+    missed_by_config: dict = {}
 
     # Site 1 of 3: the per-run rows.
     for row in benchmark.get("runs", []):
-        key = (row.get("eval_id"), row.get("configuration"), row.get("run_number"))
+        config = row.get("configuration")
+        key = (row.get("eval_id"), config, row.get("run_number"))
         if key not in by_key:
             missed += 1
+            missed_by_config[config] = missed_by_config.get(config, 0) + 1
             warn(f"no cost record for run {key}; leaving its tokens figure as reported")
             continue
         result = row.setdefault("result", {})
+        # `is not None`, not truthiness: an upstream figure of 0 that disagrees
+        # with a real count is still a disagreement worth naming.
+        if result.get("tokens") is not None and result.get("tokens") != by_key[key]:
+            disagreed += 1
         if result.get("tokens") != by_key[key]:
-            if result.get("tokens"):
-                disagreed += 1
             result["tokens"] = by_key[key]
             changed += 1
+        corrected.setdefault(config, []).append(by_key[key])
 
-    # Site 2 of 3: the per-config statistics block.
+    # Site 2 of 3: the per-config statistics block, over the corrected rows.
     summary = benchmark.get("run_summary") or {}
-    for config, totals in by_config.items():
+    for config, totals in corrected.items():
         entry = summary.get(config)
         if not isinstance(entry, dict):
             warn(f"run_summary has no entry for config {config!r}; its tokens were not corrected")
             continue
+        if missed_by_config.get(config):
+            # A block summarizing only part of its config would mix units: some
+            # rows in tokens, the statistics over a subset, and nothing saying so.
+            warn(f"config {config!r}: {missed_by_config[config]} of "
+                 f"{len(totals) + missed_by_config[config]} rows had no cost record; "
+                 "its statistics summarize the corrected rows only")
         recomputed = stats(sorted(totals))
         if entry.get("tokens") != recomputed:
             entry["tokens"] = recomputed
@@ -421,13 +474,31 @@ def cmd_correct(args) -> int:
     # the aggregator's own f"{x:+.0f}" format so benchmark.md, which renders it
     # verbatim, cannot disagree on format rather than value.
     delta = summary.get("delta")
-    if isinstance(delta, dict) and len(by_config) >= 2:
-        primary = summary.get("with_skill") or {}
-        baseline = summary.get("without_skill") or {}
-        p_mean = (primary.get("tokens") or {}).get("mean", 0)
-        b_mean = (baseline.get("tokens") or {}).get("mean", 0)
-        delta["tokens"] = f"{p_mean - b_mean:+.0f}"
-        changed += 1
+    if isinstance(delta, dict):
+        # Both named configs must be present AND fully corrected. Writing a
+        # delta between one config in tokens and another still in characters
+        # publishes a difference of two different units; writing one from a
+        # defaulted 0 publishes a fabricated number. Either is worse than
+        # leaving the stale value with a warning attached.
+        primary = summary.get(PRIMARY_CONFIG)
+        baseline = summary.get(BASELINE_CONFIG)
+        both_present = isinstance(primary, dict) and isinstance(baseline, dict)
+        both_clean = not (missed_by_config.get(PRIMARY_CONFIG)
+                          or missed_by_config.get(BASELINE_CONFIG))
+        if both_present and both_clean and PRIMARY_CONFIG in corrected \
+                and BASELINE_CONFIG in corrected:
+            p_mean = (primary.get("tokens") or {}).get("mean", 0)
+            b_mean = (baseline.get("tokens") or {}).get("mean", 0)
+            # The aggregator's own format, preserved exactly: benchmark.md
+            # renders this string verbatim, so a format change would make the
+            # two artifacts disagree on presentation rather than value.
+            recomputed_delta = f"{p_mean - b_mean:+.0f}"
+            if delta.get("tokens") != recomputed_delta:
+                delta["tokens"] = recomputed_delta
+                changed += 1
+        else:
+            warn(f"the token delta was left as reported: it needs {PRIMARY_CONFIG!r} and "
+                 f"{BASELINE_CONFIG!r} both present and fully covered by cost records")
 
     if disagreed:
         warn(f"{disagreed} run(s) carried a tokens figure that disagreed with the "
@@ -437,6 +508,25 @@ def cmd_correct(args) -> int:
 
     bench_path.write_text(json.dumps(benchmark, indent=2))
     print(f"corrected {changed} tokens figure(s) in {bench_path}")
+
+    # A correction that corrected NOTHING is the failure this command exists to
+    # prevent, and it used to exit 0 while saying so in a line nobody reads.
+    # Green plus "corrected 0 tokens figure(s)" means the benchmark still holds
+    # the character count -- indistinguishable, from the outside, from a run
+    # where everything was already right.
+    #
+    # `--allow-partial` exists for local experiments over a hand-built tree; CI
+    # never passes it, so a graded run that produced no joinable cost records
+    # fails loudly instead of publishing a mislabelled figure.
+    if not args.allow_partial:
+        if not by_key:
+            print("no cost records were available to correct from; refusing to report "
+                  "success on an uncorrected benchmark", file=sys.stderr)
+            return 1
+        if missed:
+            print(f"{missed} benchmark row(s) had no matching cost record; refusing to "
+                  "report success on a partially corrected benchmark", file=sys.stderr)
+            return 1
     return 0
 
 
@@ -456,6 +546,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help="benchmark.json, rewritten in place")
     fix.add_argument("--cost", required=True,
                      help="the cost-summary.json produced by `aggregate`")
+    fix.add_argument("--allow-partial", action="store_true",
+                     help="exit 0 even when some benchmark rows had no cost record "
+                          "(for local runs over a hand-built tree; CI never passes it)")
     fix.set_defaults(func=cmd_correct)
 
     return parser

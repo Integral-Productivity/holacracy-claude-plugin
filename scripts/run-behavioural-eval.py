@@ -102,6 +102,7 @@ the judged set is the cheapest available reduction in variance.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -594,9 +595,7 @@ def raw_usage(events: list) -> dict:
     return {"usage": None, "model_usage": None, "total_cost_usd": None}
 
 
-_CLI_VERSION: str | None | bool = False
-
-
+@functools.lru_cache(maxsize=1)
 def cli_version() -> str | None:
     """The CLI that produced this run's figures, resolved once per process.
 
@@ -607,20 +606,25 @@ def cli_version() -> str | None:
 
     Cached because a graded run makes ~48 executor calls and the answer cannot
     change mid-run; shelling out per run would add 48 subprocesses for a
-    constant. Returns None rather than a guess when the binary cannot be
-    reached -- an unidentifiable CLI must stay legibly absent, the same
-    discipline `observed_model` applies one field over.
+    constant. `lru_cache` rather than a hand-rolled global: the tri-state
+    sentinel that does the same job needs two `type: ignore`s and appears
+    nowhere else in this repo's scripts.
+
+    Returns None rather than a guess whenever the answer is not trustworthy --
+    an unidentifiable CLI must stay legibly absent, the same discipline
+    `observed_model` applies one field over. The exit status is part of that:
+    `subprocess.run` does not raise on a non-zero exit without `check=True`, so
+    a binary that prints a usage error to stdout and exits 2 would otherwise be
+    recorded as the version string.
     """
-    global _CLI_VERSION
-    if _CLI_VERSION is not False:
-        return _CLI_VERSION  # type: ignore[return-value]
     try:
         proc = subprocess.run([CLAUDE_BIN, "--version"], capture_output=True,
                               text=True, timeout=30)
-        _CLI_VERSION = proc.stdout.strip() or None
     except (subprocess.SubprocessError, OSError):
-        _CLI_VERSION = None
-    return _CLI_VERSION  # type: ignore[return-value]
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
 
 
 def observed_model(events: list) -> str | None:

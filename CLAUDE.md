@@ -90,7 +90,28 @@ separate tier that costs API calls and runs nightly, not per-PR. See
 ```bash
 bash scripts/evals-harness.test.sh          # fixture harness, mutation-checked
 bash scripts/run-behavioural-eval.test.sh   # the nightly runner's suite, offline
+bash scripts/eval-report.test.sh            # the step-summary renderer's suite
+bash scripts/eval-cost.test.sh              # the cost ledger's arithmetic
 ```
+
+`eval-cost.test.sh` runs offline against a committed fixture of the aggregator's
+output shape, and against the **real** pinned aggregator when `AGGREGATOR` is
+set — which CI does, via `scripts/fetch-pinned-aggregator.sh`. CI also sets
+`REQUIRE_AGGREGATOR=1`, which turns "use the real one when available" from a
+branch into an assertion: a fetch that silently produced nothing would otherwise
+leave the gate checking the correction against its own fixture and still
+reporting green.
+
+**A mutation harness that cannot fail is worse than no mutation harness.** Both
+`eval-cost.test.sh` and `eval-report.test.sh` build their mutants through a
+helper whose exit status is checked, and each suite self-tests that helper
+against a deliberately absent target. The first version did neither: the
+builder's `assert` fired into a stream nothing read, the mutant was never
+written, and the case then ran a nonexistent file — which fails, which is
+exactly what "the mutant behaves differently" asserts. Measured, with three
+targets moved and semantics untouched: `27 cases passed`, exit 0, five of six
+mutation cases vacuous. If you add a mutation case, the target string is a
+coupling to real code, and drift in it must be loud.
 
 **Both of those run on every PR; the graded tier they guard does not.**
 `.github/workflows/skills-eval.yml` runs `scripts/run-behavioural-eval.py`

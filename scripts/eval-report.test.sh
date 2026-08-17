@@ -171,21 +171,43 @@ done
 # 5. MUTATION — each mutant removes exactly one defense.
 # ---------------------------------------------------------------------------
 # mutate <name> <find> <replace>  ->  echoes the mutant's path
+# The builder's exit status is load-bearing, and used not to be.
+#
+# `assert mutated != text` fires on a drifted target, but the heredoc's status
+# was never propagated: the function went on to `echo "$dst"` and returned 0, so
+# the call site's `|| fail` could not fire. The case then ran the report through
+# a path that does not exist, which fails -- and "the mutant fails" is exactly
+# what these cases assert, so a drifted target produced a green vacuous pass.
+# Returning non-zero and requiring a non-empty mutant is what makes the call
+# sites' `|| fail` mean something.
 mutate() {
   local name="$1" find="$2" repl="$3"
   local dst="$TMP/mut-$name.py"
+  rm -f "$dst"
   python3 - "$REPORT" "$dst" "$find" "$repl" <<'PY'
 import pathlib, sys
 src, dst, find, repl = sys.argv[1:5]
 text = pathlib.Path(src).read_text()
 mutated = text.replace(find, repl)
-# If the defense is refactored, the mutation stops reproducing the defect and
-# the case below would pass while testing nothing. Fail loudly instead.
-assert mutated != text, f"mutation target not found: {find!r}"
+if mutated == text:
+    sys.stderr.write(f"mutation target not found: {find[:70]}\n")
+    raise SystemExit(1)
 pathlib.Path(dst).write_text(mutated)
 PY
+  # shellcheck disable=SC2181  # the heredoc above is the command whose status matters
+  if [ $? -ne 0 ] || [ ! -s "$dst" ]; then
+    return 1
+  fi
   echo "$dst"
 }
+
+# Self-test: an absent target must make mutate() fail, or every case below that
+# says "could not build the X mutant" is unreachable and the mutations are
+# decorative.
+if mutate selftest 'this string is deliberately absent from eval-report.py' 'x' >/dev/null 2>&1; then
+  fail "the mutate() helper accepted an absent target; every mutation case below is vacuous"
+fi
+pass
 
 # 5a. Stop excluding the `delta` sibling. This is the #199 defect exactly:
 #     .get("mean") lands on the string "+0.50".

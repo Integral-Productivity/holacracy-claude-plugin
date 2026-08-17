@@ -346,25 +346,8 @@ jobs:
         # cost of that, and it is the exposure this gate already carries.
         run: |
           set -euo pipefail
-          AGGREGATOR_SHA="$(grep -v '^#' evals/aggregator-pin.txt | tr -d '[:space:]')"
-          [ -n "$AGGREGATOR_SHA" ] || { echo "::error::empty aggregator pin"; exit 1; }
-          spc="$RUNNER_TEMP/spc"
-          git init -q "$spc"
-          git -C "$spc" remote add origin \
-            https://github.com/anthropics/claude-plugins-official.git
-          git -C "$spc" sparse-checkout set --cone \
-            plugins/skill-creator/skills/skill-creator/scripts
-          git -C "$spc" fetch -q --depth 1 --filter=blob:none origin "$AGGREGATOR_SHA"
-          git -C "$spc" checkout -q FETCH_HEAD
-          resolved=$(git -C "$spc" rev-parse HEAD)
-          if [ "$resolved" != "$AGGREGATOR_SHA" ]; then
-            echo "::error::aggregator pin is ${AGGREGATOR_SHA} but HEAD resolved to ${resolved}"
-            exit 1
-          fi
-          AGGREGATOR="$spc/plugins/skill-creator/skills/skill-creator/scripts/aggregate_benchmark.py"
-          test -f "$AGGREGATOR"
+          AGGREGATOR="$(bash scripts/fetch-pinned-aggregator.sh "$RUNNER_TEMP/spc")"
           echo "AGGREGATOR=$AGGREGATOR" >> "$GITHUB_ENV"
-          echo "aggregator pinned at $resolved"
 
       - name: eval cost ledger regression suite
         # The cost ledger's arithmetic: which usage fields are summed, how the
@@ -377,6 +360,13 @@ jobs:
         # billed grader failure, the 1-hour tier's nested cache breakdown, a
         # two-model pass. Waiting for a nightly to emit them is how they go
         # untested.
+        #
+        # REQUIRE_AGGREGATOR turns the suite's "use the real aggregator when one
+        # is available" branch into an assertion here. Without it, a fetch step
+        # that silently produced nothing would leave this gate verifying the
+        # correction against its own fixture while still reporting green.
+        env:
+          REQUIRE_AGGREGATOR: "1"
         run: bash scripts/eval-cost.test.sh
 
       - name: behavioural eval runner regression suite

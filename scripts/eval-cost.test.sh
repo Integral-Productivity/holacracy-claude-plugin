@@ -149,6 +149,25 @@ print($1)"; }
   || fail "the nested cache_creation breakdown corrupted the hit-rate denominator"
 pass
 
+# The boolean is its own shape, and it only matters in a NAMED field -- a bool
+# under some other key never reaches count() at all, because only TOKEN_FIELDS
+# are read. `True` IS an int in Python, so a guard that rejects non-numerics
+# still adds 1 for it: an off-by-one no amount of string handling catches.
+BOOLTREE="$TMP/booltree"
+mk_run "$BOOLTREE" suite-a 0 with_skill 1 '{"schema":1,"cli_version":"1.2.3",
+ "passes":{"executor":{"status":"ok","reason":null,
+   "usage":{"input_tokens":true,"output_tokens":200,
+            "cache_creation_input_tokens":0,"cache_read_input_tokens":0},
+   "model_usage":{},"total_cost_usd":null},
+  "grader":{"status":"not_invoked","reason":"n","usage":null,
+            "model_usage":null,"total_cost_usd":null}}}'
+"$COST" aggregate --run-tree "$BOOLTREE" --out "$TMP/bool.json" >/dev/null 2>&1 \
+  || fail "aggregate crashed on a boolean in a named token field"
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/bool.json'));print(d['runs'][0]['tokens_total'])")" = "200" ] \
+  || fail "a boolean in a named token field was counted as 1"
+pass
+
 # ---------------------------------------------------------------------------
 # 5. A billed failure is not a zero.
 # ---------------------------------------------------------------------------
@@ -299,7 +318,14 @@ pass
 # the pinned upstream script (CI does this), it is produced BY that script over
 # the tree above, so the shape cannot drift from the thing being corrected.
 # Otherwise a committed shape stands in, so a local run still works offline.
-bench() { echo "$TMP/bench.json"; }
+# CI sets REQUIRE_AGGREGATOR=1. Without it, "AGGREGATOR unset" is a branch, not
+# an assertion: the per-PR gate would quietly verify the correction against the
+# committed fixture instead of upstream's real output, which is the entire
+# reason that gate fetches the aggregator at all. A silently-degraded check is
+# the shape this suite exists to catch, so it must not be this suite's own.
+if [ -n "${REQUIRE_AGGREGATOR:-}" ] && { [ -z "${AGGREGATOR:-}" ] || [ ! -f "${AGGREGATOR:-}" ]; }; then
+  fail "REQUIRE_AGGREGATOR is set but AGGREGATOR is unset or missing: the correction would be verified against the fixture rather than the real aggregator"
+fi
 if [ -n "${AGGREGATOR:-}" ] && [ -f "${AGGREGATOR:-}" ]; then
   cp -r "$TREE" "$TMP/aggtree"
   # The aggregator needs the grading.json rows it keys on; cost.json alone is
@@ -523,19 +549,219 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 13. Refusing to report success on an uncorrected benchmark.
+# ---------------------------------------------------------------------------
+# "corrected 0 tokens figure(s)" on exit 0 is indistinguishable, from outside,
+# from a run where everything was already right -- while the benchmark still
+# holds the character count this command exists to replace.
+cat > "$TMP/bench-none.json" <<'EOF'
+{"metadata": {}, "runs": [
+  {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}}],
+ "run_summary": {}}
+EOF
+echo '{"schema":1,"cli_versions":[],"configs":{},"runs":[]}' > "$TMP/cost-none.json"
+none_rc=0
+"$COST" correct --benchmark "$TMP/bench-none.json" --cost "$TMP/cost-none.json" \
+  >/dev/null 2>&1 || none_rc=$?
+[ "$none_rc" -ne 0 ] \
+  || fail "correct exited 0 with no cost records at all; the benchmark keeps its character count and the run looks clean"
+pass
+
+# Partial coverage is refused too: a benchmark with one config in tokens and
+# another still in characters publishes two units side by side.
+partial_rc=0
+"$COST" correct --benchmark "$TMP/bench-join.json" --cost "$TMP/zero.json" \
+  >/dev/null 2>&1 || partial_rc=$?
+[ "$partial_rc" -ne 0 ] \
+  || fail "correct exited 0 with unmatched benchmark rows; partial coverage was reported as success"
+pass
+
+# ...and --allow-partial is the documented way out for a local hand-built tree.
+"$COST" correct --benchmark "$TMP/bench-join.json" --cost "$TMP/zero.json" \
+  --allow-partial >/dev/null 2>&1 \
+  || fail "--allow-partial did not suppress the refusal"
+pass
+
+# ---------------------------------------------------------------------------
+# 14. The statistics block agrees with the rows in its own file.
+# ---------------------------------------------------------------------------
+# Recomputing from the cost records rather than the corrected rows produced a
+# block whose max sat BELOW a row in the same file. Nobody reading the artifact
+# could reconcile that, and nothing flagged it.
+cat > "$TMP/bench-mixed.json" <<'EOF'
+{"metadata": {}, "runs": [
+  {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}},
+  {"eval_id": "suite-ghost-9", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 9999}}],
+ "run_summary": {"with_skill": {"tokens": {"mean": 4321.0, "stddev": 0.0,
+                                           "min": 4321.0, "max": 4321.0}}}}
+EOF
+"$COST" correct --benchmark "$TMP/bench-mixed.json" --cost "$TMP/join.json" \
+  --allow-partial >/dev/null 2>&1
+python3 - "$TMP/bench-mixed.json" <<'PY' || exit 1
+import json, pathlib, sys
+d = json.loads(pathlib.Path(sys.argv[1]).read_text())
+rows = [r["result"]["tokens"] for r in d["runs"] if r["configuration"] == "with_skill"]
+block = d["run_summary"]["with_skill"]["tokens"]
+# The block need not cover every row -- an unmatched row keeps its own figure --
+# but it must never claim a max BELOW a row it purports to summarize.
+if block["max"] < min(rows):
+    print(f"FAIL: stats block {block} summarizes a population disjoint from rows {rows}")
+    raise SystemExit(1)
+PY
+pass
+
+# A partially covered config says so, rather than publishing a block that looks
+# complete.
+mixed_warn="$("$COST" correct --benchmark "$TMP/bench-mixed.json" --cost "$TMP/join.json" \
+  --allow-partial 2>&1 >/dev/null)"
+case "$mixed_warn" in
+  *"summarize the corrected rows only"*) : ;;
+  *) fail "a partially covered config produced no warning about its statistics" ;;
+esac
+pass
+
+# ---------------------------------------------------------------------------
+# 15. Real variance, over more than one run.
+# ---------------------------------------------------------------------------
+# Every fixture above uses run-1, so each config's list is length 1 and only the
+# n==1 short-circuit (stddev 0.0) ever ran -- the sample-variance branch that
+# mirrors upstream's calculate_stats was never executed, while writing real
+# numbers into benchmark.json and benchmark.md.
+MULTI2="$TMP/multitree"
+mk_run "$MULTI2" suite-a 0 with_skill 1 "{\"schema\":1,\"cli_version\":\"1.2.3\",
+  \"passes\":{\"executor\":$(ok_pass 100 0 0 0 0.01 model-x),
+    \"grader\":{\"status\":\"not_invoked\",\"reason\":\"n\",\"usage\":null,
+                \"model_usage\":null,\"total_cost_usd\":null}}}"
+mk_run "$MULTI2" suite-a 0 with_skill 2 "{\"schema\":1,\"cli_version\":\"1.2.3\",
+  \"passes\":{\"executor\":$(ok_pass 300 0 0 0 0.03 model-x),
+    \"grader\":{\"status\":\"not_invoked\",\"reason\":\"n\",\"usage\":null,
+                \"model_usage\":null,\"total_cost_usd\":null}}}"
+"$COST" aggregate --run-tree "$MULTI2" --out "$TMP/multi2.json" >/dev/null 2>&1
+cat > "$TMP/bench-multi.json" <<'EOF'
+{"metadata": {}, "runs": [
+  {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 1,
+   "result": {"tokens": 4321}},
+  {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 2,
+   "result": {"tokens": 4321}}],
+ "run_summary": {"with_skill": {"tokens": {"mean": 4321.0, "stddev": 0.0,
+                                           "min": 4321.0, "max": 4321.0}}}}
+EOF
+"$COST" correct --benchmark "$TMP/bench-multi.json" --cost "$TMP/multi2.json" >/dev/null 2>&1 \
+  || fail "correct failed on a two-run config"
+# n=2 over [100, 300]: mean 200, SAMPLE stddev sqrt(((100-200)^2+(300-200)^2)/1)
+# = sqrt(20000) = 141.4214. The population form would give 100.0 -- upstream
+# uses the sample form, and mirroring it exactly is the point.
+python3 - "$TMP/bench-multi.json" <<'PY' || exit 1
+import json, pathlib, sys
+t = json.loads(pathlib.Path(sys.argv[1]).read_text())["run_summary"]["with_skill"]["tokens"]
+if abs(t["mean"] - 200.0) > 0.001 or abs(t["stddev"] - 141.4214) > 0.001:
+    print(f"FAIL: expected mean 200.0 / sample stddev 141.4214, got {t}")
+    raise SystemExit(1)
+if t["min"] != 100 or t["max"] != 300:
+    print(f"FAIL: min/max wrong: {t}")
+    raise SystemExit(1)
+PY
+pass
+
+# ---------------------------------------------------------------------------
+# 16. A pass that reports ok with no usage is unknown cost, not a measured zero.
+# ---------------------------------------------------------------------------
+# The runner marks the executor ok whenever no execution error was set, even
+# when the stream carried no result event to read usage from. Counting that as
+# zero is "unmeasured presented as measured", and worse than a visible gap
+# because a zero averages into a total and drags it down silently.
+OKNULL="$TMP/oknull"
+mk_run "$OKNULL" suite-a 0 with_skill 1 '{"schema":1,"cli_version":"1.2.3",
+ "passes":{"executor":{"status":"ok","reason":null,"usage":null,
+   "model_usage":{"model-x":{"inputTokens":600}},"total_cost_usd":null},
+  "grader":{"status":"not_invoked","reason":"n","usage":null,
+            "model_usage":null,"total_cost_usd":null}}}'
+oknull_warn="$("$COST" aggregate --run-tree "$OKNULL" --out "$TMP/oknull.json" 2>&1 >/dev/null)"
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/oknull.json'))
+print(d['configs']['with_skill']['passes']['executor']['unknown_cost'])")" = "1" ] \
+  || fail "an ok pass with no usage was recorded as a measured zero"
+case "$oknull_warn" in
+  *"with no usage object"*) : ;;
+  *) fail "an ok pass with no usage produced no warning" ;;
+esac
+pass
+
+# ---------------------------------------------------------------------------
+# 17. Records that cannot be decoded at all.
+# ---------------------------------------------------------------------------
+# A job killed mid-write leaves a truncated multi-byte sequence.
+# UnicodeDecodeError is a ValueError, not an OSError or JSONDecodeError, so
+# catching only those two let ONE corrupt record abort the aggregation of every
+# other record -- the opposite of the skip-with-warning design, on the occasion
+# it is most needed.
+BADBYTES="$TMP/badbytes"
+mk_run "$BADBYTES" suite-a 0 with_skill 1 '{}'
+printf '{"schema":1,"cli_version":"\xff\xfe truncated' \
+  > "$BADBYTES/eval-suite-a-0/with_skill/run-1/cost.json"
+mk_run "$BADBYTES" suite-b 0 with_skill 1 "{\"schema\":1,\"cli_version\":\"1.2.3\",
+  \"passes\":{\"executor\":$(ok_pass 100 200 40 360 0.01 model-x),
+    \"grader\":{\"status\":\"not_invoked\",\"reason\":\"n\",\"usage\":null,
+                \"model_usage\":null,\"total_cost_usd\":null}}}"
+"$COST" aggregate --run-tree "$BADBYTES" --out "$TMP/badbytes.json" >/dev/null 2>&1 \
+  || fail "one undecodable record aborted the entire aggregation"
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/badbytes.json'));print(len(d['runs']))")" = "1" ] \
+  || fail "the readable record was lost alongside the undecodable one"
+pass
+
+# ---------------------------------------------------------------------------
 # Mutations.
 # ---------------------------------------------------------------------------
+# A mutant builder that CANNOT fail silently.
+#
+# The first version of this helper ran the builder in a heredoc whose exit
+# status nobody read. This suite runs `set -uo pipefail` -- deliberately no
+# `-e`, because assertions are explicit `|| fail` -- so when a mutation target
+# drifted, the builder's assert fired into a stream nothing checked, the mutant
+# was never written, and the case below then ran `python3 <nonexistent>`. That
+# command fails, which is exactly what "the mutant behaves differently" asserts,
+# so the case PASSED while proving nothing.
+#
+# Measured, not theorised: with three targets textually moved and semantics
+# untouched, the suite printed `27 cases passed` and exited 0 while two mutants
+# did not exist. Five of six mutation cases degraded to a vacuous pass, and
+# every "this check is load-bearing" claim resting on them was unfounded.
+#
+# So: the builder's status is checked, the mutant must be non-empty, and a
+# missing target is a hard failure naming the drifted string.
 mutate() {  # $1=label $2=find $3=replace
-  python3 - "$COST" "$TMP/mut-$1.py" "$2" "$3" <<'PY'
+  local dst="$TMP/mut-$1.py"
+  rm -f "$dst"
+  python3 - "$COST" "$dst" "$2" "$3" <<'PY'
 import pathlib, sys
 src, dst, find, repl = sys.argv[1:5]
 text = pathlib.Path(src).read_text()
 mutated = text.replace(find, repl, 1)
-assert mutated != text, f"mutation target not found: {find[:60]}"
+if mutated == text:
+    sys.stderr.write(f"mutation target not found: {find[:70]}\n")
+    raise SystemExit(1)
 pathlib.Path(dst).write_text(mutated)
 PY
-  chmod +x "$TMP/mut-$1.py"
+  # shellcheck disable=SC2181  # the heredoc above is the command being tested
+  if [ $? -ne 0 ] || [ ! -s "$dst" ]; then
+    fail "could not build the '$1' mutant: its target moved. This case would otherwise pass vacuously."
+  fi
+  chmod +x "$dst"
 }
+
+# The harness's own self-test. Everything above is only as good as this helper,
+# so prove it fails loudly on a target that is deliberately absent -- run in a
+# subshell so its `fail` (an `exit 1`) does not end this suite.
+harness_rc=0
+( mutate selftest 'this string is deliberately absent from eval-cost.py' 'x' ) >/dev/null 2>&1 \
+  || harness_rc=$?
+[ "$harness_rc" -ne 0 ] \
+  || fail "the mutate() helper accepted an absent target; every mutation case below is vacuous"
+pass
 
 # The named field set is what stops non-counts entering the arithmetic. Widen it
 # to "every field" and the exotic tree must break.
@@ -603,8 +829,8 @@ pass
 # was computed from -- the exact "JSON and markdown disagree" state R12 exists
 # to prevent, and the one a reader is least likely to check.
 mutate delta \
-  'delta["tokens"] = f"{p_mean - b_mean:+.0f}"' \
-  'pass'
+  '                delta["tokens"] = recomputed_delta' \
+  '                pass'
 cp "$TMP/bench-once.json" "$TMP/bench-delta.json"
 python3 - "$TMP/bench-delta.json" <<'PY'
 import json, pathlib, sys
@@ -626,8 +852,8 @@ pass
 # The join key is the whole row identity. Drop the eval_id from it and two
 # suites' rows become indistinguishable again.
 mutate joinkey \
-  'key = (row.get("eval_id"), row.get("configuration"), row.get("run_number"))' \
-  'key = (row.get("configuration"), row.get("run_number"))'
+  'key = (row.get("eval_id"), config, row.get("run_number"))' \
+  'key = (None, config, row.get("run_number"))'
 cat > "$TMP/bench-joinmut.json" <<'EOF'
 {"metadata": {}, "runs": [
   {"eval_id": "suite-a-0", "configuration": "with_skill", "run_number": 1,
@@ -643,6 +869,121 @@ import json;d=json.load(open('$TMP/bench-joinmut.json'))
 print(','.join(str(r['result']['tokens']) for r in d['runs']))")"
 [ "$mut_join" != "100,500" ] \
   || fail "the join still resolved per-suite without eval_id in the key; case 11 is not load-bearing"
+pass
+
+# The bool guard, isolated. The earlier `guard` mutant collapses the whole
+# count() body, which proves the function matters but not that the BOOL clause
+# does -- a mutation that removes more than the defense it names can pass while
+# proving less than it claims.
+mutate boolguard \
+  'if isinstance(value, bool) or not isinstance(value, (int, float)):' \
+  'if not isinstance(value, (int, float)):'
+python3 "$TMP/mut-boolguard.py" aggregate --run-tree "$BOOLTREE" --out "$TMP/mutbool.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/mutbool.json'));print(d['runs'][0]['tokens_total'])")" != "200" ] \
+  || fail "dropping the bool clause alone still produced 200; the bool case is not load-bearing"
+pass
+
+# cost_unknown must key on a missing usage object, not only on the failed status.
+mutate costunknown \
+  'cost_unknown = status == "failed" or (status != "not_invoked"
+                                          and record.get("usage") is None)' \
+  'cost_unknown = status == "failed"'
+python3 "$TMP/mut-costunknown.py" aggregate --run-tree "$OKNULL" --out "$TMP/mutok.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/mutok.json'))
+print(d['configs']['with_skill']['passes']['executor']['unknown_cost'])")" != "1" ] \
+  || fail "keying cost_unknown on status alone still flagged the ok-with-no-usage pass; case 16 is not load-bearing"
+pass
+
+# Every model in a pass survives.
+mutate firstmodel \
+  'for name, entry in (model_usage or {}).items():' \
+  'for name, entry in list((model_usage or {}).items())[:1]:'
+python3 "$TMP/mut-firstmodel.py" aggregate --run-tree "$MULTI" --out "$TMP/mutmm.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/mutmm.json'))
+print(len(d['configs']['with_skill']['models']))")" != "2" ] \
+  || fail "taking only the first model entry still produced 2 models; case 6 is not load-bearing"
+pass
+
+# The two-source disagreement warns.
+mutate agreewarn \
+  'if status == "ok" and full and model_total != tokens["total"]:' \
+  'if False and full and model_total != tokens["total"]:'
+mut_warn="$(python3 "$TMP/mut-agreewarn.py" aggregate --run-tree "$MISMATCH" \
+  --out "$TMP/mutwarn.json" 2>&1 >/dev/null)"
+case "$mut_warn" in
+  *"per-model map sums to"*) fail "the disagreement warning fired with its guard disabled; case 7 is not load-bearing" ;;
+  *) : ;;
+esac
+pass
+
+# The metadata-less fallback must still produce a JOINABLE id. The directory is
+# `eval-<suite>-<id>` while the runner writes `<suite>-<id>`, so returning the
+# bare directory name yields a key that matches nothing in the benchmark -- a
+# guaranteed mis-join, silently, exactly when the metadata could not be read.
+NOMETA="$TMP/nometa"
+mk_run "$NOMETA" suite-a 0 with_skill 1 "{\"schema\":1,\"cli_version\":\"1.2.3\",
+  \"passes\":{\"executor\":$(ok_pass 100 0 0 0 0.01 model-x),
+    \"grader\":{\"status\":\"not_invoked\",\"reason\":\"n\",\"usage\":null,
+                \"model_usage\":null,\"total_cost_usd\":null}}}"
+rm -f "$NOMETA/eval-suite-a-0/eval_metadata.json"
+nometa_warn="$("$COST" aggregate --run-tree "$NOMETA" --out "$TMP/nometa.json" 2>&1 >/dev/null)"
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/nometa.json'));print(d['runs'][0]['eval_id'])")" = "suite-a-0" ] \
+  || fail "the metadata-less fallback derived an id that cannot join a benchmark row"
+case "$nometa_warn" in
+  *"deriving"*) : ;;
+  *) fail "the derived-id fallback was taken silently" ;;
+esac
+pass
+
+mutate derivedid \
+  'eval_id = eval_dir.name[len("eval-"):] if eval_dir.name.startswith("eval-") \
+                else eval_dir.name' \
+  'eval_id = eval_dir.name'
+python3 "$TMP/mut-derivedid.py" aggregate --run-tree "$NOMETA" --out "$TMP/mutid.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/mutid.json'));print(d['runs'][0]['eval_id'])")" != "suite-a-0" ] \
+  || fail "the bare-directory-name mutant still produced a joinable id; that fallback is not covered"
+pass
+
+# Correction Site 1 (per-run rows) and Site 2 (per-config block) each on their own.
+mutate site1 'result["tokens"] = by_key[key]' 'result["tokens"] = result.get("tokens")'
+cp "$TMP/bench-once.json" "$TMP/bench-s1.json"
+python3 - "$TMP/bench-s1.json" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); d = json.loads(p.read_text())
+for r in d["runs"]:
+    r["result"]["tokens"] = 4321
+p.write_text(json.dumps(d, indent=2))
+PY
+python3 "$TMP/mut-site1.py" correct --benchmark "$TMP/bench-s1.json" \
+  --cost "$TMP/summary.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/bench-s1.json'))
+print([r['result']['tokens'] for r in d['runs'] if r['configuration']=='with_skill'][0])")" != "780" ] \
+  || fail "Site 1 still wrote the per-run figure with its assignment removed; that site is not covered"
+pass
+
+mutate site2 'entry["tokens"] = recomputed' 'pass'
+cp "$TMP/bench-once.json" "$TMP/bench-s2.json"
+python3 - "$TMP/bench-s2.json" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); d = json.loads(p.read_text())
+for cfg in ("with_skill", "without_skill"):
+    if cfg in d["run_summary"]:
+        d["run_summary"][cfg]["tokens"] = {"mean": 4321.0, "stddev": 0.0,
+                                           "min": 4321.0, "max": 4321.0}
+p.write_text(json.dumps(d, indent=2))
+PY
+python3 "$TMP/mut-site2.py" correct --benchmark "$TMP/bench-s2.json" \
+  --cost "$TMP/summary.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/bench-s2.json'))
+print(int(float(d['run_summary']['with_skill']['tokens']['mean'])))")" != "780" ] \
+  || fail "Site 2 still wrote the stats block with its assignment removed; that site is not covered"
 pass
 
 echo "eval-cost.test.sh: $CASES cases passed"

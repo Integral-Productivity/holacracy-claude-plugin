@@ -207,33 +207,7 @@ jobs:
         # its real output.
         run: |
           set -euo pipefail
-          AGGREGATOR_SHA="$(grep -v '^#' evals/aggregator-pin.txt | tr -d '[:space:]')"
-          [ -n "$AGGREGATOR_SHA" ] || { echo "::error::empty aggregator pin"; exit 1; }
-          # init + fetch <sha> rather than `clone --depth 1`, because a shallow
-          # clone can only resolve a branch or tag name. Fetching the commit
-          # directly keeps the shallow, blobless, sparse shape while making the
-          # revision content-addressed.
-          spc="$RUNNER_TEMP/spc"
-          git init -q "$spc"
-          git -C "$spc" remote add origin \
-            https://github.com/anthropics/claude-plugins-official.git
-          git -C "$spc" sparse-checkout set --cone \
-            plugins/skill-creator/skills/skill-creator/scripts
-          git -C "$spc" fetch -q --depth 1 --filter=blob:none origin "$AGGREGATOR_SHA"
-          git -C "$spc" checkout -q FETCH_HEAD
-
-          # git verifies the object it fetched, so this cannot disagree — which
-          # is the point of asserting it. If it ever does, something has replaced
-          # the fetch with a resolution step and the pin has stopped being a pin.
-          resolved=$(git -C "$spc" rev-parse HEAD)
-          if [ "$resolved" != "$AGGREGATOR_SHA" ]; then
-            echo "::error::aggregator pin is ${AGGREGATOR_SHA} but HEAD resolved to ${resolved}"
-            exit 1
-          fi
-          echo "aggregator pinned at $resolved"
-
-          AGGREGATOR="$spc/plugins/skill-creator/skills/skill-creator/scripts/aggregate_benchmark.py"
-          test -f "$AGGREGATOR"
+          AGGREGATOR="$(bash scripts/fetch-pinned-aggregator.sh "$RUNNER_TEMP/spc")"
           echo "AGGREGATOR=$AGGREGATOR" >> "$GITHUB_ENV"
 
       - name: Run the behavioural evals
@@ -370,12 +344,25 @@ jobs:
           # Correcting here means the existing generate_markdown re-render and
           # the existing cp both pick up corrected figures, with no second
           # render and nothing to keep in sync.
+          # Failure is CAPTURED, not fatal here. This step runs under
+          # `set -euo pipefail`, so an abort would skip the metadata stamp, the
+          # benchmark.md re-render and the `cp` below it, and the Report step's
+          # plain `if:` implies success() so that would be skipped too. The cost
+          # ledger is instrumentation: it must not be able to destroy the
+          # outputs of a 25-minute paid run it was only meant to annotate.
+          # The job still fails, after those outputs exist.
+          COST_FAILED=0
           python3 scripts/eval-cost.py aggregate \
             --run-tree "$RUNNER_TEMP/benchmark" \
-            --out "$RUNNER_TEMP/benchmark/cost-summary.json"
-          python3 scripts/eval-cost.py correct \
-            --benchmark "$RUNNER_TEMP/benchmark/benchmark.json" \
-            --cost "$RUNNER_TEMP/benchmark/cost-summary.json"
+            --out "$RUNNER_TEMP/benchmark/cost-summary.json" || COST_FAILED=1
+          if [ "$COST_FAILED" = "0" ]; then
+            python3 scripts/eval-cost.py correct \
+              --benchmark "$RUNNER_TEMP/benchmark/benchmark.json" \
+              --cost "$RUNNER_TEMP/benchmark/cost-summary.json" || COST_FAILED=1
+          fi
+          if [ "$COST_FAILED" = "1" ]; then
+            echo "::warning::the cost ledger failed; the tokens figure is whatever the aggregator reported (a character count) and the cost section will state its absence"
+          fi
 
           python3 - <<'PY'
           import importlib.util, json, os, pathlib
@@ -430,6 +417,13 @@ jobs:
           print("benchmark metadata:", json.dumps(meta, indent=2))
           PY
           cp "$RUNNER_TEMP/benchmark/benchmark.json" "$RUNNER_TEMP/benchmark-current.json"
+
+          # Now that every derived artifact exists, a cost-ledger failure can
+          # fail the job without taking them with it.
+          if [ "$COST_FAILED" = "1" ]; then
+            echo "::error::the cost ledger failed; see the warning above. The benchmark and its artifacts were still produced."
+            exit 1
+          fi
 
       - name: Report against the committed baseline
         if: steps.key.outputs.present == 'true'

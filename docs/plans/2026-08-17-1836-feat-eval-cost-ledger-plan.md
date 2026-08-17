@@ -64,12 +64,12 @@ flowchart TB
 
 ### Key Decisions
 
-- KD1. **Own the cost path in this repo, and correct the upstream scalar in passing.** The aggregator is third-party and carries one number, so five figures cannot survive it; leaving its number wrong would mislead anyone reading `benchmark.json`. (session-settled: user-directed — chosen over routing cost through the aggregator, or correcting it only: the first cannot carry the data, the second caps the work at one scalar.) Governs R9, R10, R11, R12.
+- KD1. **Own the cost path in this repo, and correct the upstream scalar in passing.** The aggregator is third-party and carries one number, so five figures cannot survive it; leaving its number wrong would mislead anyone reading `benchmark.json`. (session-settled: user-directed — chosen over routing cost through the aggregator, or correcting it only: the first cannot carry the data, the second caps the work at one scalar.) Governs R10, R11, R12, R13, R14.
 - KD2. **Store the usage object as reported, and derive named figures from it.** A fixed field list silently drops anything the API adds — the same class of loss this plan exists to fix. (session-settled: user-directed — chosen over five fixed named fields: Anthropic's 1-hour cache tier already reports a nested breakdown a flat list would discard.) Governs R1, R3.
-- KD3. **Cost gets its own per-run record and its own aggregation, rather than riding existing artifacts.** Keeps the expensive-to-rebuild raw record durable and leaves the report's failure surface unchanged. (session-settled: user-directed — chosen over teaching the report to walk the run tree, and over a job-summary-only readout: the first loads risk onto a never-crash guarantee, the second drops cross-run comparability.) Governs R1, R5, R6.
-- KD4. **Cache hit rate is a headline figure, not a derivation left to the reader.** It is a ratio within a single run, so it answers the motivating question without the baseline this plan defers. Governs R7.
-- KD5. **Executor and grader cost stay separate, never blended.** They are distinct passes that can run different served models, which `grading.json` already records separately. Governs R2, R4, R8.
-- KD6. **Cost comes from what the CLI reports, never from a price table kept here.** The result event carries a USD figure and a per-model usage map, so attribution is a field read; maintaining local prices would drift with every pricing change. Governs R3, R4.
+- KD3. **Cost gets its own per-run record and its own aggregation, rather than riding existing artifacts.** Keeps the expensive-to-rebuild raw record durable and leaves the report's failure surface unchanged. (session-settled: user-directed — chosen over teaching the report to walk the run tree, and over a job-summary-only readout: the first loads risk onto a never-crash guarantee, the second drops cross-run comparability.) Governs R1, R5, R7.
+- KD4. **Cache hit rate is a headline figure, not a derivation left to the reader.** It is a ratio within a single run, so it answers the motivating question without the baseline this plan defers. Governs R8.
+- KD5. **Executor and grader cost stay separate, never blended.** They are distinct passes that can run different served models, which `grading.json` already records separately. Governs R2, R4, R9.
+- KD6. **Cost comes from what the CLI reports, never from a price table kept here.** The result event carries a USD figure and a per-model usage map, so attribution is a field read; maintaining local prices would drift with every pricing change. Governs R3, R4, R6.
 
 ### Requirements
 
@@ -80,49 +80,51 @@ flowchart TB
 - R3. Named figures — input, output, cache creation, cache read, cache hit rate, and USD cost — are derived from the stored raw record rather than captured in place of it.
 - R4. Cost and token figures are attributable to the model that actually served each pass, not only to the pass.
 - R5. The per-run cost record leaves the runner — it is included in the graded run's uploaded artifact alongside the per-run grading and transcript files.
+- R6. The per-run cost record names the CLI version that produced its figures, so a cost comparison can be scoped to a single CLI.
 
 **Reporting**
 
-- R6. The eval report carries a cost section covering per-config totals for both passes.
-- R7. Cache hit rate appears as a named figure, computed as cache reads over the sum of cache reads and cache creations.
-- R8. The cost section reports the delta between the current run and a comparison run when one is supplied, per pass.
+- R7. The eval report carries a cost section covering per-config totals for both passes.
+- R8. Cache hit rate appears as a named figure, computed as cache reads over the sum of cache reads and cache creations.
+- R9. The cost section reports the delta between the current run and a comparison run when one is supplied, per pass.
 
 **Upstream correction**
 
-- R9. The `tokens` figure reaching `evals/benchmark.json` is a token count, not a character count.
-- R10. A run whose token count is legitimately zero reports zero, and never falls back to a character count.
-- R11. Every artifact derived from the corrected figure agrees with it — the rendered markdown summary, the uploaded workflow artifact, and the step summary carry the same number as the JSON.
+- R10. The `tokens` figure reaching `evals/benchmark.json` is a token count covering the executor and grader passes summed, over every usage field the result event reports.
+- R11. A run whose token count is legitimately zero reports zero, and never falls back to a character count.
+- R12. Every artifact derived from the corrected figure agrees with it — the rendered markdown summary, the uploaded workflow artifact, and the step summary carry the same number as the JSON.
+- R13. The correction is conditional and idempotent — it replaces the aggregator's figure only when that figure is not already a token count, and leaves a correct upstream value untouched.
 
 **Consistency and verification**
 
-- R12. The derived figures reconcile with the collapsed total the upstream aggregator reports; the breakdown's components sum to it.
-- R13. The offline test suite exercises cache-bearing usage, including a usage object carrying a field the derivation does not recognise.
-- R14. The report degrades to a stated absence when cost data is missing or malformed, and never presents an unmeasured value as a measured one.
+- R14. The derived figures reconcile with the corrected figure as R10 defines it; the breakdown's components sum to it.
+- R15. The offline test suite exercises cache-bearing usage, including a usage object carrying a field the derivation does not recognise.
+- R16. The report degrades to a stated absence when cost data is missing or malformed, and never presents an unmeasured value as a measured one.
 
 ### Acceptance Examples
 
 - AE1. Measured zero.
-  - **Covers R10.**
+  - **Covers R11.**
   - **Given:** an eval run that reported usage, whose token total is genuinely zero.
   - **When:** the run is recorded and aggregated.
   - **Then:** the reported token figure is zero, and no character-derived value appears in its place.
 - AE2. Unrecognised usage field.
-  - **Covers R1, R13.**
+  - **Covers R1, R15.**
   - **Given:** a result event whose usage object carries a field the derivation has no name for.
   - **When:** the run is recorded.
   - **Then:** the field is present in the stored record, and the derived figures are unaffected.
 - AE3. Reconciliation.
-  - **Covers R12.**
+  - **Covers R14.**
   - **Given:** a completed run with both passes recorded.
-  - **When:** the derived components are summed and compared with the upstream collapsed total.
+  - **When:** the derived components are summed and compared with the corrected figure over the same passes and fields R10 defines.
   - **Then:** they are equal.
 - AE4. Missing cost data.
-  - **Covers R14.**
+  - **Covers R16.**
   - **Given:** a run tree with no cost record, or one that cannot be parsed.
   - **When:** the report renders.
   - **Then:** the cost section states the absence and the rest of the report renders unchanged.
 - AE5. Caching verified from one run.
-  - **Covers R7.**
+  - **Covers R8.**
   - **Given:** a single graded run with no comparison run supplied.
   - **When:** the report renders.
   - **Then:** cache hit rate is present and readable without a baseline.
@@ -132,10 +134,15 @@ flowchart TB
   - **When:** cost is derived.
   - **Then:** each pass's tokens and cost are attributed to the model that served it, and no figure blends the two.
 - AE7. Unmeasured usage.
-  - **Covers R10, R14.**
+  - **Covers R11, R16.**
   - **Given:** an eval run whose result event carries no usage object, or one that cannot be parsed — an executor that died mid-run, or a CLI whose usage shape changed.
   - **When:** the run is recorded and aggregated.
   - **Then:** the token and cost figures record null rather than zero, the graded run emits a warning naming the run, and no surface presents the absence as a measured value.
+- AE8. Upstream figure already correct.
+  - **Covers R13.**
+  - **Given:** an aggregator, at a newly bumped pin, that already reports a real token count.
+  - **When:** the correction runs.
+  - **Then:** it leaves the figure untouched, and every derived artifact still agrees with it.
 
 ### Scope Boundaries
 
@@ -166,11 +173,12 @@ The remaining survivors of `docs/ideation/2026-08-17-eval-token-efficiency-ideat
 
 ### Dependencies and Assumptions
 
-- The upstream aggregator is fetched during the workflow at a pinned commit, so its behaviour cannot drift on its own. It changes only when someone bumps the pin, and a bump is the moment to re-check R9 through R12.
-- The aggregated JSON is not the only derived surface. A rendered markdown summary is produced from the same data during the workflow, so correcting one without the other leaves two artifacts disagreeing — this is what R11 exists to prevent.
-- The CLI is installed unpinned on every graded run, and the USD figure comes from that CLI's own pricing and usage schema. Unlike the aggregator, nothing triggers a re-check when it changes.
-- The per-run token total the runner already computes is correct. Nothing in this plan depends on recomputing it; the work is delivering it somewhere it survives.
-- Real usage data appears only in the nightly graded tier. Per-PR CI stays offline and makes no API calls, so every requirement here is verified offline against synthetic usage.
+- The upstream aggregator is fetched during the workflow at a pinned commit, so its behaviour cannot drift on its own. It changes only when someone bumps the pin, and a bump is the moment to re-check R10 through R14.
+- The aggregated JSON is not the only derived surface. A rendered markdown summary is produced from the same data during the workflow, so correcting one without the other leaves two artifacts disagreeing — this is what R12 exists to prevent.
+- The CLI is installed unpinned on every graded run, and the USD figure comes from that CLI's own pricing and usage schema. Unlike the aggregator, nothing triggers a re-check when it changes, which is why R6 stamps the version onto the record.
+- The per-run token total the runner computes today is correct for the executor pass but covers only that pass. R10 widens it to include the grader rather than delivering it unchanged, so the reconciliation in R14 compares like with like.
+- Real usage data appears only in the nightly graded tier, and per-PR CI makes no API calls. R1 through R9 and R15 through R16 are verified offline against synthetic usage. R10 through R14 are not: the aggregator they correct is fetched only inside the graded job, so without the dependency below they would ship unverified until a paid nightly.
+- Verifying the upstream correction offline requires the offline job to fetch the pinned aggregator and run it over a synthetic run tree. That needs network access but no API key — the same posture the offline job already takes when it drives the real stub over the real generated MCP config.
 - The result event carries a USD cost figure and a per-model usage map, verified against the installed CLI's own result-event schema. Cost is therefore a field read, not a computation, and this repo keeps no price table.
 
 ### Outstanding Questions
@@ -179,7 +187,7 @@ The remaining survivors of `docs/ideation/2026-08-17-eval-token-efficiency-ideat
 
 - Q1. Where the per-run cost record lives and how its aggregation is wired.
 - Q2. Where in the workflow the recomputation lands. The correction recomputes the token statistics in this repo after the aggregator runs and overwrites them before the derived markdown is rendered; the workflow already post-processes aggregated output this way for other fields, so the shape has a working precedent here. Changing the aggregator itself is not a candidate — Scope Boundaries places it outside this plan. Note that the run-level metadata file carries no token data, so the correction walks the run tree itself.
-- Q3. Whether the comparison run in R8 is supplied by path or discovered.
+- Q3. Whether the comparison run in R9 is supplied by path or discovered.
 
 ### Sources
 

@@ -1,68 +1,73 @@
 {
-  "_note": "Baseline for the behavioural tier. UNMEASURED: every statistic below is null on purpose. ANTHROPIC_API_KEY is now configured (it was the blocker this note used to name, issue #171), and the first graded run taken after it -- 31229964963 -- still does not qualify: it answered all 12 with_skill executions with claude-opus-5[1m] and all 12 without_skill executions with claude-haiku-4-5, so its +0.13 delta measures the models rather than the plugin. The runner now refuses such a benchmark and skills-eval.yml pins --model, so the next run is seedable. Seeding this with a plausible number would give #173's regression alarm something to compare against that nobody measured, which is the failure mode CLAUDE.md's readout section spends a page on: reporting health from absent evidence. The shape is aggregate_benchmark.py's output so a real run drops straight in.",
-  "measured": false,
-  "comparability": "A BASELINE IS ONLY COMPARABLE AGAINST RUNS OF THE SAME MODEL. metadata.executor_model and metadata.analyzer_model below record which model produced these numbers; the Aggregate step in skills-eval.yml stamps them from what the runner observed on the wire, because the `model` dispatch input is blank on any run that took the CLI default and aggregate_benchmark.py otherwise writes the literal string \"<model-name>\" (issue #203). Compare a run against this baseline only when those fields match. A model change moves the pass rate for reasons that have nothing to do with the skills, and #173's regression alarm reading a mismatched pair would report a skill regression that is really a model upgrade \u2014 attributing the delta to the wrong cause. When the models differ, the right move is to re-seed the baseline on the new model, not to interpret the delta.",
+  "_note": "Baseline for the behavioural tier, seeded 2026-08-17 from workflow_dispatch run 32058594541 (runs=3, model left at its default claude-sonnet-5). Two blockers had to clear first: #221 (raw stream-json events were discarded, so a model-resolution question could only be settled by spending another graded run) and #222 (observed_model() took modelUsage's FIRST key as the executor, which named an auxiliary claude-haiku-4-5-20251001 call that answered no visible turn -- every without_skill leg billed it ahead of the model that actually produced every assistant turn, and it is why every graded run since #243 pinned --model still failed the arms-diverged check for nine consecutive nights). Diagnostic run 32055798335 supplied the raw events that settled #222 with evidence rather than a guess; this run is the first to pass the arms-diverged check for a real reason. metadata.analyzer_model reads claude-haiku-4-5-20251001 despite --model claude-sonnet-5 also being passed to the grading call, consistently across all 24 grading calls in this run -- filed separately (see the repo's open issues for the analyzer-model follow-up) since it does not affect executor_model comparability between the two arms being measured, and resolving it needs raw grader-side events #221 does not yet retain. Per-(eval,config) run-to-run stddev in this run's 24 individual grading.json files is 0.0-0.163 across all four cases; the higher pooled stddev in run_summary below mixes different cases' intrinsic difficulty, which is issue #224's known reading of the aggregator's own number, not case-level flakiness.",
+  "measured": true,
+  "comparability": "A BASELINE IS ONLY COMPARABLE AGAINST RUNS OF THE SAME MODEL. metadata.executor_model and metadata.analyzer_model below record which model produced these numbers; the Aggregate step in skills-eval.yml stamps them from what the runner observed on the wire, because the `model` dispatch input is blank on any run that took the CLI default and aggregate_benchmark.py otherwise writes the literal string \"<model-name>\" (issue #203). Compare a run against this baseline only when those fields match. A model change moves the pass rate for reasons that have nothing to do with the skills, and #173's regression alarm reading a mismatched pair would report a skill regression that is really a model upgrade — attributing the delta to the wrong cause. When the models differ, the right move is to re-seed the baseline on the new model, not to interpret the delta.",
   "how_to_seed": [
     "1. Confirm ANTHROPIC_API_KEY is set on the repository. It is, as of 2026-08-08 -- the check is that the steps gated on steps.key.outputs.present in skills-eval.yml actually execute.",
     "2. Run the 'Skills eval (behavioural)' workflow via workflow_dispatch with runs=3. Three runs is the minimum that yields a stddev worth reading.",
     "3. Leave the `model` input at its default. Blank lets each session choose, and in run 31229964963 that put the two arms on two different models; the runner refuses the resulting benchmark, so a blank run is a wasted 40 minutes rather than a bad baseline.",
     "4. Read the 'Probe the session shape' step before anything else. It is the #226 guard: with_skill must register the plugin's commands and the control must register none, or the run measures nothing whatever its numbers say.",
     "5. Download the behavioural-benchmark artifact and merge its measured fields over this file -- keep `comparability`, `how_to_seed` and this note, which the artifact does not carry.",
-    "6. Read the stddev before trusting the mean. Per evals/README.md a wide-variance case is a defect in the case, not a finding about the skill -- fix the case before it becomes a baseline.",
+    "6. Read the stddev before trusting the mean. Per evals/README.md a wide-variance case is a defect in the case, not a finding about the skill -- fix the case before it becomes a baseline. Break the aggregate stddev down per (eval, config) before rejecting a run on it: issue #224 is that the pooled number in run_summary mixes between-case difficulty spread with actual run-to-run flakiness, and only the latter is disqualifying.",
     "7. Check that metadata.executor_model is a real model name, is not null, and names exactly ONE model. A comma-joined pair means the arms diverged and the delta is uninterpretable."
   ],
-  "generated_at": null,
+  "generated_at": "2026-08-17T20:05:31Z",
   "metadata": {
-    "skill_name": null,
-    "skill_path": null,
-    "executor_model": null,
-    "analyzer_model": null,
-    "model_requested": null,
-    "runs_per_configuration": null
+    "skill_name": "holacracy",
+    "skill_path": "Integral-Productivity/holacracy-claude-plugin",
+    "executor_model": "claude-sonnet-5",
+    "analyzer_model": "claude-haiku-4-5-20251001",
+    "model_requested": "claude-sonnet-5",
+    "runs_per_configuration": 3,
+    "evals_run": [0, 1, 2]
   },
   "run_summary": {
     "with_skill": {
       "pass_rate": {
-        "mean": null,
-        "stddev": null,
-        "min": null,
-        "max": null
+        "mean": 0.5861,
+        "stddev": 0.2572,
+        "min": 0.1667,
+        "max": 1.0
       },
       "time_seconds": {
-        "mean": null,
-        "stddev": null,
-        "min": null,
-        "max": null
+        "mean": 215.5883,
+        "stddev": 205.2684,
+        "min": 59.88,
+        "max": 765.1
       },
       "tokens": {
-        "mean": null,
-        "stddev": null,
-        "min": null,
-        "max": null
+        "mean": 29260.0833,
+        "stddev": 29770.6112,
+        "min": 11758,
+        "max": 110893
       }
     },
     "without_skill": {
       "pass_rate": {
-        "mean": null,
-        "stddev": null,
-        "min": null,
-        "max": null
+        "mean": 0.5333,
+        "stddev": 0.4376,
+        "min": 0.0,
+        "max": 1.0
       },
       "time_seconds": {
-        "mean": null,
-        "stddev": null,
-        "min": null,
-        "max": null
+        "mean": 72.3783,
+        "stddev": 38.9356,
+        "min": 27.25,
+        "max": 135.93
       },
       "tokens": {
-        "mean": null,
-        "stddev": null,
-        "min": null,
-        "max": null
+        "mean": 12983.4167,
+        "stddev": 7104.4418,
+        "min": 3566,
+        "max": 24456
       }
+    },
+    "delta": {
+      "pass_rate": "+0.05",
+      "time_seconds": "+143.2",
+      "tokens": "+16277"
     }
   },
-  "delta": null,
   "cases": [
     {
       "surface": "/holacracy:tension-triage",

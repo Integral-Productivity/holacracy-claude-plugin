@@ -83,6 +83,25 @@ EOF
 echo '{"run_summary": {}}' > "$TMP/empty-summary.json"
 echo '{}' > "$TMP/no-summary.json"
 
+# A baseline whose every statistic is null -- the shape evals/benchmark.json
+# carried before it was seeded (#183), and the shape it or any sibling would
+# carry again before its own next seeding. Kept as a synthetic fixture rather
+# than read off the real committed file: the file is now measured, and a check
+# for "does a null mean render as n/a" must not depend on the committed
+# baseline's own re-seedable content staying null forever.
+cat > "$TMP/unmeasured-baseline.json" <<'EOF'
+{ "run_summary": {
+    "with_skill":    { "pass_rate": { "mean": null, "stddev": null } },
+    "without_skill": { "pass_rate": { "mean": null, "stddev": null } } } }
+EOF
+
+# A measured baseline, so the delta column has something real to compute.
+cat > "$TMP/measured-baseline.json" <<'EOF'
+{ "run_summary": {
+    "with_skill":    { "pass_rate": { "mean": 0.8, "stddev": 0.05 } },
+    "without_skill": { "pass_rate": { "mean": 0.4, "stddev": 0.05 } } } }
+EOF
+
 # --cache-index fixtures (U5). "real" run-behavioural-eval.py output shape:
 # _run_summary alongside whatever leg_<hash> entries happen to be in the
 # index -- the section must ignore those, reading only _run_summary.
@@ -129,13 +148,12 @@ echo '[1, 2, 3]' > "$TMP/cache-not-a-dict.json"
 echo '{"_run_summary": "oops"}' > "$TMP/cache-summary-not-a-dict.json"
 echo '{"_run_summary": {"hits": "not-a-number", "misses": null, "legs": "oops"}}' \
   > "$TMP/cache-bad-fields.json"
-
-# A measured baseline, so the delta column has something real to compute.
-cat > "$TMP/measured-baseline.json" <<'EOF'
-{ "run_summary": {
-    "with_skill":    { "pass_rate": { "mean": 0.8, "stddev": 0.05 } },
-    "without_skill": { "pass_rate": { "mean": 0.4, "stddev": 0.05 } } } }
-EOF
+# A file that will not parse as JSON at all -- e.g. a partial write from an
+# interrupted job. Unlike --baseline/--current (load() is deliberately strict,
+# see eval-report.py), --cache-index reads a file on an unprotected branch
+# (KTD1) via its own tolerant loader (load_cache_index_file), and this is the
+# shape that distinguishes the two: it must degrade, not crash.
+printf 'not json at all' > "$TMP/cache-bad.json"
 
 # The COMMITTED baseline, used as-is rather than copied. If evals/benchmark.json
 # is ever edited into a shape this report cannot read, that is a defect in the
@@ -173,14 +191,30 @@ echo "$OUT" | grep -qF '| with_skill | 0.938 | 0.125 | 0.8 | +0.137 |' \
 pass
 
 # ---------------------------------------------------------------------------
-# 2. The committed, UNMEASURED baseline, whose every statistic is null.
+# 2. An unmeasured baseline, whose every statistic is null.
 # ---------------------------------------------------------------------------
-# This is the repo's actual state until a graded run seeds one. `mean - None`
-# is a TypeError, so the baseline and delta columns must read "n/a" instead.
-OUT="$(report "$TMP/real.json" "$BASELINE")" \
-  || { echo "$OUT"; fail "the committed unmeasured baseline crashed the report"; }
+# This is the shape evals/benchmark.json carries before a graded run seeds it.
+# `mean - None` is a TypeError, so the baseline and delta columns must read
+# "n/a" instead.
+OUT="$(report "$TMP/real.json" "$TMP/unmeasured-baseline.json")" \
+  || { echo "$OUT"; fail "an unmeasured baseline crashed the report"; }
 [ "$(echo "$OUT" | grep -c '| n/a | n/a |')" = "2" ] \
   || { echo "$OUT"; fail "a null baseline statistic did not render as n/a"; }
+pass
+
+# 2a. The committed baseline, used as-is rather than copied. If
+# evals/benchmark.json is ever edited into a shape this report cannot read,
+# that is a defect in the pair and this suite is where it should surface.
+# Once #183 seeded it (2026-08-17, run 32058594541) it carries real numbers,
+# so this checks the report computes a real delta against it rather than
+# falling back to "n/a" -- the null-baseline behaviour above already covers
+# the pre-seeding shape via its own synthetic fixture.
+OUT="$(report "$TMP/real.json" "$BASELINE")" \
+  || { echo "$OUT"; fail "the committed baseline crashed the report"; }
+echo "$OUT" | grep -qF '| with_skill | 0.938 | 0.125 | 0.5861 | +0.351 |' \
+  || { echo "$OUT"; fail "the with_skill row did not compute against the committed baseline"; }
+echo "$OUT" | grep -qF '| without_skill | 0.438 | 0.125 | 0.5333 | -0.096 |' \
+  || { echo "$OUT"; fail "the without_skill row did not compute against the committed baseline"; }
 pass
 
 # A baseline file that does not exist at all is the same story, one step
@@ -262,9 +296,13 @@ echo "$OUT" | grep -q 'Clean skip' \
   && { echo "$OUT"; fail "a mixed run was reported as a clean skip"; }
 pass
 
-# 5c. Never crashes on an empty index (the very first run ever) or a
-#     missing index file -- both must render a "no data" line, not raise.
-for f in "$TMP/cache-empty.json" "$TMP/does-not-exist-cache-index.json"; do
+# 5c. Never crashes on an empty index (the very first run ever), a missing
+#     index file, or one that does not parse as JSON at all -- all three must
+#     render a "no data" line, not raise. The unparseable case is what
+#     load_cache_index_file exists for: --cache-index reads a file on the
+#     unprotected eval-cache-index branch (KTD1), unlike --baseline/--current,
+#     which are deliberately loaded strictly (see eval-report.py's load()).
+for f in "$TMP/cache-empty.json" "$TMP/does-not-exist-cache-index.json" "$TMP/cache-bad.json"; do
   OUT="$(report_cache "$TMP/real.json" "$TMP/measured-baseline.json" "$f")" \
     || { echo "$OUT"; fail "$f crashed the cache-summary section"; }
   echo "$OUT" | grep -q "Change-aware eval cache" \
@@ -273,6 +311,12 @@ for f in "$TMP/cache-empty.json" "$TMP/does-not-exist-cache-index.json"; do
     || { echo "$OUT"; fail "$f did not render the no-data line"; }
   pass
 done
+# The unparseable cache-index file must not take the pass-rate table with it,
+# same isolation rule as the cost section below.
+OUT="$(report_cache "$TMP/real.json" "$TMP/measured-baseline.json" "$TMP/cache-bad.json")"
+echo "$OUT" | grep -q "## Behavioural eval results" \
+  || { echo "$OUT"; fail "an unparseable cache-index file deleted the pass-rate table"; }
+pass
 
 # 5d. A real leg-keyed index that predates _run_summary must degrade to the
 #     same "no data" line rather than crash or report bogus zeros.
@@ -294,25 +338,48 @@ for f in "$TMP/cache-not-a-dict.json" "$TMP/cache-summary-not-a-dict.json" \
 done
 
 # ---------------------------------------------------------------------------
-# 6. MUTATION — each mutant removes exactly one defense.
-# ---------------------------------------------------------------------------
 # mutate <name> <find> <replace>  ->  echoes the mutant's path
+# The builder's exit status is load-bearing, and used not to be.
+#
+# `assert mutated != text` fires on a drifted target, but the heredoc's status
+# was never propagated: the function went on to `echo "$dst"` and returned 0, so
+# the call site's `|| fail` could not fire. The case then ran the report through
+# a path that does not exist, which fails -- and "the mutant fails" is exactly
+# what these cases assert, so a drifted target produced a green vacuous pass.
+# Returning non-zero and requiring a non-empty mutant is what makes the call
+# sites' `|| fail` mean something.
 mutate() {
   local name="$1" find="$2" repl="$3"
   local dst="$TMP/mut-$name.py"
+  rm -f "$dst"
   python3 - "$REPORT" "$dst" "$find" "$repl" <<'PY'
 import pathlib, sys
 src, dst, find, repl = sys.argv[1:5]
 text = pathlib.Path(src).read_text()
 mutated = text.replace(find, repl)
-# If the defense is refactored, the mutation stops reproducing the defect and
-# the case below would pass while testing nothing. Fail loudly instead.
-assert mutated != text, f"mutation target not found: {find!r}"
+if mutated == text:
+    sys.stderr.write(f"mutation target not found: {find[:70]}\n")
+    raise SystemExit(1)
 pathlib.Path(dst).write_text(mutated)
 PY
+  # shellcheck disable=SC2181  # the heredoc above is the command whose status matters
+  if [ $? -ne 0 ] || [ ! -s "$dst" ]; then
+    return 1
+  fi
   echo "$dst"
 }
 
+# Self-test: an absent target must make mutate() fail, or every case below that
+# says "could not build the X mutant" is unreachable and the mutations are
+# decorative.
+if mutate selftest 'this string is deliberately absent from eval-report.py' 'x' >/dev/null 2>&1; then
+  fail "the mutate() helper accepted an absent target; every mutation case below is vacuous"
+fi
+pass
+
+# ---------------------------------------------------------------------------
+# 6. MUTATION — each mutant removes exactly one defense (pass-rate table).
+# ---------------------------------------------------------------------------
 # 6a. Stop excluding the `delta` sibling. This is the #199 defect exactly:
 #     .get("mean") lands on the string "+0.50".
 M="$(mutate delta 'if k != DELTA_KEY' 'if True')" || fail "could not build the delta mutant"
@@ -334,7 +401,7 @@ pass
 M="$(mutate nulls \
   'delta = f"{mean - bm:+.3f}" if isinstance(bm, (int, float)) else "n/a"' \
   'delta = f"{mean - bm:+.3f}"')" || fail "could not build the null mutant"
-report "$TMP/real.json" "$BASELINE" "$M" >/dev/null 2>&1 \
+report "$TMP/real.json" "$TMP/unmeasured-baseline.json" "$M" >/dev/null 2>&1 \
   && fail "a null baseline statistic survived arithmetic, so case 2 proves nothing"
 pass
 report "$TMP/real.json" "$TMP/measured-baseline.json" "$M" >/dev/null 2>&1 \
@@ -361,7 +428,10 @@ report "$TMP/real.json" "$TMP/measured-baseline.json" "$M" >/dev/null 2>&1 \
   || fail "the empty-summary mutant also broke case 1, so case 4 is not isolating that defense"
 pass
 
-# 6e. Drop the top-level isinstance(index, dict) guard in render_cache_summary,
+# ---------------------------------------------------------------------------
+# 7. MUTATION — each mutant removes exactly one cache-summary defense (U5).
+# ---------------------------------------------------------------------------
+# 7a. Drop the top-level isinstance(index, dict) guard in render_cache_summary,
 #     so a cache index that is not a dict at all (e.g. a JSON array) reaches
 #     `.get()` and raises. A real dict index -- even one exercising a
 #     DIFFERENT cache-summary defense (case 5a's all-hits index) -- must
@@ -377,7 +447,7 @@ report_cache "$TMP/real.json" "$TMP/measured-baseline.json" "$TMP/cache-all-hits
   || fail "the cache-index-guard mutant also broke a real dict index, so case 5e is not isolating that defense"
 pass
 
-# 6f. Disable the isinstance(summary, dict) guard, so a _run_summary that is
+# 7b. Disable the isinstance(summary, dict) guard, so a _run_summary that is
 #     not a dict -- missing entirely (summary is None) or present with the
 #     wrong type (case 5e's "oops" string) -- reaches `.get()` and raises.
 #     case 5e's bad-fields fixture has a real dict _run_summary (only its
@@ -394,7 +464,7 @@ report_cache "$TMP/real.json" "$TMP/measured-baseline.json" "$TMP/cache-bad-fiel
   || fail "the cache-summary-guard mutant also broke the malformed-fields fixture, so case 5e is not isolating that defense"
 pass
 
-# 6g. Stop catching the as_int() coercion's TypeError/ValueError, so a
+# 7c. Stop catching the as_int() coercion's TypeError/ValueError, so a
 #     non-numeric hits/misses field (case 5e's bad-fields fixture) raises
 #     instead of coercing to 0. A fixture with real numeric hits/misses
 #     (case 5b's mixed index) must be unaffected, since int() never raises
@@ -406,6 +476,172 @@ report_cache "$TMP/real.json" "$TMP/measured-baseline.json" "$TMP/cache-bad-fiel
 pass
 report_cache "$TMP/real.json" "$TMP/measured-baseline.json" "$TMP/cache-mixed.json" "$M" >/dev/null 2>&1 \
   || fail "the cache-hits-int mutant also broke a real numeric hits/misses fixture, so case 5b is not isolating that defense"
+pass
+
+# 7d. Load --cache-index with the strict loader instead of the soft one.
+#     Same shape as the cost section's own 8-mut2 below: the malformed
+#     cache-index file must then kill the whole report, proving the separate
+#     loader is what keeps the failure inside the cache section.
+M="$(mutate cache-softload 'render_cache_summary(load_cache_index_file(args.cache_index))' \
+  'render_cache_summary(load(args.cache_index))')" \
+  || fail "could not build the strict-cache-load mutant"
+report_cache "$TMP/real.json" "$TMP/measured-baseline.json" "$TMP/cache-bad.json" "$M" >/dev/null 2>&1 \
+  && fail "the malformed cache-index file survived a strict load, so case 5c proves nothing"
+pass
+# ...and the strict-load mutant leaves the well-formed case working, so this
+# is isolating the loader rather than breaking cache-summary rendering
+# generally.
+report_cache "$TMP/real.json" "$TMP/measured-baseline.json" "$TMP/cache-all-hits.json" "$M" >/dev/null 2>&1 \
+  || fail "the strict-cache-load mutant also broke the well-formed case; it is not isolating the loader"
+pass
+
+# ---------------------------------------------------------------------------
+# 8. The cost section renders, and its failure degrades ALONE.
+# ---------------------------------------------------------------------------
+# The pass-rate table is the paid run's headline. Because this step is
+# `continue-on-error: true`, an exception raised while rendering cost would turn
+# the step yellow and silently delete that table from the step summary -- so the
+# cost section is held to a stronger rule than the four shapes above.
+cat > "$TMP/cost.json" <<'EOF'
+{"schema": 1, "cli_versions": ["1.2.3"],
+ "configs": {
+   "with_skill": {"runs": 1, "tokens_total": 780, "usd": 0.012,
+     "passes_with_unknown_cost": 0,
+     "passes": {"executor": {"tokens": {"total": 700}, "cache_hit_rate": 0.9,
+                             "usd": 0.01, "unknown_cost": 0, "not_invoked": 0},
+                "grader": {"tokens": {"total": 80}, "cache_hit_rate": 0.9,
+                           "usd": 0.002, "unknown_cost": 0, "not_invoked": 0}},
+     "models": {}},
+   "without_skill": {"runs": 1, "tokens_total": 280, "usd": 0.01,
+     "passes_with_unknown_cost": 0,
+     "passes": {"executor": {"tokens": {"total": 200}, "cache_hit_rate": null,
+                             "usd": 0.008, "unknown_cost": 0, "not_invoked": 0},
+                "grader": {"tokens": {"total": 80}, "cache_hit_rate": 0.9,
+                           "usd": 0.002, "unknown_cost": 0, "not_invoked": 0}},
+     "models": {}}},
+ "runs": []}
+EOF
+
+cost_report() {  # $1=cost $2=cost-baseline ("" for none) $3=interpreter override
+  local script="${3:-$REPORT}"
+  if [ -n "$2" ]; then
+    python3 "$script" --current "$TMP/real.json" --baseline "$TMP/measured-baseline.json" \
+      --cost "$1" --cost-baseline "$2" 2>&1
+  else
+    python3 "$script" --current "$TMP/real.json" --baseline "$TMP/measured-baseline.json" \
+      --cost "$1" 2>&1
+  fi
+}
+
+# Cache hit rate is readable from ONE run, with no baseline. That is the whole
+# motivating question -- it is a ratio inside a single run, so it does not wait
+# on a committed baseline that does not exist yet.
+OUT="$(cost_report "$TMP/cost.json" "")" || { echo "$OUT"; fail "the cost section crashed the report"; }
+echo "$OUT" | grep -q "### Cost" || { echo "$OUT"; fail "no cost section was rendered"; }
+echo "$OUT" | grep -q "90%" || { echo "$OUT"; fail "cache hit rate is not rendered"; }
+echo "$OUT" | grep -q "## Behavioural eval results" \
+  || { echo "$OUT"; fail "the pass-rate table vanished when cost was added"; }
+pass
+
+# No comparison supplied means no delta, not a delta against nothing.
+echo "$OUT" | grep -q '| n/a |$' || { echo "$OUT"; fail "an absent comparison did not render as n/a"; }
+pass
+
+# A config the comparison has never seen reads as an absence. Same rule the
+# pass-rate table already follows for a newly added case.
+python3 -c "
+import json
+d = json.load(open('$TMP/cost.json'))
+del d['configs']['without_skill']
+json.dump(d, open('$TMP/cost-partial.json', 'w'))"
+OUT="$(cost_report "$TMP/cost.json" "$TMP/cost-partial.json")" \
+  || { echo "$OUT"; fail "a partial comparison crashed the report"; }
+# The USD column is deliberately left out of this pattern: a literal dollar sign
+# is either a shellcheck SC2016 warning in single quotes or a positional
+# expansion in double quotes, and the assertion is about the delta.
+echo "$OUT" | grep -q '^| with_skill | executor | 700 | 90% | .* | +0 |' \
+  || { echo "$OUT"; fail "a known config produced no delta against the comparison"; }
+pass
+
+# Billed-but-unrecoverable spend is stated, never folded in as zero.
+python3 -c "
+import json
+d = json.load(open('$TMP/cost.json'))
+d['configs']['with_skill']['passes']['grader']['unknown_cost'] = 1
+json.dump(d, open('$TMP/cost-unknown.json', 'w'))"
+OUT="$(cost_report "$TMP/cost-unknown.json" "")"
+echo "$OUT" | grep -q "billed but reported no usage" \
+  || { echo "$OUT"; fail "a billed pass with no usage was not surfaced"; }
+pass
+
+# Absent and malformed both state the absence rather than crashing.
+echo '{}' > "$TMP/cost-empty.json"
+OUT="$(cost_report "$TMP/cost-empty.json" "")" || { echo "$OUT"; fail "an empty cost file crashed the report"; }
+echo "$OUT" | grep -q "No cost data" || { echo "$OUT"; fail "an empty cost file did not say so"; }
+# A cost file that will not parse at all. This one is easy to get wrong: the
+# obvious implementation loads it in main(), OUTSIDE the cost section's
+# boundary, so the raise takes the pass-rate table with it -- #199's shape, one
+# file over. The load must fail into the section, not around it.
+printf 'not json at all' > "$TMP/cost-bad.json"
+OUT="$(cost_report "$TMP/cost-bad.json" "")" \
+  || { echo "$OUT"; fail "an unparseable cost file crashed the whole report"; }
+echo "$OUT" | grep -q "## Behavioural eval results" \
+  || { echo "$OUT"; fail "an unparseable cost file deleted the pass-rate table"; }
+echo "$OUT" | grep -q "could not be read" \
+  || { echo "$OUT"; fail "an unparseable cost file did not state the absence"; }
+pass
+
+# THE ONE THAT MATTERS: a cost summary that PARSES but carries a shape nobody
+# guarded -- a null where a mapping was assumed. This is #199's actual profile,
+# and the pass-rate table must survive it intact.
+cat > "$TMP/cost-weird.json" <<'EOF'
+{"schema": 1, "cli_versions": ["1.2.3"],
+ "configs": {"with_skill": {"passes": {"executor": null, "grader": 42}}}}
+EOF
+OUT="$(cost_report "$TMP/cost-weird.json" "")" \
+  || { echo "$OUT"; fail "an unexpected cost shape crashed the whole report"; }
+echo "$OUT" | grep -q "## Behavioural eval results" \
+  || { echo "$OUT"; fail "an unexpected cost shape deleted the pass-rate table"; }
+echo "$OUT" | grep -qE "Cost data could not be rendered|### Cost" \
+  || { echo "$OUT"; fail "an unexpected cost shape produced no cost section at all"; }
+pass
+
+# Omitting --cost leaves the report exactly as it was, so every consumer that
+# does not pass it is unaffected.
+OUT="$(report "$TMP/real.json" "$TMP/measured-baseline.json")"
+echo "$OUT" | grep -q "### Cost" && fail "a report with no --cost still rendered a cost section"
+pass
+
+# 8-mut. Remove the failure boundary. The unexpected shape must then take the
+# whole report down, proving the boundary is what saves it.
+M="$(mutate boundary 'try:
+        return cost_rows(cost, base_cost)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring; this is the boundary
+        return ["\n### Cost\n",
+                f"_Cost data could not be rendered: {type(exc).__name__}: {exc}_"]' \
+  'return cost_rows(cost, base_cost)')" || fail "could not build the boundary mutant"
+cost_report "$TMP/cost-weird.json" "" "$M" >/dev/null 2>&1 \
+  && fail "the unexpected shape survived without the boundary, so that case proves nothing"
+pass
+# ...and the boundary is specific: the well-formed cost file still renders on
+# the same mutant, so it is not masking an ordinary bug.
+cost_report "$TMP/cost.json" "" "$M" >/dev/null 2>&1 \
+  || fail "the boundary mutant also broke the well-formed case; the boundary is hiding a real defect"
+pass
+
+# 8-mut2. Load the cost summary with the strict loader instead of the soft one.
+# The malformed file must then kill the whole report, proving the separate
+# loader is what keeps the failure inside the section.
+M="$(mutate softload 'cost = load_cost(args.cost) if args.cost else None' \
+  'cost = load(args.cost) if args.cost else None')" \
+  || fail "could not build the strict-load mutant"
+cost_report "$TMP/cost-bad.json" "" "$M" >/dev/null 2>&1 \
+  && fail "the malformed cost file survived a strict load, so that case proves nothing"
+pass
+# ...and the strict-load mutant leaves the well-formed case working, so this is
+# isolating the loader rather than breaking cost rendering generally.
+cost_report "$TMP/cost.json" "" "$M" >/dev/null 2>&1 \
+  || fail "the strict-load mutant also broke the well-formed case; it is not isolating the loader"
 pass
 
 echo "eval-report.test.sh: $CASES cases passed"

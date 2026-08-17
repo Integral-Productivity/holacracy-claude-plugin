@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.13.3...v0.14.0) (2026-08-17)
+
+
+### Features
+
+* **checklist-metric-audit:** tiering, round-time rationale, and the no-metric-values constraint (+ ADR-0015) ([#248](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/248)) ([ab049f0](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/ab049f04df8889b67264c573427a38ca6d4da852))
+* **governance:** adopt devops-excellence standard ([#249](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/249)) ([ada0d83](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/ada0d838454630f73802861b99c4a2148ebb22a6))
+* **governance:** adopt devops-excellence standard ([#252](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/252)) ([0c11a6e](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/0c11a6e7007575a8ddb3fd649547c9ade60aecf1))
+
 ## [0.13.3](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.13.2...v0.13.3) (2026-08-08)
 
 

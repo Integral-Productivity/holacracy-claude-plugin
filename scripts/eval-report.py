@@ -51,12 +51,23 @@ be recorded by the runner itself rather than reconstructed after the fact.
 This section must survive the same style of malformed input as the rest of
 the file: a missing index file, an empty `{}` index (the very first run, or
 a run where caching was never enabled), and an index that predates the
-`_run_summary` key.
+`_run_summary` key. Loaded with its own tolerant reader
+(load_cache_index_file), never the stricter `load()` below -- the index lives
+on an unprotected branch (KTD1), so a bad manual edit or partial write there
+must degrade to "no cache summary" rather than take the whole report down.
+
+The cost section added later is held to a stronger version of the same rule.
+#199 was none of those four shapes: it was a well-formed file carrying an
+UNANTICIPATED TYPE. So the cost section renders behind its own failure
+boundary and degrades alone -- the shape that breaks a renderer is by
+definition the one nobody wrote a guard for, and a cost table is not worth
+deleting the paid run's pass-rate table over.
 
 Usage:
     python3 scripts/eval-report.py --current benchmark.json \
         --baseline evals/benchmark.json \
-        [--cache-index cache-index.json]
+        [--cache-index cache-index.json] \
+        [--cost cost-summary.json]
 """
 
 import argparse
@@ -74,6 +85,11 @@ DELTA_KEY = "delta"
 # Per evals/README.md, a case whose stddev is this wide is a defect in the
 # case, not a finding about the skill.
 WIDE_STDDEV = 0.2
+
+# Marks a cost summary that could not be parsed, so the failure travels as DATA
+# into the cost section's own boundary instead of raising at load time. See
+# load_cost below for why that distinction is load-bearing.
+UNREADABLE_KEY = "_unreadable"
 
 
 def configs_only(summary):
@@ -96,7 +112,7 @@ def stats_of(entry):
     return (entry or {}).get("pass_rate") or {}
 
 
-def render(cur, base):
+def render(cur, base, cost=None, base_cost=None):
     """Return the report as a list of lines."""
     cur_summary = configs_only(cur.get("run_summary"))
     base_summary = configs_only(base.get("run_summary"))
@@ -130,17 +146,22 @@ def render(cur, base):
                      "case is a defect in the case, not a finding about the skill: "
                      + ", ".join(f"`{c}` ({s:.2f})" for c, s in sorted(wide)))
 
+    # Appended last and behind its own boundary, so everything above is already
+    # built by the time the newest and least-proven code runs.
+    if cost is not None:
+        lines.extend(render_cost(cost, base_cost))
+
     return lines
 
 
 def render_cache_summary(index):
     """Return the change-aware cache's hit/miss section as a list of lines.
 
-    `index` is whatever `load()` returned for --cache-index: {} for a missing
-    or unparseable file (same tolerant contract as run-behavioural-eval.py's
-    own load_cache_index), or the real parsed dict otherwise. Three shapes
-    beyond the happy path must not crash this, mirroring the rest of the
-    file's "informational, never fatal" contract:
+    `index` is whatever `load_cache_index_file()` returned for --cache-index:
+    {} for a missing or unparseable file (same tolerant contract as
+    run-behavioural-eval.py's own load_cache_index), or the real parsed dict
+    otherwise. Three shapes beyond the happy path must not crash this,
+    mirroring the rest of the file's "informational, never fatal" contract:
 
       - {} (no file, or an empty index -- the very first run ever, or a run
         where --cache-index was never enabled)
@@ -205,21 +226,147 @@ def render_cache_summary(index):
     return lines
 
 
-def load(path):
-    """Parse a JSON file, or {} when it is missing or unparseable.
+def fmt_tokens(value):
+    """A token count, or an explicit absence. Never a zero standing in for one."""
+    return f"{value:,}" if isinstance(value, (int, float)) else "n/a"
 
-    A missing baseline is the state this repo is actually in until a graded
-    run seeds one, so it is a normal path rather than an error. Shared with
-    --cache-index for the same reason: the very first run has no cache index
-    on disk yet either, and that must render, not crash.
+
+def fmt_rate(value):
+    return f"{value:.0%}" if isinstance(value, (int, float)) else "n/a"
+
+
+def fmt_usd(value):
+    return f"${value:.4f}" if isinstance(value, (int, float)) else "n/a"
+
+
+def cost_rows(cost, base_cost):
+    """The cost table's lines, per config, both passes, never blended."""
+    unreadable = (cost or {}).get(UNREADABLE_KEY)
+    if unreadable:
+        return ["\n### Cost\n", f"_Cost data could not be read: {unreadable}_"]
+    configs = (cost or {}).get("configs") or {}
+    base_configs = (base_cost or {}).get("configs") or {}
+    if not configs:
+        return ["\n### Cost\n", "_No cost data in this run._"]
+
+    lines = ["\n### Cost\n",
+             "| config | pass | tokens | cache hit | USD | Δ tokens |",
+             "|---|---|---|---|---|---|"]
+    unknown = 0
+    for config, entry in sorted(configs.items()):
+        passes = (entry or {}).get("passes") or {}
+        base_passes = ((base_configs.get(config) or {}).get("passes")) or {}
+        for name in ("executor", "grader"):
+            pass_entry = passes.get(name) or {}
+            tokens = (pass_entry.get("tokens") or {}).get("total")
+            base_tokens = ((base_passes.get(name) or {}).get("tokens") or {}).get("total")
+            # .get on the baseline, never [] -- a config or pass the comparison
+            # has never seen is normal the first time a case is added, and reads
+            # as an absence rather than a delta against nothing.
+            if isinstance(tokens, (int, float)) and isinstance(base_tokens, (int, float)):
+                delta = f"{tokens - base_tokens:+,}"
+            else:
+                delta = "n/a"
+            unknown += pass_entry.get("unknown_cost") or 0
+            lines.append(f"| {config} | {name} | {fmt_tokens(tokens)} | "
+                         f"{fmt_rate(pass_entry.get('cache_hit_rate'))} | "
+                         f"{fmt_usd(pass_entry.get('usd'))} | {delta} |")
+
+    if unknown:
+        # Spend that was incurred and cannot be recovered. Saying so is the
+        # whole reason `failed` is distinguished from `not_invoked` upstream:
+        # reporting it as zero would understate the total silently.
+        noun = "pass was" if unknown == 1 else "passes were"
+        lines.append(f"\n> **{unknown} {noun} billed but reported no usage.** "
+                     "That cost is real and is missing from the totals above.")
+
+    versions = (cost or {}).get("cli_versions") or []
+    if len(versions) > 1:
+        lines.append("\n> **More than one CLI version produced these figures** ("
+                     + ", ".join(f"`{v}`" for v in versions)
+                     + "), so they are not strictly comparable.")
+    return lines
+
+
+def render_cost(cost, base_cost):
+    """The cost section, isolated so its failure cannot take the report with it.
+
+    #199 was not a missing file or malformed JSON. It was a well-formed file
+    carrying an UNANTICIPATED TYPE -- a preformatted string where a stats dict
+    was assumed -- meeting `.get("mean")`. Handling the two named absence cases
+    is therefore not enough on its own; the shape that breaks a renderer is by
+    definition the one nobody wrote a guard for.
+
+    The consequence of getting it wrong is asymmetric. This step is
+    `continue-on-error: true`, so an exception raised here would turn the step
+    yellow and silently delete the paid run's headline pass-rate table from the
+    step summary. A cost section is not worth that, so it degrades alone.
+    """
+    try:
+        return cost_rows(cost, base_cost)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring; this is the boundary
+        return ["\n### Cost\n",
+                f"_Cost data could not be rendered: {type(exc).__name__}: {exc}_"]
+
+
+def load(path):
+    """Parse a benchmark file, or {} when it is not there.
+
+    A missing baseline is the state this repo is actually in until a graded run
+    seeds one, so it is a normal path rather than an error.
+
+    Deliberately STRICT on malformed JSON (raises rather than returning {}):
+    `--current` and `--baseline` are benchmark files this repo either produced
+    moments ago or committed via PR review, so a parse failure there means real
+    repo corruption worth surfacing loudly -- unlike --cache-index (see
+    load_cache_index_file below) or --cost (see load_cost below), both of
+    which read files this repo does not fully control the shape or origin of.
+    """
+    p = pathlib.Path(path)
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def load_cache_index_file(path):
+    """Parse the change-aware cache index, or {} when missing or unparseable.
+
+    Deliberately NOT the (now-strict) `load()` above: the cache index lives on
+    a dedicated, unprotected branch (KTD1), so a bad manual edit or a partial
+    write from an interrupted job is a plausible way for this file to be
+    malformed -- and this section's whole contract (see render_cache_summary)
+    is that such a file degrades to "no cache summary", never to a crashed
+    report. Same tolerant shape as run-behavioural-eval.py's own
+    load_cache_index.
     """
     p = pathlib.Path(path)
     if not p.exists():
         return {}
     try:
         return json.loads(p.read_text())
-    except json.JSONDecodeError:
+    except (OSError, json.JSONDecodeError):
         return {}
+
+
+def load_cost(path):
+    """Parse a cost summary, returning a marker rather than raising.
+
+    Deliberately NOT `load()`. Raising on malformed JSON is right for the
+    benchmark itself -- a report about a run whose results cannot be read is
+    worthless -- but wrong here, and the difference is easy to miss: the load
+    happens in main(), which is OUTSIDE render_cost's boundary, so a malformed
+    cost file would take the pass-rate table down with it. That is #199's shape
+    exactly, one file over, and it defeats the isolation this section was given
+    in the first place.
+
+    So an unreadable cost summary travels as data and is rendered as a stated
+    absence by the cost section alone.
+    """
+    p = pathlib.Path(path)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return {UNREADABLE_KEY: f"{type(exc).__name__}: {exc}"}
 
 
 def main(argv=None):
@@ -232,11 +379,20 @@ def main(argv=None):
                         help="optional: also render the change-aware cache's "
                              "hit/miss summary, read from "
                              "run-behavioural-eval.py's --cache-index file")
+    parser.add_argument("--cost", default=None,
+                        help="cost-summary.json from this run; omitted means no cost section")
+    # Supplied by path, never discovered. There is no committed cost baseline to
+    # find, and a discovery heuristic inside a script whose contract is "never
+    # crash" adds a failure mode to the one place that must not have one.
+    parser.add_argument("--cost-baseline", default=None,
+                        help="a cost summary to compare against; omitted means no delta column")
     args = parser.parse_args(argv)
 
-    lines = render(load(args.current), load(args.baseline))
+    cost = load_cost(args.cost) if args.cost else None
+    base_cost = load_cost(args.cost_baseline) if args.cost_baseline else None
+    lines = render(load(args.current), load(args.baseline), cost, base_cost)
     if args.cache_index:
-        lines += render_cache_summary(load(args.cache_index))
+        lines += render_cache_summary(load_cache_index_file(args.cache_index))
     print("\n".join(lines))
     return 0
 

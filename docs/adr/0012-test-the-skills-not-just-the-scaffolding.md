@@ -214,3 +214,44 @@ Two further findings from the same work:
 The original Decision text is left standing, per the ADR-0011 precedent for
 Option D: a decision record documents what was decided when, and rewriting it
 falsifies the record.
+
+## Amendment, 2026-08-17: Tier 1 is pinned, not offline
+
+The Context above argues that "a per-PR gate needs to be deterministic, offline,
+and sub-second." Two of those three are right and worth defending. **Offline was
+already inaccurate when written, and is now inaccurate by design.**
+
+`scripts-test.yml` downloads shellcheck from a GitHub release URL on every run,
+pinned by version *and* SHA256, digest-checked and re-asserted by `--version`
+before it executes. That is a network fetch on the per-PR gate, and it predates
+this amendment. The property the gate actually holds is not "makes no network
+call" but **"every external input is content-addressed, so the same PR produces
+the same result whenever it runs."** Determinism was doing the real work all
+along; offline was standing in for it.
+
+Naming that matters now because the eval cost ledger adds a second such fetch.
+`scripts/eval-cost.py` rewrites three figures inside the output of
+`aggregate_benchmark.py` — a script this repo does not own, fetched at a pinned
+commit. Verified against a committed fixture, the suite proves only that the
+fixture and the correction agree; a pin bump that changed the real shape would
+ship green and be discovered by a paid nightly, which is the failure mode this
+whole ADR exists to move earlier. So `scripts-test.yml` fetches the same pinned
+commit and runs the correction against upstream's real output.
+
+Three consequences, recorded so they are chosen rather than discovered:
+
+- **The pin has one home**, `evals/aggregator-pin.txt`, read by both jobs. Two
+  copies of a SHA drift, and a drifted pin is invisible until the two jobs
+  disagree about a schema.
+- **The fetch hard-fails**, matching shellcheck. Soft-failing would let a bad
+  pin degrade quietly to the fixture — reporting green while skipping the check
+  it exists to run. An upstream outage reddening a PR is the accepted cost, and
+  it is exposure this gate already carried.
+- **The suite still runs offline** when `AGGREGATOR` is unset, against the
+  committed fixture, so a laptop with no network is not blocked. CI sets it;
+  local runs do not have to.
+
+Sub-second is also no longer literally true of the whole job, and was not before
+this change — the shellcheck download alone exceeds it. The tier's real
+commitment is that it is cheap enough to run on every PR and makes no API calls.
+That still holds: nothing here spends a token.

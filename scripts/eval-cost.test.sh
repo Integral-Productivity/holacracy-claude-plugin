@@ -225,30 +225,64 @@ print(len(d['configs']['with_skill']['models']))")" = "2" ] \
 pass
 
 # ---------------------------------------------------------------------------
-# 7. The two usage sources disagreeing warns; it does not silently pick one.
+# 7. #279: a fuller per-model map is the token authority, silently; a map that
+#    sums to LESS than usage is the one direction that still warns.
 # ---------------------------------------------------------------------------
-MISMATCH="$TMP/mismatch"
-mk_run "$MISMATCH" suite-a 0 with_skill 1 '{"schema":1,"cli_version":"1.2.3",
+# Shaped after the real run-32111649427 evidence: a `with_skill` executor pass
+# whose visible turn used one model, but a Task subagent (dispatched by
+# /holacracy:capture-tension) billed a second -- `usage` only ever saw the
+# first, `modelUsage` saw both. No warning: this is the healthy case #279
+# exists to stop mislabelling as a discrepancy.
+HIDDENCALL="$TMP/hiddencall"
+mk_run "$HIDDENCALL" suite-a 0 with_skill 1 '{"schema":1,"cli_version":"1.2.3",
  "passes":{"executor":{"status":"ok","reason":null,
    "usage":{"input_tokens":100,"output_tokens":200,
             "cache_creation_input_tokens":40,"cache_read_input_tokens":360},
-   "model_usage":{"model-x":{"inputTokens":100,"outputTokens":999,
+   "model_usage":{"model-x":{"inputTokens":100,"outputTokens":200,
+                             "cacheCreationInputTokens":40,
+                             "cacheReadInputTokens":360,"costUSD":0.01},
+                  "model-subagent":{"inputTokens":9000,"outputTokens":3000,
+                             "cacheCreationInputTokens":0,
+                             "cacheReadInputTokens":0,"costUSD":0.05}},
+   "total_cost_usd":0.06},
+  "grader":{"status":"not_invoked","reason":"none","usage":null,
+            "model_usage":null,"total_cost_usd":null}}}'
+hidden_warn="$("$COST" aggregate --run-tree "$HIDDENCALL" --out "$TMP/hiddencall.json" 2>&1 >/dev/null)"
+case "$hidden_warn" in
+  *"per-model map sums to"*) fail "a fuller per-model map (a subagent's turns) still warned; #279 healthy runs must stay quiet" ;;
+  *) : ;;
+esac
+# 700 (usage) + 12000 (subagent) = 12700: the subagent's turns are recovered,
+# not silently dropped by keeping usage's smaller figure.
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/hiddencall.json'))
+print(d['runs'][0]['tokens_total'])")" = "12700" ] \
+  || fail "the fuller per-model map did not become the token authority"
+pass
+
+# The reverse direction: a per-model map that sums to LESS than usage is not
+# a hidden call recovered -- the map itself is broken -- so `usage` still wins
+# and the disagreement still warns.
+UNDERCOUNT="$TMP/undercount"
+mk_run "$UNDERCOUNT" suite-a 0 with_skill 1 '{"schema":1,"cli_version":"1.2.3",
+ "passes":{"executor":{"status":"ok","reason":null,
+   "usage":{"input_tokens":100,"output_tokens":200,
+            "cache_creation_input_tokens":40,"cache_read_input_tokens":360},
+   "model_usage":{"model-x":{"inputTokens":100,"outputTokens":99,
                              "cacheCreationInputTokens":40,
                              "cacheReadInputTokens":360,"costUSD":0.01}},
    "total_cost_usd":0.01},
   "grader":{"status":"not_invoked","reason":"none","usage":null,
             "model_usage":null,"total_cost_usd":null}}}'
-warn_out="$("$COST" aggregate --run-tree "$MISMATCH" --out "$TMP/mismatch.json" 2>&1 >/dev/null)"
-case "$warn_out" in
+under_warn="$("$COST" aggregate --run-tree "$UNDERCOUNT" --out "$TMP/undercount.json" 2>&1 >/dev/null)"
+case "$under_warn" in
   *"per-model map sums to"*) : ;;
-  *) fail "a usage/model_usage disagreement produced no warning" ;;
+  *) fail "a per-model map summing to less than usage produced no warning" ;;
 esac
-# `usage` still wins -- it is what the pre-existing figure was computed from, so
-# the correction stays like-for-like.
 [ "$(python3 -c "
-import json;d=json.load(open('$TMP/mismatch.json'))
+import json;d=json.load(open('$TMP/undercount.json'))
 print(d['runs'][0]['tokens_total'])")" = "700" ] \
-  || fail "the per-model map overrode usage as the token authority"
+  || fail "a per-model map summing to less than usage overrode usage as the token authority"
 pass
 
 # A PARTIAL per-model map is a reporting difference, not a discrepancy. Warning
@@ -907,14 +941,29 @@ print(len(d['configs']['with_skill']['models']))")" != "2" ] \
   || fail "taking only the first model entry still produced 2 models; case 6 is not load-bearing"
 pass
 
-# The two-source disagreement warns.
-mutate agreewarn \
-  'if status == "ok" and full and model_total != tokens["total"]:' \
-  'if False and full and model_total != tokens["total"]:'
-mut_warn="$(python3 "$TMP/mut-agreewarn.py" aggregate --run-tree "$MISMATCH" \
+# #279: a fuller per-model map must actually become the token authority, not
+# just avoid warning. Disable only the "model is bigger" branch -- the warning
+# path still runs -- and the subagent's turns must go missing again.
+mutate modelauthority \
+  'if model_total > usage_total:' \
+  'if False:'
+python3 "$TMP/mut-modelauthority.py" aggregate --run-tree "$HIDDENCALL" \
+  --out "$TMP/mutauth.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/mutauth.json'));print(d['runs'][0]['tokens_total'])")" != "12700" ] \
+  || fail "usage still overrode a fuller per-model map with the authority-switch branch disabled; case 7 is not load-bearing"
+pass
+
+# The reverse direction's warning is its own defense, separate from the
+# authority switch above -- removing it must not go unnoticed.
+mutate reversewarn \
+  '            warn(f"{label}: the per-model map sums to {model_total} tokens but "
+                 f"usage reports {usage_total}; recording the usage figure")' \
+  '            pass'
+mut_warn="$(python3 "$TMP/mut-reversewarn.py" aggregate --run-tree "$UNDERCOUNT" \
   --out "$TMP/mutwarn.json" 2>&1 >/dev/null)"
 case "$mut_warn" in
-  *"per-model map sums to"*) fail "the disagreement warning fired with its guard disabled; case 7 is not load-bearing" ;;
+  *"per-model map sums to"*) fail "the undercount-direction warning fired with its statement removed; case 7's reverse direction is not load-bearing" ;;
   *) : ;;
 esac
 pass

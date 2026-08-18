@@ -40,17 +40,24 @@ The result event carries `total_cost_usd`, and each `modelUsage` entry carries
 pricing change and be wrong in a way nothing would detect. Cost is a field
 read.
 
-TWO SOURCES, TWO JOBS
----------------------
-`usage` is authoritative for token totals: it is the aggregate the CLI reports,
-it is what the pre-existing figure was computed from, and the correction widens
-that same figure to cover the grader -- so the reconciliation compares like
-with like. `modelUsage` is authoritative for attribution and USD, because it is
-per model and one pass can be served by several (the eval tool set offers
-`Task`, whose subagent turns can be served by a different model, and
-cache-tier-suffixed names key separately). They are computed differently
-upstream and can disagree; a disagreement warns rather than letting one
-silently win.
+TWO SOURCES, ONE AUTHORITY (#279)
+----------------------------------
+`usage` on the terminal result event is NOT a reliable cumulative session
+total. #279 found it undercounts in three concrete, reproducible ways: a
+fixed-size auxiliary model call that never produces a visible turn (a
+constant few hundred tokens on every `without_skill` executor pass, per eval
+case, first characterised while settling #222); a `Task` subagent's own turns
+(up to tens of times larger, only on `with_skill` executor passes that
+actually dispatch a subagent); and, on every grader pass, whatever internal
+call produces its schema-conformant JSON output. `modelUsage` is the complete
+picture in all three cases -- it is a per-model roll-up of every API call the
+process made, so a hidden or subagent call still lands in it even when
+`usage` never saw it. The per-model sum is therefore the token authority
+whenever the map carries the full field set on every entry (a partial map is
+a reporting difference, not something to trust over `usage`); `usage` is the
+fallback for a partial or absent map, and for the one direction a full map
+still cannot explain -- summing to LESS than `usage`, which means the map
+itself is untrustworthy rather than that a hidden call happened.
 
 A PASS THAT FAILED IS NOT A PASS THAT COST NOTHING
 --------------------------------------------------
@@ -181,16 +188,36 @@ def derive_pass(record: dict | None, label: str) -> dict:
         warn(f"{label}: pass reported status {status!r} with no usage object; "
              "recording its cost as unknown rather than zero")
 
-    # AE10: the two sources should agree. Compared only when the per-model map
-    # carries the full field set -- a partial map is a reporting difference, not
-    # a discrepancy, and warning on it would train readers to ignore the warning.
+    # AE10 / #279: the per-model map is the token authority when it is full --
+    # it is the only one of the two that reflects a hidden auxiliary call, a
+    # Task subagent's turns, or the grader's own internal call, none of which
+    # reach `usage`. Compared only when the map carries the full field set on
+    # every entry -- a partial map is a reporting difference, not a
+    # discrepancy, and warning on it would train readers to ignore the warning.
+    #
+    # "Full" means every field is a genuine count, not merely present: a key
+    # that exists but holds null still leaves `full` False, because count()
+    # silently reads a null as 0 -- treating that as complete would let a
+    # partially-corrupted map promote a truncated model_total with no warning
+    # at all, one field short of the exact silent undercount #279 exists to
+    # catch.
     model_total = sum(m["total"] for m in models.values())
     entries = [e for e in (record.get("model_usage") or {}).values() if isinstance(e, dict)]
     full = bool(entries) and all(
-        all(camel in entry for camel in MODEL_FIELDS.values()) for entry in entries)
-    if status == "ok" and full and model_total != tokens["total"]:
-        warn(f"{label}: usage reports {tokens['total']} tokens but the per-model map "
-             f"sums to {model_total}; recording the usage figure")
+        all(isinstance(entry.get(camel), (int, float)) and not isinstance(entry.get(camel), bool)
+            for camel in MODEL_FIELDS.values())
+        for entry in entries)
+    usage_total = tokens["total"]
+    if status == "ok" and full and model_total != usage_total:
+        if model_total > usage_total:
+            tokens = {field: sum(m[field] for m in models.values()) for field in TOKEN_FIELDS}
+            tokens["total"] = model_total
+        else:
+            # The map is supposed to be the superset; summing to LESS than
+            # `usage` means the map itself is broken, not that a hidden call
+            # happened -- that direction still warns and keeps `usage`.
+            warn(f"{label}: the per-model map sums to {model_total} tokens but "
+                 f"usage reports {usage_total}; recording the usage figure")
 
     return {
         "status": status,

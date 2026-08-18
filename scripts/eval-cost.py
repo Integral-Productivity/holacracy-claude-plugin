@@ -194,10 +194,19 @@ def derive_pass(record: dict | None, label: str) -> dict:
     # reach `usage`. Compared only when the map carries the full field set on
     # every entry -- a partial map is a reporting difference, not a
     # discrepancy, and warning on it would train readers to ignore the warning.
+    #
+    # "Full" means every field is a genuine count, not merely present: a key
+    # that exists but holds null still leaves `full` False, because count()
+    # silently reads a null as 0 -- treating that as complete would let a
+    # partially-corrupted map promote a truncated model_total with no warning
+    # at all, one field short of the exact silent undercount #279 exists to
+    # catch.
     model_total = sum(m["total"] for m in models.values())
     entries = [e for e in (record.get("model_usage") or {}).values() if isinstance(e, dict)]
     full = bool(entries) and all(
-        all(camel in entry for camel in MODEL_FIELDS.values()) for entry in entries)
+        all(isinstance(entry.get(camel), (int, float)) and not isinstance(entry.get(camel), bool)
+            for camel in MODEL_FIELDS.values())
+        for entry in entries)
     usage_total = tokens["total"]
     if status == "ok" and full and model_total != usage_total:
         if model_total > usage_total:

@@ -242,8 +242,8 @@ mk_run "$HIDDENCALL" suite-a 0 with_skill 1 '{"schema":1,"cli_version":"1.2.3",
                              "cacheCreationInputTokens":40,
                              "cacheReadInputTokens":360,"costUSD":0.01},
                   "model-subagent":{"inputTokens":9000,"outputTokens":3000,
-                             "cacheCreationInputTokens":0,
-                             "cacheReadInputTokens":0,"costUSD":0.05}},
+                             "cacheCreationInputTokens":500,
+                             "cacheReadInputTokens":500,"costUSD":0.05}},
    "total_cost_usd":0.06},
   "grader":{"status":"not_invoked","reason":"none","usage":null,
             "model_usage":null,"total_cost_usd":null}}}'
@@ -252,12 +252,21 @@ case "$hidden_warn" in
   *"per-model map sums to"*) fail "a fuller per-model map (a subagent's turns) still warned; #279 healthy runs must stay quiet" ;;
   *) : ;;
 esac
-# 700 (usage) + 12000 (subagent) = 12700: the subagent's turns are recovered,
-# not silently dropped by keeping usage's smaller figure.
-[ "$(python3 -c "
-import json;d=json.load(open('$TMP/hiddencall.json'))
-print(d['runs'][0]['tokens_total'])")" = "12700" ] \
+# 700 (usage) + 13000 (subagent) = 13700: the subagent's turns are recovered,
+# not silently dropped by keeping usage's smaller figure. The subagent's own
+# cache fields are nonzero and asymmetric with usage's, so a mutant that
+# switched only the "total" key while leaving the rest of `tokens` computed
+# from `usage` would still be caught here, not just by the aggregate.
+hq() { python3 -c "
+import json;d=json.load(open('$TMP/hiddencall.json'));print($1)"; }
+[ "$(hq "d['runs'][0]['tokens_total']")" = "13700" ] \
   || fail "the fuller per-model map did not become the token authority"
+[ "$(hq "d['configs']['with_skill']['passes']['executor']['tokens']['input_tokens']")" = "9100" ] \
+  || fail "input_tokens was not recomputed from the per-model map"
+[ "$(hq "d['configs']['with_skill']['passes']['executor']['tokens']['output_tokens']")" = "3200" ] \
+  || fail "output_tokens was not recomputed from the per-model map"
+[ "$(hq "d['configs']['with_skill']['passes']['executor']['cache_hit_rate']")" = "0.6143" ] \
+  || fail "cache_hit_rate was computed from usage's cache fields instead of the switched-to per-model total"
 pass
 
 # The reverse direction: a per-model map that sums to LESS than usage is not
@@ -950,7 +959,7 @@ mutate modelauthority \
 python3 "$TMP/mut-modelauthority.py" aggregate --run-tree "$HIDDENCALL" \
   --out "$TMP/mutauth.json" >/dev/null 2>&1
 [ "$(python3 -c "
-import json;d=json.load(open('$TMP/mutauth.json'));print(d['runs'][0]['tokens_total'])")" != "12700" ] \
+import json;d=json.load(open('$TMP/mutauth.json'));print(d['runs'][0]['tokens_total'])")" != "13700" ] \
   || fail "usage still overrode a fuller per-model map with the authority-switch branch disabled; case 7 is not load-bearing"
 pass
 
@@ -966,6 +975,69 @@ case "$mut_warn" in
   *"per-model map sums to"*) fail "the undercount-direction warning fired with its statement removed; case 7's reverse direction is not load-bearing" ;;
   *) : ;;
 esac
+pass
+
+# The outer gate governs entry into BOTH branches above and is its own
+# defense, distinct from either inner branch -- a reviewer found it had gone
+# uncovered by a dedicated mutant, incidentally caught only by the two
+# fixtures above rather than by a targeted case naming this exact line.
+mutate outergate \
+  'if status == "ok" and full and model_total != usage_total:' \
+  'if False:'
+python3 "$TMP/mut-outergate.py" aggregate --run-tree "$HIDDENCALL" \
+  --out "$TMP/mutgate1.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/mutgate1.json'));print(d['runs'][0]['tokens_total'])")" != "13700" ] \
+  || fail "usage still overrode a fuller per-model map with the outer gate disabled; case 7's outer gate is not load-bearing"
+gate_warn="$(python3 "$TMP/mut-outergate.py" aggregate --run-tree "$UNDERCOUNT" \
+  --out "$TMP/mutgate2.json" 2>&1 >/dev/null)"
+case "$gate_warn" in
+  *"per-model map sums to"*) fail "the undercount-direction warning fired with the outer gate disabled; case 7's outer gate is not load-bearing" ;;
+  *) : ;;
+esac
+pass
+
+# A per-model entry can carry every camelCase key and still be corrupted --
+# one field present but null. Treating that as "full" would let a partially
+# hidden call's truncated total silently win with no warning, one field
+# short of the exact undercount #279 exists to catch.
+NULLFIELD="$TMP/nullfield"
+mk_run "$NULLFIELD" suite-a 0 with_skill 1 '{"schema":1,"cli_version":"1.2.3",
+ "passes":{"executor":{"status":"ok","reason":null,
+   "usage":{"input_tokens":100,"output_tokens":200,
+            "cache_creation_input_tokens":40,"cache_read_input_tokens":360},
+   "model_usage":{"model-x":{"inputTokens":100,"outputTokens":200,
+                             "cacheCreationInputTokens":40,
+                             "cacheReadInputTokens":360,"costUSD":0.01},
+                  "model-subagent":{"inputTokens":900,"outputTokens":300,
+                             "cacheCreationInputTokens":null,
+                             "cacheReadInputTokens":0,"costUSD":0.01}},
+   "total_cost_usd":0.02},
+  "grader":{"status":"not_invoked","reason":"none","usage":null,
+            "model_usage":null,"total_cost_usd":null}}}'
+null_warn="$("$COST" aggregate --run-tree "$NULLFIELD" --out "$TMP/nullfield.json" 2>&1 >/dev/null)"
+case "$null_warn" in
+  *"per-model map sums to"*) fail "a per-model entry with a null-valued field (not a missing key) still warned or switched; it should be treated as partial" ;;
+  *) : ;;
+esac
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/nullfield.json'))
+print(d['runs'][0]['tokens_total'])")" = "700" ] \
+  || fail "a per-model entry with a null-valued field was treated as full, silently promoting a truncated model_total"
+pass
+
+mutate fullcheck \
+  'full = bool(entries) and all(
+        all(isinstance(entry.get(camel), (int, float)) and not isinstance(entry.get(camel), bool)
+            for camel in MODEL_FIELDS.values())
+        for entry in entries)' \
+  'full = bool(entries) and all(
+        all(camel in entry for camel in MODEL_FIELDS.values())
+        for entry in entries)'
+python3 "$TMP/mut-fullcheck.py" aggregate --run-tree "$NULLFIELD" --out "$TMP/mutfull.json" >/dev/null 2>&1
+[ "$(python3 -c "
+import json;d=json.load(open('$TMP/mutfull.json'));print(d['runs'][0]['tokens_total'])")" != "700" ] \
+  || fail "the key-presence-only full check still treated a null-valued entry as partial; the value-validity guard is not load-bearing"
 pass
 
 # The metadata-less fallback must still produce a JOINABLE id. The directory is

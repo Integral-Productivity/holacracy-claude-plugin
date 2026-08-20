@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.15.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.14.0...v0.15.0) (2026-08-18)
+
+
+### Features
+
+* **evals:** make the behavioural eval tier's token and cache cost observable ([#276](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/276)) ([59ef2b4](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/59ef2b43037015ae8451042df9ac1fa6225540d8))
+* **evals:** seed a measured behavioural-eval baseline ([#267](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/267)) ([3f91fd7](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/3f91fd7ee4b14e398ce796ef25902c1c6b7c4255))
+* **evals:** skip unchanged legs in the nightly graded eval run ([#278](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/278)) ([0702a6e](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/0702a6ea304063314c389ad473dd7d036b5905f3))
+
+
+### Bug Fixes
+
+* **evals:** make modelUsage the token authority when it undercounts usage ([#280](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/280)) ([0f805a2](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/0f805a273ae90ef411725e11dc10d37d3a5a4687))
+
 ## [0.14.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.13.3...v0.14.0) (2026-08-17)
 
 

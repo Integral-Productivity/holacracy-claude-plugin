@@ -1,50 +1,50 @@
 {
   "_run_summary": {
-    "generated_at": "2026-08-28T19:08:45.732938+00:00",
-    "hits": 0,
+    "generated_at": "2026-08-29T12:52:52.046824+00:00",
+    "hits": 8,
     "legs": [
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "person-tension-refused-and-routed-to-idr",
         "config": "with_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "person-tension-refused-and-routed-to-idr",
         "config": "without_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "authority-gate-fires-before-venue-routing",
         "config": "with_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "authority-gate-fires-before-venue-routing",
         "config": "without_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "blended-tension-partitioned",
         "config": "with_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "blended-tension-partitioned",
         "config": "without_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "successor-written-before-archive",
         "config": "with_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "successor-written-before-archive",
         "config": "without_skill"
       }
     ],
-    "misses": 8
+    "misses": 0
   },
   "leg_00f1030b0d843a11a5fd276d428422e2": {
     "case": "authority-gate-fires-before-venue-routing",

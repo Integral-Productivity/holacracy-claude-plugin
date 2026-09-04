@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.15.0...v0.15.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **hooks:** emit role-grounding directive only when glassfrog is reachable ([#286](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/286)) ([590c16f](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/590c16fb9fe101f257d8f27bdec6b6104f0491c7)), closes [#283](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/283)
+
 ## [0.15.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.14.0...v0.15.0) (2026-08-18)
 
 

@@ -6,9 +6,17 @@
 #
 #   1. A role-grounding directive (issue #62, Track A PDCA-1) that DEMANDS
 #      the session resolve + announce its active Holacratic role/circle before
-#      its first substantive action. On by default; gate-able (see below).
+#      its first substantive action -- emitted ONLY when an authenticated
+#      GlassFrog connector is detected (issue #283), and gate-able besides.
+#      When the connector is not authenticated the directive is withheld and
+#      one informational line says so instead.
 #   2. A routine briefing: scheduled-task routines tagged with the `holacracy/`
 #      prefix that fire today or have anomalies (e.g., last fire failed).
+#
+# NEVER POSES A QUESTION. Nothing this hook emits may require an answer before
+# work can start: a SessionStart payload reaches unattended sessions as readily
+# as interactive ones, and a blocking question there has nobody to answer it
+# (issue #283).
 #
 # NEVER writes nothing: when there is nothing to surface it emits a one-line
 # quiet marker carrying the plugin version, so a transcript can always tell
@@ -62,8 +70,9 @@ fi
 # the load*; it never *claims* grounding already happened. The wording says so
 # explicitly.
 #
-# CONFIG (all optional; default is always-on so the first experiment gets
-# maximal, honest signal):
+# CONFIG (all optional). The default is on wherever the directive CAN be
+# satisfied -- see the capability gate below, which is not optional and is the
+# one condition #283 made non-negotiable:
 #   HOLACRACY_GROUNDING_DIRECTIVE          on|off  (default on)  master toggle
 #   HOLACRACY_GROUNDING_REQUIRE_GLASSFROG  on|off  (default off) only inject
 #       when a GlassFrog connector is declared (a `.mcp.json` naming glassfrog
@@ -93,6 +102,110 @@ _truthy() {
     on|1|true|yes) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# ---------------------------------------------------------------------------
+# Capability gate: is the GlassFrog connector actually AUTHENTICATED? (#283)
+#
+# The directive tells the session to call `glassfrog_get_me` before its first
+# substantive action. When the connector is unauthenticated -- which includes
+# EVERY non-interactive session, because the OAuth flow cannot run there -- that
+# instruction cannot be carried out. What the session got instead was a failed
+# tool call and, from the directive's own fallback, a question with nobody
+# present to answer it. An Administration-tier control placed on a path where
+# compliance is impossible reads as governance and functions as noise.
+#
+# WHAT SIGNAL, AND WHY THIS ONE
+#
+# A SessionStart hook is on the hot path of every session in every repo, so the
+# check has to be local and fast. Four candidates were evaluated:
+#
+#   * The hook's own stdin/env. Carries session_id, transcript_path, cwd,
+#     permission_mode, hook_event_name, source -- and no MCP state at all. The
+#     harness documents no field and no environment variable that exposes MCP
+#     connection or authentication status to a hook.
+#   * `claude mcp list`, or any probe of the server URL. Both are network round
+#     trips on the hot path. Disqualified on speed, not on accuracy.
+#   * `~/.claude/mcp-needs-auth-cache.json`. Negative-only, and observably
+#     stale: on the machine this was written on, glassfrog was unauthenticated
+#     and absent from that cache. Absence there proves nothing.
+#   * The harness's own MCP OAuth store. Local, small, and the very record the
+#     harness consults to attach a bearer token to the server. This one.
+#
+# So: an entry under `mcpOAuth` whose server name contains "glassfrog" AND whose
+# `accessToken` is a non-empty string. The empty-string case is not theoretical
+# -- it is exactly what an OAuth flow that was started and never completed
+# leaves behind, and it is why "an entry exists" is not the test.
+#
+# FAIL CLOSED, BUT NEVER SILENTLY. If the store is missing, unreadable, or holds
+# no authenticated glassfrog entry, the directive is withheld. That inverts the
+# default ADR-0008 A2 argued for, and A2's objection still stands: an opt-in
+# gate that misfires makes the directive silently absent, which is byte-for-byte
+# the #122 outage. Two things answer it, and neither is optional:
+#   1. A withheld directive announces itself in the payload (see the withheld
+#      marker below). Absence is visible in the transcript, not inferred.
+#   2. HOLACRACY_GROUNDING_ASSUME_GLASSFROG=on forces the gate open, for any
+#      deployment whose token lives somewhere this check cannot see (an OS
+#      keychain, a managed enterprise store). A false negative is then one
+#      environment variable from fixed rather than an unfixable silent zero.
+#
+# CONFIG:
+#   HOLACRACY_GROUNDING_ASSUME_GLASSFROG   on|off  (default off) treat the
+#       connector as authenticated without consulting the store.
+#   HOLACRACY_GROUNDING_CREDENTIALS_FILE   <path>  (default
+#       ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json) which store to
+#       read. Exists so both sides of this gate are exercisable in tests.
+_glassfrog_authenticated() {
+  _truthy "${HOLACRACY_GROUNDING_ASSUME_GLASSFROG:-off}" && return 0
+
+  local cred="${HOLACRACY_GROUNDING_CREDENTIALS_FILE:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json}"
+  [[ -r "$cred" ]] || return 1
+  # Cheap pre-filter before paying for a python3 start-up: a store that does not
+  # contain the string at all cannot contain an authenticated entry.
+  grep -qi 'glassfrog' "$cred" 2>/dev/null || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+
+  python3 - "$cred" <<'PY' 2>/dev/null
+import json, sys, time
+
+try:
+    with open(sys.argv[1]) as fh:
+        store = json.load(fh)
+except Exception:
+    sys.exit(1)
+
+entries = store.get("mcpOAuth")
+if not isinstance(entries, dict):
+    sys.exit(1)
+
+for key, entry in entries.items():
+    if not isinstance(entry, dict):
+        continue
+    # serverName is authoritative; the map key ("<server>|<hash>") is the
+    # fallback for any record written without one.
+    name = entry.get("serverName") or str(key).split("|", 1)[0]
+    if "glassfrog" not in str(name).lower():
+        continue
+
+    token = entry.get("accessToken")
+    if not isinstance(token, str) or not token.strip():
+        # A discovery record with an empty token is an OAuth flow that was
+        # begun and never finished. That is the unauthenticated state.
+        continue
+
+    # An expiry, when present, is only disqualifying with no refresh token --
+    # otherwise the harness refreshes on first use. Epoch seconds and
+    # milliseconds are both accepted; the threshold separates them.
+    exp = entry.get("expiresAt")
+    if isinstance(exp, (int, float)) and not entry.get("refreshToken"):
+        seconds = exp / 1000.0 if exp > 1e11 else float(exp)
+        if seconds <= time.time():
+            continue
+
+    sys.exit(0)
+
+sys.exit(1)
+PY
 }
 
 # Honest proxy for "a GlassFrog connector is declared in the WORKING TREE": a
@@ -125,6 +238,7 @@ _glassfrog_declared() {
 }
 
 grounding=""
+withheld=""
 if _truthy "${HOLACRACY_GROUNDING_DIRECTIVE:-on}"; then
   inject=1
   if _truthy "${HOLACRACY_GROUNDING_REQUIRE_GLASSFROG:-off}"; then
@@ -137,13 +251,24 @@ if _truthy "${HOLACRACY_GROUNDING_DIRECTIVE:-on}"; then
   if [[ -n "${HOLACRACY_GROUNDING_EXCLUDE:-}" ]]; then
     printf '%s' "${PWD:-}" | grep -Eq -- "${HOLACRACY_GROUNDING_EXCLUDE}" 2>/dev/null && inject=0
   fi
+  # The capability gate (#283) is evaluated last of all, and only for a
+  # directive the operator's own configuration would otherwise have allowed
+  # through. The ordering carries meaning in the output: operator-configured
+  # suppression stays quiet, because the operator already knows they set it;
+  # capability suppression ANNOUNCES ITSELF, because a missing connector is a
+  # diagnosable condition the operator may not know about, and an absence
+  # nobody can see is the #122 failure shape.
+  if [[ "$inject" -eq 1 ]] && ! _glassfrog_authenticated; then
+    inject=0
+    withheld="_holacracy-claude-plugin v${PLUGIN_VERSION}: role-grounding directive withheld -- no authenticated GlassFrog connector detected, so role resolution is unavailable this session._"
+  fi
   if [[ "$inject" -eq 1 ]]; then
     grounding=$(cat <<'DIRECTIVE'
 **Holacracy plugin: role-grounding directive**
 
 Before your first substantive action this session, resolve and announce the active Holacratic role/circle per the procedure in `skills/shared/actor-and-role-resolution.md` -- follow its Step 2 call shape, which is bounded: do NOT pass `include_roles: true` to `glassfrog_get_me`, and do NOT call `glassfrog_list_my_roles` unpaged. For a Partner who fills many roles both overflow the tool-result limit and cost you the turn. Then announce the result in your opening lines (e.g. "Operating as **Role of Circle**").
 
-This grounding has NOT yet been performed -- this directive only requests it and does not assert it happened (the hook has no GlassFrog access at fire time). If work crosses into another role's remit, name the boundary and mark a chapter. If GlassFrog isn't connected, name that limitation and ask which role/circle to treat as primary rather than assuming one.
+This grounding has NOT yet been performed -- this directive only requests it and does not assert it happened (the hook has no GlassFrog access at fire time). If work crosses into another role's remit, name the boundary and mark a chapter.
 DIRECTIVE
 )
     # Stamp the running version. Appended AFTER the heredoc and never inside it:
@@ -302,10 +427,17 @@ fi
 # into a single additionalContext payload. Either may be empty; if both are,
 # exit silent. When both are present the grounding directive leads, separated
 # by a horizontal rule.
-if [[ -n "$grounding" && -n "$briefing" ]]; then
-  additional_context="${grounding}"$'\n\n---\n\n'"${briefing}"
-elif [[ -n "$grounding" ]]; then
-  additional_context="$grounding"
+#
+# `$withheld` stands in for `$grounding` when the capability gate suppressed the
+# directive (#283). It is ONE informational line: it asks nothing, requires no
+# answer, and instructs the session to do nothing before its first substantive
+# action. That is the whole contract -- a SessionStart payload has no guarantee
+# of a human at the other end, so it must never pose a question.
+lead="${grounding:-$withheld}"
+if [[ -n "$lead" && -n "$briefing" ]]; then
+  additional_context="${lead}"$'\n\n---\n\n'"${briefing}"
+elif [[ -n "$lead" ]]; then
+  additional_context="$lead"
 elif [[ -n "$briefing" ]]; then
   additional_context="$briefing"
 else

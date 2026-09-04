@@ -1,5 +1,5 @@
 {
-  "description": "Holacracy plugin SessionStart hook. Injects a role-grounding directive (on by default; env-gateable) that demands the session resolve + announce its active Holacratic role/circle before its first action, honest by construction (it requests the load, never claims it happened). Also surfaces today's scheduled-task routines (tagged holacracy/*) and any anomalies. Silent when there's nothing to report. Fail-silent on error so a broken hook never blocks a session.",
+  "description": "Holacracy plugin SessionStart hook. Injects a role-grounding directive that demands the session resolve + announce its active Holacratic role/circle before its first action, honest by construction (it requests the load, never claims it happened) -- emitted ONLY when an authenticated GlassFrog connector is detected, since without one the directive cannot be carried out; otherwise one informational line says it was withheld. Nothing this hook emits ever poses a question. Also surfaces today's scheduled-task routines (tagged holacracy/*) and any anomalies. Emits a quiet marker rather than nothing when there is nothing to report. Fail-silent on error so a broken hook never blocks a session.",
   "hooks": {
     "SessionStart": [
       {

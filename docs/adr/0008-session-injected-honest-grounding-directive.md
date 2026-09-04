@@ -6,7 +6,7 @@ Date: 2026-07-20
 
 Accepted (experimental — the first PDCA experiment of the Continuous Organizational-Context Grounding effort; superseding/escalation is decided at that experiment's Act step)
 
-> **Amended 2026-08-04** — see [Amendments](#amendments). The Decision and Consequences below are the record as accepted on 2026-07-20; three of their claims no longer describe the shipped system. Read the amendments before relying on this ADR.
+> **Amended 2026-08-04 and 2026-09-03** — see [Amendments](#amendments). The Decision and Consequences below are the record as accepted on 2026-07-20; several of their claims no longer describe the shipped system, including invariant 3's "on by default" (A5 makes emission conditional on an authenticated GlassFrog connector). Read the amendments before relying on this ADR.
 
 ## Context
 
@@ -118,3 +118,45 @@ The minimum n is stated **before** the result, not after: **≥ 30 directive-fir
 This does not weaken the rule above; it is the sharpest argument for it. A threshold chosen after the fact would have been chosen against a number the instrument had quietly truncated. The window opens on the post-#175 instrument, and figures from before it are not comparable to what follows.
 
 The denominator stays "all sessions" — A2 kept always-on — so the reopened window remains comparable to the 0-of-40 pre-experiment baseline. No redefinition needed.
+
+### A5 — 2026-09-03: a directive that cannot be satisfied must not be given (issue [#283](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/283))
+
+Invariant 3 said **system-fired, on by default**, and A2 hardened that into a principle: scoping is an opt-out, because every opt-in gate can misfire into a silent absence. Both were arguing about *where* the directive should apply. Neither asked whether it could be **carried out** where it landed.
+
+It frequently could not. The directive instructs the session to call `glassfrog_get_me` before its first substantive action. When the GlassFrog connector is unauthenticated — which is **every non-interactive session**, because the OAuth flow cannot run there — that call is unavailable and the instruction fails by construction. What the session received was a failed tool call and then the directive's own fallback, *"name that limitation and ask which role/circle to treat as primary"* — a **blocking question asked before any work, in sessions that by definition have nobody to answer it.**
+
+This is an Administration-tier control — an instruction whose force depends on the agent complying — placed on a path where compliance is impossible. It reads as governance and functions as noise, and noise in that position is not neutral: it spends the credibility of the directives that *can* be satisfied.
+
+**Invariant 3 is amended.** The directive is emitted only when an authenticated GlassFrog connector is detected. And a second invariant is added, which the fallback clause violated outright:
+
+> **4. Never poses a question.** No `SessionStart` output may require an answer before work can start. A hook payload reaches unattended sessions as readily as interactive ones, and there is no guarantee of a human at the other end. The `ask which role/circle` clause is removed from the directive itself, not merely routed around — an unanswerable question is no better on the connected path than on the disconnected one.
+
+#### The signal, and why not the others
+
+A `SessionStart` hook is on the hot path of every session in every repo, so the check has to be local and fast; a network round trip or a credential prompt is disqualifying regardless of accuracy. Four candidates:
+
+| candidate | verdict |
+| --- | --- |
+| the hook's own stdin / environment | carries `session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `source` — **no MCP state at all**. The harness documents no field and no environment variable exposing MCP connection or authentication status to a hook. |
+| `claude mcp list`, or probing the server URL | network round trip on the hot path. Rejected on speed, not accuracy. |
+| `~/.claude/mcp-needs-auth-cache.json` | negative-only, and observably stale — on the machine #283 was filed from, glassfrog was unauthenticated and **absent** from that cache. Absence there proves nothing. |
+| the harness's own MCP OAuth store | **chosen.** `${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json` → `mcpOAuth` → an entry whose server name contains `glassfrog` and whose `accessToken` is a **non-empty** string. |
+
+The non-empty test is the load-bearing half. An OAuth flow begun and never completed leaves a full-looking record whose `accessToken` is `""` — which is exactly what every glassfrog record on the machine #283 was filed from looked like. A presence check would have read that as connected and shipped the same defect A2 caught in `_glassfrog_declared()`: dead configuration that reads as a working check.
+
+Measured cost: **+22 ms per session start** (≈41 ms → ≈63 ms, 20 runs), one extra `python3` process, no network. A `grep` pre-filter skips even that on any machine whose store never mentions glassfrog.
+
+#### A2's objection still stands, and is answered rather than overruled
+
+A2 is right that an opt-in gate which misfires makes the directive *silently* absent, byte-for-byte the #122 outage. Two things answer it, and neither is optional:
+
+1. **A withheld directive announces itself.** The payload carries one informational line — `role-grounding directive withheld -- no authenticated GlassFrog connector detected` — stamped with the plugin version like every other payload. Absence is **visible in the transcript**, not inferred from its emptiness. This is A1's rule applied to a new kind of absence.
+2. **`HOLACRACY_GROUNDING_ASSUME_GLASSFROG=on` forces the gate open**, for any deployment whose token lives where this check cannot see it (an OS keychain, a managed enterprise store). A false negative is then one environment variable from fixed, not an unfixable silent zero.
+
+Operator-configured suppression (the master toggle, `HOLACRACY_GROUNDING_EXCLUDE`, the opt-in gates) stays **quiet**, as before; capability suppression **announces**. The distinction is deliberate: an operator who set an exclusion knows they set it, while an unauthenticated connector is a diagnosable condition they may not know about and can act on.
+
+#### What this closes, and what it leaves open
+
+- **The behavior window (`resolve+announce`) closes and reopens.** Per A3/A4, the directive's *body* changed — the fallback sentence is gone — so announce rates either side of this measure two different treatments. The delivery window (`directive-fired`) survives: the marker line the readout derives is unchanged.
+- **The denominator is no longer "all sessions."** A4's closing line — *"The denominator stays 'all sessions' — A2 kept always-on"* — no longer holds. The honest denominator is now *sessions where GlassFrog was authenticated*, and comparability to the 0-of-40 pre-experiment baseline needs that restatement rather than an unqualified rate.
+- **`scripts/grounding-fire-rate-check.sh` is not yet recalibrated.** Its 0.9 floor assumes always-on; against the new behavior it will report a low rate and alarm on a working system. The withheld marker is the data a recalibration needs — the readout does not yet count it. Tracked in [#285](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/285); the check is operator-local and manually run, so nothing in CI is broken meanwhile.

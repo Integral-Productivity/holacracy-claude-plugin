@@ -6,8 +6,10 @@
 #
 # Covers the surfacing window, the heredoc-injection safety fix, legacy-entry
 # rendering, the anomaly path, the never-write-nothing contract (issue #122),
-# local-timezone date semantics (issue #132), and the role-grounding directive
-# (issue #62) with its honesty, versioning, and gating behavior.
+# local-timezone date semantics (issue #132), the role-grounding directive
+# (issue #62) with its honesty, versioning, and gating behavior, and the
+# capability gate that withholds the directive when GlassFrog is not
+# authenticated (issue #283).
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -54,8 +56,61 @@ assert_quiet() {  # $1 = captured output, $2 = context for the failure message
 
 # Routine-briefing tests (1-5) run with the grounding directive OFF so they
 # exercise the briefing path in isolation and prove it is unchanged from before
-# issue #62. Grounding-specific tests (G1-G14) set their own env explicitly.
+# issue #62. Grounding-specific tests (G1-G23) set their own env explicitly.
 export HOLACRACY_GROUNDING_DIRECTIVE=off
+
+# --- Capability-gate fixtures (issue #283) --------------------------------
+# Since #283 the directive emits only when an AUTHENTICATED GlassFrog connector
+# is detected in the harness's MCP OAuth store. Every test that expects the
+# directive to appear therefore has to stand in a world where that holds, which
+# is what AUTHED_CRED provides. The three stores below are the three states the
+# real store can be in, and each is exercised.
+#
+# The whole suite is pinned to a fixture store rather than the operator's real
+# ~/.claude/.credentials.json: reading the developer's own auth state would make
+# this suite pass or fail depending on whose machine it runs on, and would make
+# it fail in CI for a reason that has nothing to do with the code.
+CRED_DIR="$TMP/creds"
+mkdir -p "$CRED_DIR"
+
+AUTHED_CRED="$CRED_DIR/authed.json"
+cat > "$AUTHED_CRED" <<'JSON'
+{"mcpOAuth":{"plugin:holacracy:glassfrog|abc123":{"serverName":"plugin:holacracy:glassfrog","serverUrl":"https://example/mcp","accessToken":"a-real-looking-token"}}}
+JSON
+
+# An OAuth flow begun and never completed. This is NOT a hypothetical shape:
+# it is what every glassfrog record on the machine #283 was filed from looked
+# like, and it is precisely why "an entry exists" cannot be the test.
+EMPTY_CRED="$CRED_DIR/empty-token.json"
+cat > "$EMPTY_CRED" <<'JSON'
+{"mcpOAuth":{"plugin:holacracy:glassfrog|abc123":{"serverName":"plugin:holacracy:glassfrog","serverUrl":"https://example/mcp","accessToken":"","discoveryState":{"oauthMetadataFound":true}}}}
+JSON
+
+OTHER_CRED="$CRED_DIR/other-server.json"
+cat > "$OTHER_CRED" <<'JSON'
+{"mcpOAuth":{"plugin:postman:postman|def456":{"serverName":"plugin:postman:postman","serverUrl":"https://example/mcp","accessToken":"a-real-looking-token"}}}
+JSON
+
+MISSING_CRED="$CRED_DIR/does-not-exist.json"
+
+# Default for the grounding tests: GlassFrog authenticated, so the pre-#283
+# assertions still describe the path they were written for.
+export HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED"
+
+# The withheld payload must be informational only: no question mark anywhere,
+# and none of the imperatives that would make it a precondition on work.
+assert_non_blocking() {  # $1 = captured output, $2 = context
+  echo "$1" | grep -q "role-grounding directive withheld" \
+    || fail "$2: expected the withheld marker, got: $1"
+  echo "$1" | grep -q "role-grounding directive\*\*" \
+    && fail "$2: the directive itself must not be emitted when withheld"
+  echo "$1" | grep -q "?" \
+    && fail "$2: SessionStart output must never pose a question"
+  echo "$1" | grep -qi "before your first substantive action" \
+    && fail "$2: withheld output must not gate the first substantive action"
+  echo "$1" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' \
+    || fail "$2: withheld envelope is not valid JSON"
+}
 
 # 1. A windowed entry whose packet_summary contains a triple-quote and a
 #    trailing backslash must still produce VALID JSON (heredoc-injection fix).
@@ -241,5 +296,109 @@ echo "$out" | grep -q "include_roles" \
 marker="$(awk "/<<'DIRECTIVE'/{found=1; next} found{print; exit}" "$HOOK")"
 [ "$marker" = '**Holacracy plugin: role-grounding directive**' ] \
   || fail "directive marker line drifted to: '$marker' -- this closes the current PDCA-1 measurement window; see ADR-0008 amendment A3"
+
+# --- Capability gate (issue #283) -----------------------------------------
+# The directive instructs the session to call `glassfrog_get_me` before its
+# first substantive action. Without an authenticated connector that instruction
+# cannot be carried out, so it must not be given.
+
+# G17. No credentials store at all -> directive withheld, and the withholding
+#      is VISIBLE. Fail-closed is the decision; fail-closed-and-silent is not,
+#      because a silent absence is the #122 outage wearing a new hat.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_non_blocking "$out" "no credentials store"
+
+# G18. A glassfrog record whose accessToken is the empty string is the
+#      unauthenticated state, not the authenticated one. This is the exact
+#      defect a presence-only check would ship: the record exists.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_non_blocking "$out" "glassfrog record with an empty access token"
+
+# G19. Another server's valid token is not glassfrog's. Guards against a check
+#      that matches on "the store has some token in it".
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$OTHER_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_non_blocking "$out" "a different server holding a valid token"
+
+# G20. An authenticated glassfrog record -> the directive emits, unchanged.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "role-grounding directive\*\*" \
+  || fail "an authenticated glassfrog connector must let the directive through"
+echo "$out" | grep -q "withheld" \
+  && fail "the withheld marker must not accompany an emitted directive"
+
+# G21. The escape hatch. A deployment whose token lives where this check cannot
+#      see it (an OS keychain, a managed store) must have a way back to the
+#      directive that is one env var, not a code change -- otherwise a false
+#      negative here is an unfixable silent zero, which is ADR-0008 A2's
+#      standing objection to any opt-in gate.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_ASSUME_GLASSFROG=on \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "role-grounding directive\*\*" \
+  || fail "HOLACRACY_GROUNDING_ASSUME_GLASSFROG=on must force the gate open"
+
+# G22. NO SessionStart OUTPUT MAY POSE A QUESTION -- on either path. The
+#      directive's old fallback ("ask which role/circle to treat as primary")
+#      was itself a blocking question, asked before any work in sessions that by
+#      definition have nobody to answer it. It is gone from the connected path
+#      too, not merely routed around.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "?" \
+  && fail "the emitted directive must not pose a question (issue #283)"
+echo "$out" | grep -qi "ask which role" \
+  && fail "the blocking-question fallback must not survive on the connected path"
+
+# G23. Operator-configured suppression stays QUIET; capability suppression
+#      ANNOUNCES. The distinction is the point: an operator who set the master
+#      toggle knows they set it, while an unauthenticated connector is a
+#      condition they may not know about and can act on.
+out="$(cd "$TMP" && HOLACRACY_GROUNDING_DIRECTIVE=off \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_quiet "$out" "master toggle off must not emit the withheld marker"
+
+# G24. Withheld directive + a routine briefing combine into one valid envelope,
+#      briefing intact. The withheld line must not swallow the other half.
+cat > "$TMP/g24.jsonl" <<JSONL
+{"id":"g24","title":"holacracy/secretary/pre-tactical-prep/ops","next_fire":"${FIRE_TODAY}","last_status":"ok"}
+JSONL
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$TMP/g24.jsonl" bash "$HOOK")"
+echo "$out" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' \
+  || fail "withheld + briefing envelope is not valid JSON"
+echo "$out" | grep -q "role-grounding directive withheld" \
+  || fail "withheld marker missing when a briefing is also present"
+echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/ops" \
+  || fail "briefing lost when the directive was withheld"
+
+# G25. The withheld marker carries the running version, for the same reason
+#      every other payload does (issue #122): a transcript must be able to say
+#      which copy of the plugin decided to withhold.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "v${expected_version}" \
+  || fail "withheld marker does not carry version ${expected_version}"
+
+# G26. A malformed credentials store fails CLOSED, not open, and does not crash
+#      the hook. Exit 0 always: a broken store must never block a session.
+printf '{not json at all -- glassfrog' > "$CRED_DIR/malformed.json"
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$CRED_DIR/malformed.json" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"; rc=$?
+[ "$rc" -eq 0 ] || fail "a malformed credentials store must still exit 0"
+assert_non_blocking "$out" "malformed credentials store"
 
 echo "PASS: all session-start hook tests"

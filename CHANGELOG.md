@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.15.1...v0.16.0) (2026-09-10)
+
+
+### Features
+
+* **mcp:** register the GlassFrog server as `glassfrog-extended` ([#290](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/290)) ([651978f](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/651978fe9ea8ec6a5fdfbf8f59655a9cca910a28))
+
 ## [0.15.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.15.0...v0.15.1) (2026-09-04)
 
 

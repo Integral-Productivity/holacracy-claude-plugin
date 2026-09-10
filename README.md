@@ -91,6 +91,10 @@ https://ipllc-glassfrog-mcp-server.vercel.app/mcp
 
 This is an HTTP MCP server protected by OAuth — **each user authorises with their own GlassFrog API key on first use**. No API keys are shared across users. The server is hosted by Integral Productivity LLC for convenience; the upstream server source is currently private (an official GlassFrog MCP server may be published later, at which point this plugin will repoint).
 
+The server is named **GlassFrog Extended**. That keeps it distinct from GlassFrog's own hosted MCP, which has fewer tools and no proposal lifecycle. `.mcp.json` registers it under the key `glassfrog-extended`, so its tools appear as `mcp__plugin_holacracy_glassfrog-extended__glassfrog_*`.
+
+**Upgrading from a version that used the key `glassfrog`:** Claude Code stores the OAuth credential under the server name, so the renamed server starts unauthenticated. Run `/mcp`, select `glassfrog-extended`, and authenticate once with your GlassFrog API key. If you wrote permission rules or tool lists against `mcp__plugin_holacracy_glassfrog__*`, change them to the new prefix.
+
 ### Which GlassFrog API does the MCP use?
 
 The deployed MCP currently calls the **GlassFrog REST API v3** (`https://api.glassfrog.com/api/v3`). An API v4 / GraphQL variant is in development; when it lands, this plugin will repoint and bump the version. Either way, the credential you need to generate is the same — a single **GlassFrog API key** scoped to your user account.

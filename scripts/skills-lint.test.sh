@@ -288,7 +288,7 @@ cat > "$TMP/c7c/agents/granted.md" <<'EOF'
 name: granted
 description: agent with a tools grant
 model: inherit
-tools: Read, mcp__plugin_holacracy_glassfrog__glassfrog_list_my_roles
+tools: Read, mcp__plugin_holacracy_glassfrog-extended__glassfrog_list_my_roles
 ---
 Body that never mentions the roster call.
 EOF

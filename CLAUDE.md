@@ -42,7 +42,7 @@ The plugin separates **tension readiness** (`/holacracy:tension-triage` — is t
 
 ## GlassFrog MCP
 
-Wired in via `.mcp.json` at the repo root. Server is `https://ipllc-glassfrog-mcp-server.vercel.app/mcp`, hosted on Vercel by Integral Productivity LLC, OAuth-protected so each user brings their own GlassFrog API key. If that URL ever moves (e.g., to a canonical `mcp.glassfrog.*` once an official server lands), update `.mcp.json` and land it as a `feat:` commit — release-please computes the version bump. Do not hand-edit the version; see § Versioning.
+Wired in via `.mcp.json` at the repo root under the key `glassfrog-extended`, which puts every tool at `mcp__plugin_holacracy_glassfrog-extended__*`. The key must match `MCP_SERVER_NAME` in `scripts/run-behavioural-eval.py`, and `run-behavioural-eval.test.sh` fails if the two drift apart. Server is **GlassFrog Extended**, `https://ipllc-glassfrog-mcp-server.vercel.app/mcp`, hosted on Vercel by Integral Productivity LLC, OAuth-protected so each user brings their own GlassFrog API key. If that URL ever moves (e.g., to a canonical `mcp.glassfrog.*` once an official server lands), update `.mcp.json` and land it as a `feat:` commit — release-please computes the version bump. Do not hand-edit the version; see § Versioning.
 
 ## Editing skills
 

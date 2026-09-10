@@ -133,9 +133,9 @@ PLUGIN_NAME = json.loads(
 EVAL_TOOLS = "Skill,Task,Read"
 
 # The stub must register under the same server name as the real connector in
-# .mcp.json, or every `mcp__glassfrog__*` tool name the skills were written
+# .mcp.json, or every `mcp__glassfrog-extended__*` tool name the skills were written
 # against fails to resolve and the eval measures a plumbing error.
-MCP_SERVER_NAME = "glassfrog"
+MCP_SERVER_NAME = "glassfrog-extended"
 
 # Overridable so the regression suite can drive every path in this file with a
 # fake executor and no API key. Nothing else in here knows the difference.

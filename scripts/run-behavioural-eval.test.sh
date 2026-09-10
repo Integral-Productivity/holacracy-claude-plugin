@@ -129,9 +129,9 @@ if "--json-schema" not in argv:
         commands += plugin_cmds
     if not os.environ.get("FAKE_NO_INIT"):
         print(json.dumps({"type": "system", "subtype": "init",
-                          "tools": tools + [f"mcp__glassfrog__{t}" for t in
+                          "tools": tools + [f"mcp__glassfrog-extended__{t}" for t in
                                             ("glassfrog_get_me", "glassfrog_create_tension")],
-                          "mcp_servers": [{"name": "glassfrog", "status": "connected"}],
+                          "mcp_servers": [{"name": "glassfrog-extended", "status": "connected"}],
                           "slash_commands": commands}))
 
 # A well-formed event stream that reports an error. This is what the real CLI
@@ -168,7 +168,7 @@ if "--json-schema" in argv:
 plan = json.load(open(os.environ["FAKE_PLAN"]))
 leg = plan["with_skill"] if "--plugin-dir" in argv else plan.get("without_skill", {})
 
-cfg = json.load(open(opt("--mcp-config")))["mcpServers"]["glassfrog"]
+cfg = json.load(open(opt("--mcp-config")))["mcpServers"]["glassfrog-extended"]
 proc = subprocess.Popen([cfg["command"], *cfg["args"]],
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
                         env={**os.environ, **cfg["env"]})
@@ -194,7 +194,7 @@ for i, call in enumerate(leg.get("calls", []), start=2):
     reply = rpc(i, "tools/call",
                 {"name": call["tool"], "arguments": call.get("args", {})})
     content.append({"type": "tool_use", "id": f"t{i}",
-                    "name": f"mcp__glassfrog__{call['tool']}",
+                    "name": f"mcp__glassfrog-extended__{call['tool']}",
                     "input": call.get("args", {})})
     results.append({"type": "tool_result", "tool_use_id": f"t{i}",
                     "is_error": reply["result"].get("isError", False),
@@ -627,8 +627,8 @@ assert "CLAUDE_CODE_SIMPLE" not in env
 PY
 pass
 
-# The generated MCP config names the server `glassfrog`. Under any other name
-# every mcp__glassfrog__* tool the skills were written against fails to resolve,
+# The generated MCP config names the server `glassfrog-extended`. Under any other name
+# every mcp__glassfrog-extended__* tool the skills were written against fails to resolve,
 # and the eval would score a plumbing error as a behavioural finding.
 python3 - "$RUNNER" <<'PY' || fail "the generated MCP config does not match the real connector's server name"
 import importlib.util, json, pathlib, sys

@@ -1,5 +1,5 @@
 {
-  "glassfrog": {
+  "glassfrog-extended": {
     "type": "http",
     "url": "https://ipllc-glassfrog-mcp-server.vercel.app/mcp"
   }

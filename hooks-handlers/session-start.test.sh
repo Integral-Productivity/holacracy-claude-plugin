@@ -75,7 +75,7 @@ mkdir -p "$CRED_DIR"
 
 AUTHED_CRED="$CRED_DIR/authed.json"
 cat > "$AUTHED_CRED" <<'JSON'
-{"mcpOAuth":{"plugin:holacracy:glassfrog|abc123":{"serverName":"plugin:holacracy:glassfrog","serverUrl":"https://example/mcp","accessToken":"a-real-looking-token"}}}
+{"mcpOAuth":{"plugin:holacracy:glassfrog-extended|abc123":{"serverName":"plugin:holacracy:glassfrog-extended","serverUrl":"https://example/mcp","accessToken":"a-real-looking-token"}}}
 JSON
 
 # An OAuth flow begun and never completed. This is NOT a hypothetical shape:
@@ -83,7 +83,7 @@ JSON
 # like, and it is precisely why "an entry exists" cannot be the test.
 EMPTY_CRED="$CRED_DIR/empty-token.json"
 cat > "$EMPTY_CRED" <<'JSON'
-{"mcpOAuth":{"plugin:holacracy:glassfrog|abc123":{"serverName":"plugin:holacracy:glassfrog","serverUrl":"https://example/mcp","accessToken":"","discoveryState":{"oauthMetadataFound":true}}}}
+{"mcpOAuth":{"plugin:holacracy:glassfrog-extended|abc123":{"serverName":"plugin:holacracy:glassfrog-extended","serverUrl":"https://example/mcp","accessToken":"","discoveryState":{"oauthMetadataFound":true}}}}
 JSON
 
 OTHER_CRED="$CRED_DIR/other-server.json"

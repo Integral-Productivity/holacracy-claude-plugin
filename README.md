@@ -89,24 +89,26 @@ The plugin ships an `.mcp.json` that wires up the [GlassFrog](https://app.glassf
 https://ipllc-glassfrog-mcp-server.vercel.app/mcp
 ```
 
-This is an HTTP MCP server protected by OAuth — **each user authorises with their own GlassFrog API key on first use**. No API keys are shared across users. The server is hosted by Integral Productivity LLC for convenience; the upstream server source is currently private (an official GlassFrog MCP server may be published later, at which point this plugin will repoint).
+This is an HTTP MCP server protected by OAuth — **each user authorises with their own GlassFrog API key on first use**. No API keys are shared across users. The server is hosted by Integral Productivity LLC for convenience; the upstream server source is currently private.
 
-The server is named **GlassFrog Extended**. That keeps it distinct from GlassFrog's own hosted MCP, which has fewer tools and no proposal lifecycle. `.mcp.json` registers it under the key `glassfrog-extended`, so its tools appear as `mcp__plugin_holacracy_glassfrog-extended__glassfrog_*`.
+The server is named **GlassFrog Extended**. That keeps it distinct from GlassFrog's own hosted MCP (`https://app.glassfrog.com/api/v5/mcp`), which has 17 camelCase tools (`glassfrog_createTension`), no proposal lifecycle and no tension reads. The plugin's skills need both of those, so it stays on GlassFrog Extended rather than repointing to GlassFrog's server. The case convention tells you which server a tool name comes from: snake_case names such as `glassfrog_create_tension` are GlassFrog Extended's. `.mcp.json` registers it under the key `glassfrog-extended`, so its tools appear as `mcp__plugin_holacracy_glassfrog-extended__glassfrog_*`.
 
 **Upgrading from a version that used the key `glassfrog`:** Claude Code stores the OAuth credential under the server name, so the renamed server starts unauthenticated. Run `/mcp`, select `glassfrog-extended`, and authenticate once with your GlassFrog API key. If you wrote permission rules or tool lists against `mcp__plugin_holacracy_glassfrog__*`, change them to the new prefix.
 
-### Which GlassFrog API does the MCP use?
+### Which GlassFrog API does GlassFrog Extended use?
 
-The deployed MCP currently calls the **GlassFrog REST API v3** (`https://api.glassfrog.com/api/v3`). An API v4 / GraphQL variant is in development; when it lands, this plugin will repoint and bump the version. Either way, the credential you need to generate is the same — a single **GlassFrog API key** scoped to your user account.
+GlassFrog Extended calls the **GlassFrog REST API v5** (`https://api.glassfrog.com/api/v5`), through Integral Productivity's shared GlassFrog SDK. It moved from v3 to v5 in its v2.0.0 release, and v3 is no longer used anywhere in the chain. You need a **v5 GlassFrog API key**, scoped to your user account.
 
-### Generate a GlassFrog API key
+**If you authorised with a key generated before the v5 cutover:** v3 and v5 keys are separate keyspaces, and a v3 key does not authenticate against v5. Generate a v5 key using the steps below, then re-authenticate `glassfrog-extended` from `/mcp`.
 
-The MCP authenticates to GlassFrog with an `X-Auth-Token` header containing your personal API key (same permissions as your user account). To create one:
+### Generate a GlassFrog v5 API key
+
+GlassFrog Extended sends your key to GlassFrog in an `X-Auth-Token` header, and the key carries the same permissions as your user account. To create one:
 
 1. Log into [app.glassfrog.com](https://app.glassfrog.com)
 2. Click your name → **Profile / Account**
 3. Navigate to **API Keys** (not OAuth applications — this is a separate, simpler credential)
-4. Generate a new key — label it something memorable like `claude-holacracy-plugin`
+4. Generate a new **v5** key — label it something memorable like `claude-holacracy-plugin`. A v3 key will not work.
 5. Copy the key immediately (it will not be shown again — if you lose it, regenerate)
 
 There is only one token type to choose from — API keys carry the same scopes as your GlassFrog user account, so anything you can read or write in the GlassFrog UI is available to the MCP. Revoke or regenerate the key from the same page if you ever need to.
@@ -117,7 +119,7 @@ The first time a skill invokes a `glassfrog_*` tool, Claude runs the OAuth hands
 
 ### Working without GlassFrog
 
-All six skills degrade gracefully if the GlassFrog MCP is not connected. They will operate on constitutional knowledge and context the user provides directly, and will name that limitation clearly (e.g., "I don't have live governance data, so I'm working from what you've shared.").
+All six skills degrade gracefully if GlassFrog Extended is not connected. They will operate on constitutional knowledge and context the user provides directly, and will name that limitation clearly (e.g., "I don't have live governance data, so I'm working from what you've shared.").
 
 ### Tension capture and the underlying API surface
 
@@ -126,7 +128,7 @@ The three new tension commands rely on `glassfrog_create_tension(role_id, body)`
 - **Body-only create.** `glassfrog_create_tension` takes `role_id` and `body` only. The `label` and `meeting_type` fields are not part of the stable signature ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). Front-load the topic in the first sentence of the body since there is no label.
 - **Same-session list-back is unreliable.** Immediately after creation, `glassfrog_list_role_tensions` may not include the new tension (propagation/scoping). The capture subagent treats the `create_tension` response ID as the only reliable same-session confirmation; the supersession sweep uses an internal session-ID cache for the same reason.
 
-If a different / older GlassFrog MCP server is wired up without these endpoints, the `tension-capture` subagent falls back to drafting a plain-text tension formatted for manual entry, and the inbox/sweep commands degrade with a clear message.
+If a server without these tools is wired up in its place (GlassFrog's hosted v5 MCP, for example, has `glassfrog_createTension` and no tension reads), the `tension-capture` subagent falls back to drafting a plain-text tension formatted for manual entry, and the inbox/sweep commands degrade with a clear message.
 
 ## What's coming
 

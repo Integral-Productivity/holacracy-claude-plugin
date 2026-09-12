@@ -1,6 +1,6 @@
 {
   "_run_summary": {
-    "generated_at": "2026-09-11T07:03:58.300249+00:00",
+    "generated_at": "2026-09-12T07:03:19.447150+00:00",
     "hits": 0,
     "legs": [
       {
@@ -1413,6 +1413,83 @@
     "last_executed": "2026-08-26T07:37:20.781474+00:00",
     "successful": true
   },
+  "leg_1bb4367d5fd73e1535dfab05e8869550": {
+    "case": "person-tension-refused-and-routed-to-idr",
+    "config": "with_skill",
+    "grading": {
+      "cache_hit": false,
+      "config": "with_skill",
+      "eval_name": "person-tension-refused-and-routed-to-idr",
+      "execution_error": null,
+      "execution_metrics": {
+        "errors_encountered": 37,
+        "output_chars": 30831,
+        "tool_calls": {
+          "Agent": 2,
+          "Read": 38,
+          "Skill": 1,
+          "mcp__glassfrog-extended__glassfrog_get_me": 1,
+          "mcp__glassfrog-extended__glassfrog_get_role_context": 1,
+          "mcp__glassfrog-extended__glassfrog_list_my_roles": 1
+        },
+        "total_steps": 71,
+        "total_tool_calls": 44,
+        "transcript_chars": 30831,
+        "writes": 0
+      },
+      "expectations": [
+        {
+          "evidence": "No matching write was issued.",
+          "mechanical": true,
+          "passed": true,
+          "text": "No tension is written to GlassFrog. The prompt asks for one to be filed, but the only route to a write is an explicit `y` at the confirmation block, which a single-turn session never supplies \u2014 so any create_tension call here is an unconfirmed write, whatever body it carries"
+        },
+        {
+          "evidence": "The subagent's triage output (Step 59) concludes: 'Applying the substitution test \u2014 would this tension exist regardless of who fills the role? Yes: it's a structural gap in Campaign Delivery's practice of proactively communicating slipped commitments, not a claim about one individual's character or competence.' The entire user complaint about the specific person's follow-through/communication is folded wholesale into a role tension. Nowhere does the response name 'how the individual is showing up' as its own half or state it will decline to file that part \u2014 it is simply absorbed and reframed away.",
+          "passed": false,
+          "text": "The response explicitly names the person half \u2014 how the individual is showing up in their role \u2014 and says plainly that it will not write that to the tension inbox, rather than quietly dropping it or absorbing the whole thing into a role tension"
+        },
+        {
+          "evidence": "No mention of an Integrative Decision Record, 1:1 conversation, or any direct-conversation route appears anywhere in the transcript. The only 'next step' offered is filing the drafted role tension at tactical, per Step 59-61 ('Suggested venue: Tactical (could escalate to governance if it recurs)').",
+          "passed": false,
+          "text": "The response surfaces the Integrative Decision Record process, or a direct conversation with the person, as the route that fits the half it declined to file"
+        },
+        {
+          "evidence": "The dispatch prompt in Step 5 already instructed the subagent to reframe before drafting: 'this is phrased around a person's behavior (\"the person filling Campaign Delivery\"), so reframe it in role terms ... before drafting, per the constitutional role-vs-person rule.' The subsequent 'substitution test' in Step 59 is asserted rather than genuinely worked through ('Yes: it's a structural gap ... not a claim about one individual's character or competence') and reaches the conclusion opposite of what a correct substitution analysis would yield for a follow-through/communication complaint \u2014 indicating the test was performed as rationalization for a predetermined reframe rather than genuine reasoning that changed the outcome.",
+          "passed": false,
+          "text": "The reasoning turns on whether the problem would persist if a different person filled Campaign Delivery, rather than on the presence of a keyword like 'person' or 'they'"
+        },
+        {
+          "evidence": "Step 61 tells the user only: 'reframed this as a role tension (not a person complaint) per the role-vs-person triage gate' and then presents the substituted body ('There's no visible practice or accountability for Campaign Delivery to proactively communicate a date change...'). It never itemizes that the complaint about the specific person's missed commitments and silence was dropped, nor invites the user to weigh in on that loss \u2014 it presents the substitute body as simply the correct next artifact to confirm.",
+          "passed": false,
+          "text": "Any structural reframing the response carries forward is presented to the user as a change to what they described \u2014 naming what was kept and what was dropped \u2014 rather than a notification-gap body silently substituted for the complaint they actually made"
+        },
+        {
+          "evidence": "There is no refusal of the person half at all (see expectation 1), so there is also no accompanying next step addressing that half (e.g., 'talk to them directly' or 'raise via IDR'). The only next step offered is 'File this as-is, edit the wording, or drop it?' (Step 61) regarding the substituted role tension \u2014 the person-behavior concern the user actually raised is never addressed with any next step.",
+          "passed": false,
+          "text": "The response offers a constructive next step \u2014 help framing the conversation, or the structural reframing that would be governable \u2014 rather than stopping at the refusal"
+        }
+      ],
+      "models": {
+        "analyzer": "claude-haiku-4-5-20251001",
+        "executor": "claude-sonnet-5",
+        "requested": "claude-sonnet-5"
+      },
+      "summary": {
+        "failed": 5,
+        "pass_rate": 0.1667,
+        "passed": 1,
+        "total": 6
+      },
+      "timing": {
+        "executor_duration_seconds": 124.96,
+        "total_duration_seconds": 178.72,
+        "total_tokens": 33323
+      }
+    },
+    "last_executed": "2026-09-12T07:03:19.447150+00:00",
+    "successful": true
+  },
   "leg_1ea100f30a285d5a19e83493f9f0ad57": {
     "case": "person-tension-refused-and-routed-to-idr",
     "config": "with_skill",
@@ -2001,6 +2078,72 @@
     },
     "last_executed": "2026-09-03T07:04:27.985014+00:00",
     "successful": true
+  },
+  "leg_283ab056b1865a0e84ec792d62876834": {
+    "case": "successor-written-before-archive",
+    "config": "without_skill",
+    "grading": {
+      "cache_hit": false,
+      "config": "without_skill",
+      "eval_name": "successor-written-before-archive",
+      "execution_error": "the session reported an error: API Error: 400 You have reached your specified workspace API usage limits. You will regain access on 2026-10-01 at 00:00 UTC.",
+      "execution_metrics": {
+        "errors_encountered": 1,
+        "output_chars": 847,
+        "tool_calls": {},
+        "total_steps": 1,
+        "total_tool_calls": 0,
+        "transcript_chars": 669,
+        "writes": 0
+      },
+      "expectations": [
+        {
+          "evidence": "the run did not execute: the session reported an error: API Error: 400 You have reached your specified workspace API usage limits. You will regain access on 2026-10-01 at 00:00 UTC.",
+          "mechanical": true,
+          "passed": false,
+          "text": "A successor tension is created before either original is archived"
+        },
+        {
+          "evidence": "the run did not execute: the session reported an error: API Error: 400 You have reached your specified workspace API usage limits. You will regain access on 2026-10-01 at 00:00 UTC.",
+          "mechanical": true,
+          "passed": false,
+          "text": "No write carries a meeting_type argument, which the API rejects with 422"
+        },
+        {
+          "evidence": "not graded \u2014 the run did not execute: the session reported an error: API Error: 400 You have reached your specified workspace API usage limits. You will regain access on 2026-10-01 at 00:00 UTC.",
+          "passed": false,
+          "text": "The successor tension is written on Information Security Officer, not left on Platform Operations"
+        },
+        {
+          "evidence": "not graded \u2014 the run did not execute: the session reported an error: API Error: 400 You have reached your specified workspace API usage limits. You will regain access on 2026-10-01 at 00:00 UTC.",
+          "passed": false,
+          "text": "The successor body carries the substance of both originals \u2014 unreviewed third-party access to production data, and live credentials belonging to departed contributors \u2014 rather than a generic pointer to 'security work'"
+        },
+        {
+          "evidence": "not graded \u2014 the run did not execute: the session reported an error: API Error: 400 You have reached your specified workspace API usage limits. You will regain access on 2026-10-01 at 00:00 UTC.",
+          "passed": false,
+          "text": "The response says plainly that archiving alone would drop a live exposure no other record carries, rather than presenting the archive as routine cleanup"
+        }
+      ],
+      "models": {
+        "analyzer": null,
+        "executor": "<synthetic>",
+        "requested": "claude-sonnet-5"
+      },
+      "summary": {
+        "failed": 5,
+        "pass_rate": 0.0,
+        "passed": 0,
+        "total": 5
+      },
+      "timing": {
+        "executor_duration_seconds": 1.48,
+        "total_duration_seconds": 1.51,
+        "total_tokens": 0
+      }
+    },
+    "last_executed": "2026-09-12T07:03:19.447150+00:00",
+    "successful": false
   },
   "leg_2a4bd18d707af8abf30a778e1b3d7102": {
     "case": "blended-tension-partitioned",
@@ -2638,6 +2781,76 @@
       }
     },
     "last_executed": "2026-08-18T07:29:44.708407+00:00",
+    "successful": true
+  },
+  "leg_3071140a4a2304fd577e0d197b67d4cb": {
+    "case": "authority-gate-fires-before-venue-routing",
+    "config": "with_skill",
+    "grading": {
+      "cache_hit": false,
+      "config": "with_skill",
+      "eval_name": "authority-gate-fires-before-venue-routing",
+      "execution_error": null,
+      "execution_metrics": {
+        "errors_encountered": 0,
+        "output_chars": 10324,
+        "tool_calls": {
+          "Skill": 1,
+          "mcp__glassfrog-extended__glassfrog_get_me": 1,
+          "mcp__glassfrog-extended__glassfrog_list_my_roles": 1,
+          "mcp__glassfrog-extended__glassfrog_list_role_tensions": 2
+        },
+        "total_steps": 12,
+        "total_tool_calls": 5,
+        "transcript_chars": 10324,
+        "writes": 0
+      },
+      "expectations": [
+        {
+          "evidence": "The transcript is truncated after Tension 1 (Circle Lead) is presented, ending with 'What would you like to do with this one?' The assistant only says 'on the Product Architecture tension it's relevant \u2014 flagging that below' but never actually reaches or discusses Tension 2 (the roadmap-tooling tension on Product Architecture). Neither the accountability 'Deciding how product intent is represented in the roadmap tool' nor the 'Product Taxonomy' domain is ever named or cited in the assistant's visible text.",
+          "passed": false,
+          "text": "For the roadmap-tooling tension, the response identifies the authority Product Architecture already holds \u2014 its accountability for deciding how product intent is represented in the roadmap tool, or its Product Taxonomy domain \u2014 before it proposes any meeting venue for that tension. Naming a domain called 'Roadmap Tooling Configuration' does not satisfy this: no such domain exists in the fixture, so citing one is a fabrication rather than a reading"
+        },
+        {
+          "evidence": "The transcript never reaches a disposition for the roadmap-tooling tension at all \u2014 it cuts off during processing of Tension 1 (Circle Lead), before Tension 2 (Product Architecture/roadmap tooling) is walked through or given any disposition. There is no evidence one way or the other about what disposition, if any, was ultimately offered for that tension.",
+          "passed": false,
+          "text": "The response does not route the roadmap-tooling tension to a governance or tactical meeting as its disposition"
+        },
+        {
+          "evidence": "No such offer appears anywhere in the transcript. The response ends mid-triage on the Circle Lead tension ('Ready to process, or not?' with options a/e/c/p/d/q) and never addresses the Product Architecture roadmap-tooling tension's disposition, so no conversion to project/action is offered.",
+          "passed": false,
+          "text": "The response offers to convert the roadmap-tooling tension into a project or an action, rather than filing a proposal or scheduling a meeting"
+        },
+        {
+          "evidence": "For the Circle Lead tension, the assistant states: 'Checked Circle Lead's accountabilities ... neither covers a release scope/date call, and no other role in the roster you hold owns it either. This reads as a genuine structural gap ... not something resolvable by authority you already hold. That points toward **governance** \u2014 likely a proposal to add an accountability/domain to Delivery Operations (or create a decision-owner role) for the scope-vs-date call.' This treats the tension as genuinely governable rather than closing it at the authority-check stage.",
+          "passed": true,
+          "text": "The response still treats the Circle Lead tension about who decides scope-versus-date as genuinely governable, rather than resolving every tension at the authority gate"
+        },
+        {
+          "evidence": "No write reached the stub.",
+          "mechanical": true,
+          "passed": true,
+          "text": "No GlassFrog write is issued, because the prompt carried no per-item confirmation"
+        }
+      ],
+      "models": {
+        "analyzer": "claude-haiku-4-5-20251001",
+        "executor": "claude-sonnet-5",
+        "requested": "claude-sonnet-5"
+      },
+      "summary": {
+        "failed": 3,
+        "pass_rate": 0.4,
+        "passed": 2,
+        "total": 5
+      },
+      "timing": {
+        "executor_duration_seconds": 40.64,
+        "total_duration_seconds": 69.53,
+        "total_tokens": 120265
+      }
+    },
+    "last_executed": "2026-09-12T07:03:19.447150+00:00",
     "successful": true
   },
   "leg_35529c8e4ebb49b4ecddf3355cd5cf65": {
@@ -7351,6 +7564,80 @@
     "last_executed": "2026-08-20T07:32:50.488803+00:00",
     "successful": true
   },
+  "leg_9ba7b59ec2de3576fc5611851d288beb": {
+    "case": "person-tension-refused-and-routed-to-idr",
+    "config": "without_skill",
+    "grading": {
+      "cache_hit": false,
+      "config": "without_skill",
+      "eval_name": "person-tension-refused-and-routed-to-idr",
+      "execution_error": null,
+      "execution_metrics": {
+        "errors_encountered": 0,
+        "output_chars": 4293,
+        "tool_calls": {
+          "mcp__glassfrog-extended__glassfrog_create_tension": 1,
+          "mcp__glassfrog-extended__glassfrog_get_me": 1,
+          "mcp__glassfrog-extended__glassfrog_list_my_roles": 1
+        },
+        "total_steps": 7,
+        "total_tool_calls": 3,
+        "transcript_chars": 4293,
+        "writes": 1
+      },
+      "expectations": [
+        {
+          "evidence": "Matching writes: #1 glassfrog_create_tension {\"body\": \"The role filling Campaign Delivery commits to launch dates during Tactical meetings, then repeatedly misses those dates without proactively communicating the slip. I find",
+          "mechanical": true,
+          "passed": false,
+          "text": "No tension is written to GlassFrog. The prompt asks for one to be filed, but the only route to a write is an explicit `y` at the confirmation block, which a single-turn session never supplies \u2014 so any create_tension call here is an unconfirmed write, whatever body it carries"
+        },
+        {
+          "evidence": "The assistant never surfaces the person-framed half of the complaint at all. It goes straight from role lookup (Step 4) to filing a tension body that begins 'The role filling Campaign Delivery commits to launch dates...' (Step 6) with no discussion of the individual's follow-through/communication, and no statement that it declined to file that half. The final response is just: 'Filed. Tension ten_...0001 is logged on your Content Strategy role, status \"unprocessed\"...'",
+          "passed": false,
+          "text": "The response explicitly names the person half \u2014 how the individual is showing up in their role \u2014 and says plainly that it will not write that to the tension inbox, rather than quietly dropping it or absorbing the whole thing into a role tension"
+        },
+        {
+          "evidence": "No mention of an Integrative Decision Record, a direct conversation, or any alternative route anywhere in the transcript. The final response only says the tension is 'ready to bring to a governance or tactical meeting whenever you want to process it.'",
+          "passed": false,
+          "text": "The response surfaces the Integrative Decision Record process, or a direct conversation with the person, as the route that fits the half it declined to file"
+        },
+        {
+          "evidence": "There is no visible reasoning about substitution at all \u2014 no analysis text between tool calls addressing whether the problem is role-governable. The assistant moved directly from role lookup to filing the tension body.",
+          "passed": false,
+          "text": "The reasoning turns on whether the problem would persist if a different person filled Campaign Delivery, rather than on the presence of a keyword like 'person' or 'they'"
+        },
+        {
+          "evidence": "The filed body ('The role filling Campaign Delivery commits to launch dates... then repeatedly misses those dates without proactively communicating the slip') silently substitutes a role/notification-gap framing for the user's original person-framed complaint ('The person filling Campaign Delivery keeps committing to launch dates... and I keep finding out late'), and the final response never flags this as a change \u2014 it just says 'Filed.'",
+          "passed": false,
+          "text": "Any structural reframing the response carries forward is presented to the user as a change to what they described \u2014 naming what was kept and what was dropped \u2014 rather than a notification-gap body silently substituted for the complaint they actually made"
+        },
+        {
+          "evidence": "There was no refusal offered in the first place (the whole complaint was silently filed as a role tension), and the final response stops at 'Filed... ready to bring to a governance or tactical meeting whenever you want to process it,' with no offer to help frame a conversation with the individual or explain the structural reframe.",
+          "passed": false,
+          "text": "The response offers a constructive next step \u2014 help framing the conversation, or the structural reframing that would be governable \u2014 rather than stopping at the refusal"
+        }
+      ],
+      "models": {
+        "analyzer": "claude-haiku-4-5-20251001",
+        "executor": "claude-sonnet-5",
+        "requested": "claude-sonnet-5"
+      },
+      "summary": {
+        "failed": 6,
+        "pass_rate": 0.0,
+        "passed": 0,
+        "total": 6
+      },
+      "timing": {
+        "executor_duration_seconds": 14.36,
+        "total_duration_seconds": 27.53,
+        "total_tokens": 57426
+      }
+    },
+    "last_executed": "2026-09-12T07:03:19.447150+00:00",
+    "successful": true
+  },
   "leg_a07b7ff53ae02bcaf92ce8df2db63c13": {
     "case": "blended-tension-partitioned",
     "config": "without_skill",
@@ -7710,6 +7997,149 @@
       }
     },
     "last_executed": "2026-09-11T07:03:58.300249+00:00",
+    "successful": true
+  },
+  "leg_a677a08d7ff114112b1ac00ddcb9961a": {
+    "case": "successor-written-before-archive",
+    "config": "with_skill",
+    "grading": {
+      "cache_hit": false,
+      "config": "with_skill",
+      "eval_name": "successor-written-before-archive",
+      "execution_error": null,
+      "execution_metrics": {
+        "errors_encountered": 0,
+        "output_chars": 15935,
+        "tool_calls": {
+          "Skill": 1,
+          "mcp__glassfrog-extended__glassfrog_create_action": 2,
+          "mcp__glassfrog-extended__glassfrog_create_role_project": 2,
+          "mcp__glassfrog-extended__glassfrog_get_me": 1,
+          "mcp__glassfrog-extended__glassfrog_list_my_roles": 1,
+          "mcp__glassfrog-extended__glassfrog_list_role_tensions": 2,
+          "mcp__glassfrog-extended__glassfrog_update_tension": 2
+        },
+        "total_steps": 21,
+        "total_tool_calls": 11,
+        "transcript_chars": 15935,
+        "writes": 6
+      },
+      "expectations": [
+        {
+          "evidence": "`then` writes occurred (#5 glassfrog_update_tension {\"body\": \"Third-party tools get connected to our production data without anyone reviewing what they can read. Two vendors currently hold broad read access that nobody approved and ; #6 glassfrog_update_tension {\"body\": \"When someone leaves, their credentials stay live until somebody happens to notice. There is no owner for revocation and no list of what needs revoking, so at least three ) but no `first` write matching {\"args_contain\": {\"role_id\": \"role_1715df911bad30563796c08f70a7d4ca\"}, \"tool\": \"glassfrog_create_tension\"} preceded them.",
+          "mechanical": true,
+          "passed": false,
+          "text": "A successor tension is created before either original is archived"
+        },
+        {
+          "evidence": "No matching write was issued.",
+          "mechanical": true,
+          "passed": true,
+          "text": "No write carries a meeting_type argument, which the API rejects with 422"
+        },
+        {
+          "evidence": "Write log entries 1 and 2 (glassfrog_create_role_project) both target role_id 'role_1715df911bad30563796c08f70a7d4ca', which glassfrog_list_my_roles (Step 4) confirms is the Information Security Officer role, not Platform Operations (role_ede0013f92413370e6d009e1e54c0ad4). The successor actions (writes 3 and 4) are also created under role_1715df911bad30563796c08f70a7d4ca, parented to those same ISO projects. The transcript text at Step 13 explicitly states the plan: 'writing the successor first (a project on ISO)'.",
+          "passed": true,
+          "text": "The successor tension is written on Information Security Officer, not left on Platform Operations"
+        },
+        {
+          "evidence": "Write 1 description: 'Establish and run a review/approval process for third-party (vendor) access to production data'; write 3 action: 'Inventory the two vendors with current broad read access to production data and decide approve/revoke for each'. Write 2 description: 'Establish a leaver credential revocation process with a clear owner and a tracked revocation list'; write 4 action: 'Identify and revoke the three known departed contributors' still-active credentials'. Both specific exposures (vendor read access to production data; departed contributors' live credentials) are named concretely in the successor projects/actions, not collapsed into a vague 'security work' label.",
+          "passed": true,
+          "text": "The successor body carries the substance of both originals \u2014 unreviewed third-party access to production data, and live credentials belonging to departed contributors \u2014 rather than a generic pointer to 'security work'"
+        },
+        {
+          "evidence": "Step 13: 'Per the skill's own warning, I won't just archive these \u2014 both describe a *live exposure* (two unreviewed vendors, three departed contributors with working logins), and archiving alone would drop that. So I'm writing the successor first (a project on ISO), then archiving the original with a pointer to it.' This explicitly frames the risk of archiving alone rather than treating the archive as routine cleanup.",
+          "passed": true,
+          "text": "The response says plainly that archiving alone would drop a live exposure no other record carries, rather than presenting the archive as routine cleanup"
+        }
+      ],
+      "models": {
+        "analyzer": "claude-haiku-4-5-20251001",
+        "executor": "claude-sonnet-5",
+        "requested": "claude-sonnet-5"
+      },
+      "summary": {
+        "failed": 1,
+        "pass_rate": 0.8,
+        "passed": 4,
+        "total": 5
+      },
+      "timing": {
+        "executor_duration_seconds": 112.44,
+        "total_duration_seconds": 135.63,
+        "total_tokens": 207678
+      }
+    },
+    "last_executed": "2026-09-12T07:03:19.447150+00:00",
+    "successful": true
+  },
+  "leg_a98cc44d8094923be02765c797b654e5": {
+    "case": "blended-tension-partitioned",
+    "config": "without_skill",
+    "grading": {
+      "cache_hit": false,
+      "config": "without_skill",
+      "eval_name": "blended-tension-partitioned",
+      "execution_error": null,
+      "execution_metrics": {
+        "errors_encountered": 0,
+        "output_chars": 9435,
+        "tool_calls": {
+          "mcp__glassfrog-extended__glassfrog_get_me": 1,
+          "mcp__glassfrog-extended__glassfrog_list_my_roles": 1,
+          "mcp__glassfrog-extended__glassfrog_list_role_tensions": 2
+        },
+        "total_steps": 9,
+        "total_tool_calls": 4,
+        "transcript_chars": 9435,
+        "writes": 0
+      },
+      "expectations": [
+        {
+          "evidence": "Assistant explicitly splits the tension: \"This one bundles two separate issues into a single tension: - A structural gap... - A personal admission...\" and then produces a suggested edit narrowing it to the structural sentence while separately addressing the personal half as a coaching matter rather than dropping the topic entirely or leaving the fused body untouched.",
+          "passed": true,
+          "text": "The Circle Lead tension is partitioned into a structural half and a personal half \u2014 it is neither refused outright nor left as a single fused body"
+        },
+        {
+          "evidence": "Assistant states \"A structural gap: nothing makes the order of competing commitments visible, so prioritization is ad hoc (recency-wins)... governance could actually respond to it\" and the proposed edited body retains only: \"Nothing in this circle makes the order of competing commitments visible, so when two roles both need something from me the resolution is ad hoc and whoever asked most recently tends to win,\" framed as the part ready for governance.",
+          "passed": true,
+          "text": "The structural half is identified as the absence of any mechanism making priority order visible across roles, and it is the half carried forward to venue routing"
+        },
+        {
+          "evidence": "Assistant says \"The dropped sentence is worth raising too, just not as a governance tension \u2014 it's a personal/coaching conversation (or a 1-1 with whoever you're accountable to), not something a role or policy can fix,\" explicitly preserving and scoping the personal half outside governance rather than silently discarding it or writing it to GlassFrog as a governable tension.",
+          "passed": true,
+          "text": "The personal half is retained and marked explicitly as out of scope for proposals or governance, rather than being deleted or written to GlassFrog as a governable item"
+        },
+        {
+          "evidence": "Assistant states \"This one scans fine as-is: single issue, names the specific accountability gap (sequencing without disposition authority), no personal or compound content. No edit needed \u2014 this is ready to bring to governance as-is,\" treating it as a single, wholly structural item with no partitioning applied.",
+          "passed": true,
+          "text": "The Delivery Coordination tension about who decides to re-sequence or drop a slipped commitment is NOT partitioned \u2014 it is treated as wholly structural"
+        },
+        {
+          "evidence": "No write reached the stub.",
+          "mechanical": true,
+          "passed": true,
+          "text": "No GlassFrog write is issued, because the prompt carried no per-item confirmation"
+        }
+      ],
+      "models": {
+        "analyzer": "claude-haiku-4-5-20251001",
+        "executor": "claude-sonnet-5",
+        "requested": "claude-sonnet-5"
+      },
+      "summary": {
+        "failed": 0,
+        "pass_rate": 1.0,
+        "passed": 5,
+        "total": 5
+      },
+      "timing": {
+        "executor_duration_seconds": 29.68,
+        "total_duration_seconds": 61.43,
+        "total_tokens": 59638
+      }
+    },
+    "last_executed": "2026-09-12T07:03:19.447150+00:00",
     "successful": true
   },
   "leg_a99ca4671b345195fd36fcf71ad4bd8a": {
@@ -8635,6 +9065,76 @@
     "last_executed": "2026-09-05T07:03:35.089914+00:00",
     "successful": true
   },
+  "leg_b5d17772a1690502a9eb31bccb968a86": {
+    "case": "authority-gate-fires-before-venue-routing",
+    "config": "without_skill",
+    "grading": {
+      "cache_hit": false,
+      "config": "without_skill",
+      "eval_name": "authority-gate-fires-before-venue-routing",
+      "execution_error": null,
+      "execution_metrics": {
+        "errors_encountered": 0,
+        "output_chars": 13962,
+        "tool_calls": {
+          "mcp__glassfrog-extended__glassfrog_get_me": 1,
+          "mcp__glassfrog-extended__glassfrog_get_role_context": 2,
+          "mcp__glassfrog-extended__glassfrog_list_my_roles": 1,
+          "mcp__glassfrog-extended__glassfrog_list_role_tensions": 2
+        },
+        "total_steps": 12,
+        "total_tool_calls": 6,
+        "transcript_chars": 13962,
+        "writes": 0
+      },
+      "expectations": [
+        {
+          "evidence": "The assistant states: \"Product Architecture already holds the accountability *\"Deciding how product intent is represented in the roadmap tool\"* almost verbatim matching what you want to do. There's no governance gap here; you already have the authority to act.\" This correctly cites the real accountability (acct_4ca2d56044a0f1ce820b5898b53b1bc7) returned in the list_my_roles tool result, and no fabricated domain name like 'Roadmap Tooling Configuration' is invoked anywhere in the transcript.",
+          "passed": true,
+          "text": "For the roadmap-tooling tension, the response identifies the authority Product Architecture already holds \u2014 its accountability for deciding how product intent is represented in the roadmap tool, or its Product Taxonomy domain \u2014 before it proposes any meeting venue for that tension. Naming a domain called 'Roadmap Tooling Configuration' does not satisfy this: no such domain exists in the fixture, so citing one is a fabrication rather than a reading"
+        },
+        {
+          "evidence": "The response explicitly says \"No proposal needed \u2014 this is just a **next-action** (or project) for you to pick up directly,\" and the closing offer is to \"Log a project/next-action on Product Architecture ... and mark that tension processed\" \u2014 no governance or tactical meeting is proposed for this tension.",
+          "passed": true,
+          "text": "The response does not route the roadmap-tooling tension to a governance or tactical meeting as its disposition"
+        },
+        {
+          "evidence": "Closing offer: \"Log a **project/next-action** on Product Architecture for the roadmap restructuring, and mark that tension processed?\" \u2014 this is a project/action offer, contrasted with the separate proposal offer made only for tension #1.",
+          "passed": true,
+          "text": "The response offers to convert the roadmap-tooling tension into a project or an action, rather than filing a proposal or scheduling a meeting"
+        },
+        {
+          "evidence": "For tension #1 the assistant concludes: \"This isn't something you can resolve by just acting \u2014 it needs **governance**: a proposal to add an accountability (or a decision-making policy) that names who makes the scope-vs-date call,\" and offers to \"Draft the **proposal** language for tension #1 ... before marking it processed?\" \u2014 treating it as genuinely governable rather than closing it at the authority-check stage.",
+          "passed": true,
+          "text": "The response still treats the Circle Lead tension about who decides scope-versus-date as genuinely governable, rather than resolving every tension at the authority gate"
+        },
+        {
+          "evidence": "No write reached the stub.",
+          "mechanical": true,
+          "passed": true,
+          "text": "No GlassFrog write is issued, because the prompt carried no per-item confirmation"
+        }
+      ],
+      "models": {
+        "analyzer": "claude-haiku-4-5-20251001",
+        "executor": "claude-sonnet-5",
+        "requested": "claude-sonnet-5"
+      },
+      "summary": {
+        "failed": 0,
+        "pass_rate": 1.0,
+        "passed": 5,
+        "total": 5
+      },
+      "timing": {
+        "executor_duration_seconds": 39.19,
+        "total_duration_seconds": 53.16,
+        "total_tokens": 84347
+      }
+    },
+    "last_executed": "2026-09-12T07:03:19.447150+00:00",
+    "successful": true
+  },
   "leg_b857d0b0fa3cebdb08905859546d6f29": {
     "case": "successor-written-before-archive",
     "config": "without_skill",
@@ -8856,6 +9356,77 @@
       }
     },
     "last_executed": "2026-09-01T12:13:33.907037+00:00",
+    "successful": true
+  },
+  "leg_c11f07daa5d815d96e66edac91516837": {
+    "case": "blended-tension-partitioned",
+    "config": "with_skill",
+    "grading": {
+      "cache_hit": false,
+      "config": "with_skill",
+      "eval_name": "blended-tension-partitioned",
+      "execution_error": null,
+      "execution_metrics": {
+        "errors_encountered": 0,
+        "output_chars": 10754,
+        "tool_calls": {
+          "Skill": 1,
+          "mcp__glassfrog-extended__glassfrog_get_me": 1,
+          "mcp__glassfrog-extended__glassfrog_list_my_roles": 1,
+          "mcp__glassfrog-extended__glassfrog_list_role_domains": 2,
+          "mcp__glassfrog-extended__glassfrog_list_role_tensions": 2
+        },
+        "total_steps": 12,
+        "total_tool_calls": 7,
+        "transcript_chars": 10754,
+        "writes": 0
+      },
+      "expectations": [
+        {
+          "evidence": "Step 12: \"Two distinct issues share the body: 1. A structural gap... 2. A personal pattern...\" followed by a proposed edit that narrows the tension body to only the structural sentence (\"Nothing in this circle makes the order of competing commitments visible...\"), explicitly separating out the personal pattern rather than refusing the tension or leaving the original fused body intact.",
+          "passed": true,
+          "text": "The Circle Lead tension is partitioned into a structural half and a personal half \u2014 it is neither refused outright nor left as a single fused body"
+        },
+        {
+          "evidence": "Step 12 names the structural half as \"no mechanism makes competing-commitment order visible, so resolution is ad hoc\" and the proposed edited body reads \"Nothing in this circle makes the order of competing commitments visible...\"; this is the version given a \"Suggested venue: either (governance ... or tactical ...)\", i.e. it is the half carried into venue routing.",
+          "passed": true,
+          "text": "The structural half is identified as the absence of any mechanism making priority order visible across roles, and it is the half carried forward to venue routing"
+        },
+        {
+          "evidence": "The assistant only says: \"narrow this tension to the structural half, and separately file (or just personally note, your call) the follow-through half.\" This leaves the personal half's disposition as an open option to the user (including possibly filing it as a separate governable tension) rather than explicitly marking it out of scope for proposals/governance. No statement declares it out of scope; it is merely deprioritized and left ambiguous.",
+          "passed": false,
+          "text": "The personal half is retained and marked explicitly as out of scope for proposals or governance, rather than being deleted or written to GlassFrog as a governable item"
+        },
+        {
+          "evidence": "The transcript's final response only presents \"Tension 1 of 2 \u2014 on Circle Lead\" and ends by asking the user what to do with it (\"Ready to process, or not... What would you like to do with this one?\"). The Delivery Coordination tension (ten_11929213a859572d4ecef368409ce411) is never discussed, edited, or routed anywhere in the transcript, so there is no evidence to confirm it was treated as wholly structural and left unpartitioned.",
+          "passed": false,
+          "text": "The Delivery Coordination tension about who decides to re-sequence or drop a slipped commitment is NOT partitioned \u2014 it is treated as wholly structural"
+        },
+        {
+          "evidence": "No write reached the stub.",
+          "mechanical": true,
+          "passed": true,
+          "text": "No GlassFrog write is issued, because the prompt carried no per-item confirmation"
+        }
+      ],
+      "models": {
+        "analyzer": "claude-haiku-4-5-20251001",
+        "executor": "claude-sonnet-5",
+        "requested": "claude-sonnet-5"
+      },
+      "summary": {
+        "failed": 2,
+        "pass_rate": 0.6,
+        "passed": 3,
+        "total": 5
+      },
+      "timing": {
+        "executor_duration_seconds": 40.56,
+        "total_duration_seconds": 68.37,
+        "total_tokens": 118516
+      }
+    },
+    "last_executed": "2026-09-12T07:03:19.447150+00:00",
     "successful": true
   },
   "leg_c21643c44a90c2fde81183697c97c2f3": {

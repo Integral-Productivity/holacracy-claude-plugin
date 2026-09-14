@@ -7,10 +7,11 @@ argument-hint: [project name/id, or circle name — optional]
 
 Review GlassFrog **projects** for quality: is each one well-formed (an actionable outcome with a next-action and a clear owner) and well-placed (serving a goal, within the owner role's authority, on the best-fit role)? For each finding, Claude drafts a fix; the human confirms per-item; only additive fixes are written to GlassFrog. This is the project-side analog of `/holacracy:tension-triage`.
 
-Load two shared references at the start:
+Load three shared references at the start:
 
 1. `skills/shared/project-well-formedness.md` -- the rubric (the seven dimensions, the state vocabulary, the DoD-as-body-convention, the status enum).
 2. `skills/shared/project-review-critics.md` -- the five critic lenses, the finding schema, and the severity/floor/cap/dedupe rules.
+3. `skills/shared/glassfrog-id-and-url-resolution.md` -- how to resolve a user-supplied pointer (a pasted URL, a name) to a v5 record, and why `/projects/<id>` URLs sometimes name an action.
 
 ## The safeguard (non-negotiable)
 
@@ -24,6 +25,7 @@ Load two shared references at the start:
    - **No argument** -> the actor's own role projects. For each role, `glassfrog_list_role_projects(role_id, status: "current", include: ["actions"])`. This is the **backlog walk** (inline critic passes).
    - **A circle name** -> that whole circle's projects: `list_role_projects` across the circle's roles + `glassfrog_list_sub_projects` for the recursive view. Still a **backlog walk** (inline passes).
    - **A named/identified project** -> resolve one project (by id `proj_<32hex>`, or by matching the name against `list_role_projects(..., q: "<name>")`; if ambiguous, ask which one) and run the **deep single-project review** (independent critic subagents -- see "Deep review" below).
+   - **A pasted GlassFrog URL** -> the legacy numeric ID in it is not resolvable via v5. Follow `skills/shared/glassfrog-id-and-url-resolution.md`: ask for the item's title, resolve by search, and confirm whether it is a project or an action before running the rubric on it.
 
    If a target can't be resolved (no matching project, actor fills no role in the named circle), name the constraint honestly and stop.
 

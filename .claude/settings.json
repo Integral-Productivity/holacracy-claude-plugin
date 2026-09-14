@@ -11,6 +11,12 @@
         "source": "github",
         "repo": "Integral-Productivity/marketplace-internal"
       }
+    },
+    "integral-productivity-labs": {
+      "source": {
+        "source": "github",
+        "repo": "Integral-Productivity/marketplace-labs"
+      }
     }
   },
   "enabledPlugins": {
@@ -18,6 +24,8 @@
     "integral-productivity-engineering@integral-productivity-internal": true,
     "software-architecture@integral-productivity-internal": true,
     "product-architecture@integral-productivity-internal": true,
-    "lean-management@integral-productivity-internal": true
+    "lean-management@integral-productivity-internal": true,
+    "software-architecture@integral-productivity-labs": true,
+    "lean-management@integral-productivity-labs": true
   }
 }

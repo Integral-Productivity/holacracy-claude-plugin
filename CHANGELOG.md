@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.16.0...v0.17.0) (2026-09-14)
+
+
+### Features
+
+* **review-project:** verify a project's premises and resolve pasted GlassFrog URLs ([#293](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/293)) ([c439785](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/c439785796b7363b51d704ed11390b8edde0e02a))
+
 ## [0.16.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.15.1...v0.16.0) (2026-09-10)
 
 

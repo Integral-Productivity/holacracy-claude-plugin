@@ -5,7 +5,7 @@ The five critic lenses, the finding schema, and the severity/cap/dedupe rules fo
 - **Inline mode** (backlog walk) -- the command adopts each lens as a sequential reasoning pass in one context.
 - **Subagent mode** (deep single-project review) -- the `project-critic` subagent (`agents/project-critic.md`) runs one lens per dispatch and returns findings in the schema below.
 
-Every lens grounds on `project-well-formedness.md`. Load that rubric first; these lenses turn its dimensions into adversarial checks. The safeguard from the tension lifecycle holds here: **draft and confirm only** -- no critic writes anything; the command applies confirmed fixes per-item.
+Every lens grounds on `project-well-formedness.md`. Load that rubric first; these lenses turn its dimensions into adversarial checks. When the review target arrived as a pasted GlassFrog URL, resolve it first per `skills/shared/glassfrog-id-and-url-resolution.md` -- that path also serves next-actions, and this rubric judges projects. The safeguard from the tension lifecycle holds here: **draft and confirm only** -- no critic writes anything; the command applies confirmed fixes per-item.
 
 ---
 
@@ -84,14 +84,24 @@ Flags:
 
 Reads: everything the other lenses read; its job is to poke holes the rubric dimensions don't name -- hidden dependencies, an outcome that's really three projects, a "done" that can never be verified, a next-action that isn't actually the *next* physical step.
 
-Flags: `drafted_fix: none` most often (it raises questions); occasionally `reframe-description` when the fix is a sharper outcome. Keep it sharp, not paranoid -- one or two real holes beat ten nitpicks.
+**Required sub-check: premise verification.** Before judging how a project is *worded*, check whether the things it presupposes actually *exist*. List every artifact, document, dataset, system, or agreement that the description, the `DoD:` line, or any attached action names as already existing -- then verify each one, using whatever read access the session actually has (a repo search, a file read, an MCP call against the system named). This is the one check no other lens performs: the other four judge a project against itself and against governance, so a project can pass all four while resting on something that was never built.
+
+| Outcome | What to emit |
+|---|---|
+| Verified present | No finding. |
+| Verified absent | `state: needs-next-action`, `severity: blocking`. A project whose host artifact does not exist has no executable next-action, however many actions hang off it. Name which presupposition failed and what evidence shows it. Usual fix: `create-action` for the authoring step, or `reframe-description` splitting the authoring out as its own upstream project. |
+| Cannot verify | No finding, and do not guess. Note the unverified presupposition inside another finding's `statement`, or return nothing. An unverifiable premise is not a defect. |
+
+Do not manufacture this check where there is nothing to verify -- a project that presupposes nothing external passes it silently. Absence of evidence is not evidence of absence: "I searched and found nothing" only counts as *verified absent* when the search would have found the thing had it been there.
+
+Flags: `drafted_fix: none` most often (it raises questions); occasionally `reframe-description` when the fix is a sharper outcome, or `create-action` when premise verification finds an absent prerequisite. Keep it sharp, not paranoid -- one or two real holes beat ten nitpicks.
 
 ---
 
 ## Severity, floor, cap, dedupe
 
 - **Severity ladder:** `blocking > high > moderate > low`.
-  - `blocking` -- the project cannot move as written (activity-framed *and* no next-action).
+  - `blocking` -- the project cannot move as written (activity-framed *and* no next-action; or premise verification found a presupposed artifact verified absent).
   - `high` -- a clear gap a reader would hit (no next-action, or out-of-authority).
   - `moderate` -- a real but non-urgent gap (no goal, weak DoD).
   - `low` -- a nitpick.

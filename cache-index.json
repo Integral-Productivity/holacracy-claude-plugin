@@ -1,6 +1,6 @@
 {
   "_run_summary": {
-    "generated_at": "2026-09-21T07:15:13.410030+00:00",
+    "generated_at": "2026-09-22T07:06:13.664474+00:00",
     "hits": 0,
     "legs": [
       {
@@ -519,12 +519,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.26,
-        "total_duration_seconds": 1.29,
+        "executor_duration_seconds": 2.08,
+        "total_duration_seconds": 2.1,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-09-21T07:15:13.410030+00:00",
+    "last_executed": "2026-09-22T07:06:13.664474+00:00",
     "successful": false
   },
   "leg_093cc789fa6c49e663b9b0da69b32a02": {
@@ -1150,12 +1150,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.15,
-        "total_duration_seconds": 1.18,
+        "executor_duration_seconds": 1.65,
+        "total_duration_seconds": 1.67,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-09-21T07:15:13.410030+00:00",
+    "last_executed": "2026-09-22T07:06:13.664474+00:00",
     "successful": false
   },
   "leg_0f9b5e31fdbc4eb640ecb833dd1a617c": {
@@ -6033,12 +6033,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.37,
-        "total_duration_seconds": 1.4,
+        "executor_duration_seconds": 1.81,
+        "total_duration_seconds": 1.84,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-09-21T07:15:13.410030+00:00",
+    "last_executed": "2026-09-22T07:06:13.664474+00:00",
     "successful": false
   },
   "leg_5e2c0bf40d5fc7190c5476375b20839a": {
@@ -6899,12 +6899,12 @@
         "total": 6
       },
       "timing": {
-        "executor_duration_seconds": 1.32,
-        "total_duration_seconds": 1.35,
+        "executor_duration_seconds": 1.62,
+        "total_duration_seconds": 1.64,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-09-21T07:15:13.410030+00:00",
+    "last_executed": "2026-09-22T07:06:13.664474+00:00",
     "successful": false
   },
   "leg_6a46222df8d2c37d8aaac57b14f49080": {
@@ -9653,12 +9653,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.13,
-        "total_duration_seconds": 1.16,
+        "executor_duration_seconds": 3.2,
+        "total_duration_seconds": 3.22,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-09-21T07:15:13.410030+00:00",
+    "last_executed": "2026-09-22T07:06:13.664474+00:00",
     "successful": false
   },
   "leg_98fb4ebcefb81f2b80167ed6499c12e6": {
@@ -10938,12 +10938,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.35,
-        "total_duration_seconds": 1.38,
+        "executor_duration_seconds": 1.67,
+        "total_duration_seconds": 1.69,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-09-21T07:15:13.410030+00:00",
+    "last_executed": "2026-09-22T07:06:13.664474+00:00",
     "successful": false
   },
   "leg_ade2156479b70875c7c5f0e2b96dd1fc": {
@@ -13281,12 +13281,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.22,
-        "total_duration_seconds": 1.25,
+        "executor_duration_seconds": 1.86,
+        "total_duration_seconds": 1.88,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-09-21T07:15:13.410030+00:00",
+    "last_executed": "2026-09-22T07:06:13.664474+00:00",
     "successful": false
   },
   "leg_d7025e56eda9894c4c35dccdc978e8c2": {
@@ -13979,12 +13979,12 @@
         "total": 6
       },
       "timing": {
-        "executor_duration_seconds": 1.29,
-        "total_duration_seconds": 1.32,
+        "executor_duration_seconds": 2.19,
+        "total_duration_seconds": 2.22,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-09-21T07:15:13.410030+00:00",
+    "last_executed": "2026-09-22T07:06:13.664474+00:00",
     "successful": false
   },
   "leg_e7b697c35630e649f150c2f8f6c844d6": {

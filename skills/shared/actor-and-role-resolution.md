@@ -81,8 +81,28 @@ Apply the **silent-when-obvious + ascertain-vs-ask + announce-the-result** polic
 | Actor fills the target role in exactly one circle | Proceed silently with that circle. Announce the resolved context in the first response: "Operating as **Secretary of [Circle Name]**." |
 | Actor fills the target role in multiple circles | Ask: "You hold [Role] in [Circle A], [Circle B], and [Circle C]. Which one is this about?" Then proceed. |
 | Actor does not fill the target role anywhere | Name it clearly. Offer Advisor or Observer mode: "You don't currently fill the [Role] role in any circle. Do you want to (a) explore how the role works, (b) prepare for taking on the role, or (c) advise someone else who fills it?" |
+| The named role does not exist in the organization at all | **Do not fall through to Observer mode.** Run Step 3a below. A role the user speaks of as real but that governance has never created is a different condition from a role they simply do not fill, and it needs a different answer. |
 | The user named the circle in their prompt | Use it as the resolution signal. Validate against the actor's role roster: if it's a circle the actor fills the role in, use it silently; if not, name the mismatch. |
 | User explicitly overrides via `/holacracy:context` | Use the override. Announce the override is active. |
+
+### Step 3a -- When the named role does not exist
+
+People refer to roles they intend to have, roles that were discussed in a Governance Meeting but never filed, and roles that exist only in a pending proposal -- all in the same possessive voice they use for roles they actually fill. "My Legal Steward role" is as likely to mean *the role we agreed to create* as *the role I hold*.
+
+The Step 3 table's "does not fill the target role anywhere" row assumes the role exists and the actor is outside it. When the role does not exist, that row's Observer/Advisor offer is the wrong response: it invites the user to "explore how the role works" for a role that has no governance to explore.
+
+**Distinguish the two conditions before answering.** The roster search in Step 2 tells you the actor does not fill the role; it does not tell you whether the role exists. Confirm existence separately, and only then look for the reason it is missing:
+
+1. **Confirm non-existence.** Search the organization, not just the actor's roster: `glassfrog_search(query: "<role name>")`. A role that exists but is filled by someone else returns here and is an ordinary Observer/Advisor case.
+2. **Look for pending governance.** The same `glassfrog_search` call surfaces actions, projects, tensions, and proposals whose text names the role. A hit means the role is *in flight* -- someone already sensed this gap and it is queued, not forgotten. Report the specific item and the role that holds it.
+3. **Answer with the governance state, not a refusal.** Name what exists and what does not, in that order:
+
+   > "There is no ● [Role] role in GlassFrog. The closest thing is an open action under ● [Holder] to create it -- filed [date], still `current`. Until that goes through Governance, [work] has no role to attach to."
+
+4. **Offer the two real paths, in order of cost.** (a) Proceed now under the nearest existing role whose Purpose and Accountabilities actually cover the work, naming the compromise. (b) File the governance proposal first, then attach the work to the new role. Let the user choose; do not pick silently.
+5. **If the user proceeds under a substitute role, say so in the record.** Whatever the skill files -- project, action, tension -- carries a line naming the intended role, the substitute used, and why. Otherwise the record shows a clean attribution that was never clean, and the next reader cannot tell a deliberate compromise from a mistake.
+
+**Why this earns its place.** The failure is silent and it corrupts the governance record rather than the conversation. A skill that files a project under a plausible-looking role because the named one was missing produces an artifact that looks correct in GlassFrog forever. Catching it costs one search call at resolution time.
 
 ### Step 4 -- Announce the resolved context (always)
 

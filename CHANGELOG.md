@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.21.0...v0.21.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **release-alarm:** alarm when a release stalls with no release PR open ([#315](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/315)) ([8f49d3d](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/8f49d3da584abeb8268ecd7d39c1d8aa0ca418c8))
+
 ## [0.21.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.20.0...v0.21.0) (2026-09-28)
 
 

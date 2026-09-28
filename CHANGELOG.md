@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.19.0...v0.19.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **settings:** drop two orphaned integral-productivity-internal plugin pairs ([#305](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/305)) ([b899b43](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/b899b431a5abb6b1f6e25b033c03dc346836adee))
+
 ## [0.19.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.18.0...v0.19.0) (2026-09-21)
 
 

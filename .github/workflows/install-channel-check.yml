@@ -18,9 +18,12 @@ name: Install channel check
 # linked-issue resolve step, minted the same way: the PEM from the scoped
 # `ip-org-auditor-public` vault via `OP_AUDITOR_PUBLIC_TOKEN`, the client id from
 # `vars.IP_ORG_AUDITOR_APP_CLIENT_ID`. This is a second consumer of an existing
-# credential, not a new one (ADR-0013 clause 6), and never the whole-vault
-# `OP_SERVICE_ACCOUNT_TOKEN` (ADR-045). The token is narrowed to the one repo it
-# reads (`repositories: marketplace-labs`).
+# credential, not a new one: many consumers go through a scoped 1Password vault
+# token on a public repo (ADR-0013 clause 2), never the whole-vault
+# `OP_SERVICE_ACCOUNT_TOKEN` (ADR-045). The minted token is bounded at the
+# credential (ADR-0013 clause 4): narrowed to the one repo it reads
+# (`repositories: marketplace-labs`) and to `contents: read`, so it stays
+# read-only even if the App is later granted more.
 #
 # PRECONDITION: the ip-org-auditor App must be installed on marketplace-labs
 # with Contents: read. If it is not, the mint or the read fails and this job is
@@ -28,21 +31,30 @@ name: Install channel check
 # read failure (exit 2), never a pass: a private repo answers 404 whether the
 # plugin is missing or the token cannot look.
 #
-# WHY NOT A REQUIRED CHECK
-# ------------------------
-# The labs catalog changes in another repo, with no event here. The schedule is
-# what catches that drift; the pull_request trigger catches this repo's side.
+# WHY NOT ON pull_request
+# -----------------------
+# This job holds the ip-org-auditor PEM and `OP_AUDITOR_PUBLIC_TOKEN`, and then
+# runs `scripts/install-channel-check.sh` from the checkout. On a pull_request
+# trigger that checkout is the PR head, so anyone who can push a branch could
+# edit the script — no workflow-file change needed — and exfiltrate the token
+# or the PEM from the runner. So the credentialed job only ever runs
+# default-branch code: daily, on pushes to main that touch the README, the
+# catalog, or the check itself, and on dispatch. Never on pull requests.
+#
+# Per-PR coverage of this repo's own channel comes from
+# `bash scripts/install-channel-check.sh --local-only` in scripts-test.yml,
+# which needs no credential. The cost: a PR that breaks the labs channel is
+# caught only after merge. The schedule also catches drift in the labs catalog
+# itself, which changes in another repo with no event here.
 #
 # OPERATIONAL NOTES
 # -----------------
-# - Fork PRs receive neither the secret nor the variable, so the job fails at
-#   the credential step on a fork. This repo takes no fork PRs in practice;
-#   the message names the cause.
 # - GitHub disables scheduled workflows after 60 days without repo activity. A
 #   disabled check and a passing one look the same; check before trusting it.
 
 on:
-  pull_request:
+  # Not pull_request: see WHY NOT ON pull_request above.
+  push:
     branches: [main]
     paths:
       - README.md
@@ -88,6 +100,7 @@ jobs:
           private-key: ${{ steps.pem.outputs.private-key }}
           owner: Integral-Productivity
           repositories: marketplace-labs
+          permission-contents: read
 
       - name: Check every channel README names
         env:

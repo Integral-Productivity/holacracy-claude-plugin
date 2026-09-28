@@ -67,9 +67,12 @@ B. B alone would leave no public install path, so this ADR adds one.
    catalog lists `holacracy` from this repo at `stable` with no `version`, and
    unless every channel has a matching `/plugin install holacracy@<catalog>`
    line. `scripts-test.yml` checks the self-hosted channel on every PR;
-   `install-channel-check.yml` checks labs daily and on README or catalog
-   changes, with a read-only `ip-org-auditor` token (ADR-0013: a second
-   consumer of an existing credential, not a new one).
+   `install-channel-check.yml` checks labs daily, on pushes to `main` that
+   touch the README, the catalog, or the check script, and on dispatch — never
+   on pull requests, because that job holds a secret and a PR could edit the
+   script it runs. It uses a read-only `ip-org-auditor` token, a second
+   consumer of an existing credential rather than a new one, so it goes
+   through a scoped 1Password vault token (ADR-0013 clause 2).
 5. **Install from one channel, not both.** The README says so. Two
    registrations are two answers to "which version am I on" — the #122
    failure.
@@ -94,6 +97,10 @@ B. B alone would leave no public install path, so this ADR adds one.
   `marketplace-labs`. Until it does, `install-channel-check.yml` is red with a
   message naming the gap. That is correct behaviour — the canonical channel is
   unmeasured — but it is a standing red until someone grants the access.
+- A PR that breaks the labs channel is caught only after merge. The
+  self-hosted channel is caught pre-merge by `scripts-test.yml`; the labs
+  check runs only on default-branch code, so it cannot run on the PR that
+  breaks it.
 - The self-hosted catalog carries a `description` that can drift from
   `plugin.json`'s. Nothing checks that; it is cosmetic.
 

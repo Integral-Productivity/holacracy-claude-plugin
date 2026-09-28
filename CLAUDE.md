@@ -304,7 +304,7 @@ bash scripts/install-channel-check.sh --local-only   # the self-hosted channel; 
 bash scripts/install-channel-check.test.sh           # mutation-checked suite; replays #234
 ```
 
-`--local-only` runs in `scripts-test.yml` on every PR and reports labs as NOT MEASURED. The labs catalog is private, so the full check runs in `install-channel-check.yml` with a read-only `ip-org-auditor` token. A catalog it cannot read exits `2`, never `0`: a private repo answers 404 whether the plugin is missing or the token cannot look. **If you change the README's install lines or `.claude-plugin/marketplace.json`, both must still pass.** Adding a third channel means amending ADR-0016, not just the README.
+`--local-only` runs in `scripts-test.yml` on every PR and reports labs as NOT MEASURED. The labs catalog is private, so the full check runs in `install-channel-check.yml` with a read-only `ip-org-auditor` token — daily, on pushes to `main` that touch the README, the catalog, or the script, and on dispatch. **Never on pull requests**: that job holds a secret and then runs the checked-out script, so a `pull_request` trigger would hand the credential to whatever a PR branch put in that script. A PR that breaks the labs channel is therefore caught only after merge; the self-hosted channel is caught before it. A catalog it cannot read exits `2`, never `0`: a private repo answers 404 whether the plugin is missing or the token cannot look. **If you change the README's install lines or `.claude-plugin/marketplace.json`, both must still pass.** Adding a third channel means amending ADR-0016, not just the README.
 
 ## Agent skills
 

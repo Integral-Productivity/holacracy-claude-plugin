@@ -37,10 +37,44 @@
 # while promotion has failed (that is issue #108), and in that state consumers
 # are still on the older version. `stable` is what they actually install.
 #
+# THE RELEASE PR THAT NEVER CAME (issue #145)
+# -------------------------------------------
+# An old release PR is one way to stop shipping. Having NO release PR while a
+# releasable change waits is the other, and it is worse: nothing is old, so
+# nothing looks wrong. Three causes lead there, and the no-release-PR path
+# tells them apart, in this order:
+#
+#   tag-missing       main's `.release-please-manifest.json` names a version
+#                     with no `vX.Y.Z` tag. The release PR merged but did not
+#                     release: release-please hard-failed at its tag or
+#                     GitHub-release step. This is #310 — `stable` sat on
+#                     0.19.1 for about 15 hours while this script said
+#                     "cleared".
+#   promotion-failed  the tag exists but `stable` still carries an older
+#                     version: `promote-stable.yml` did not fast-forward it
+#                     (issue #108).
+#   no-release-pr     a releasable commit (feat, fix, perf, revert, deps, or
+#                     any breaking change) is on `main` but not on `stable`,
+#                     and release-please never opened a PR for it. That is its
+#                     documented soft-failure path: missing credentials exit 0.
+#
+# A docs-, ci- or chore-only delta is NOT a stall. release-please does not open
+# a PR for those, so "stable behind main, no release PR" is the normal steady
+# state after such a merge.
+#
+# Each stall alarms only once it is older than a grace window, measured from
+# the manifest change (the first two causes) or the oldest waiting releasable
+# commit (the third). release-please normally acts within a minute or two of a
+# push, so the window only absorbs a scheduled run that lands mid-release. While
+# a stall is inside the window, the run neither alarms nor closes the tracking
+# issue: "cleared" is never reported while a releasable change is waiting.
+#
 # EXIT CODES
 # ----------
-#   0  no release PR open, or it is younger than the threshold
-#   1  ALARM — a release PR is at or past the threshold (notifications sent)
+#   0  no release PR open and nothing releasable waiting (or still inside the
+#      grace window), or the release PR is younger than the threshold
+#   1  ALARM — a release PR is at or past the threshold, or a release has
+#      stalled with no release PR (notifications sent)
 #   2  usage error or an operational failure (gh/network/parse)
 #
 # Exit 1 is deliberate: it turns the scheduled run red in the Actions tab, which
@@ -68,6 +102,17 @@ set -euo pipefail
 # does not manufacture noise for normal working rhythm.
 DEFAULT_MAX_AGE_DAYS=3
 
+# Two hours for a release with no release PR (issue #145). release-please opens
+# its PR, and tags on merge, within a minute or two of a push to main. Two
+# hours covers a queued runner and a slow retry. It is still short enough that
+# the daily run catches a stall the same day it starts.
+DEFAULT_GRACE_HOURS=2
+
+# The commit types release-please treats as releasable: the ones in its default
+# visible changelog sections. docs/ci/chore/test/style/refactor/build do not
+# open a release PR. Any type with `!`, or a BREAKING CHANGE footer, also counts.
+RELEASABLE_TYPES='feat|fix|perf|revert|deps'
+
 # release-please derives its branch name from release-please-config.json
 # (branch + package-name), so it changes if that config changes. Today it is
 # `release-please--branches--main--components--holacracy`. Prefix-match, never
@@ -82,6 +127,7 @@ MARKER='<!-- release-pr-age-check:v1 -->'
 ISSUE_LABELS='["ci","main-health"]'
 
 MAX_AGE_DAYS="${RELEASE_PR_MAX_AGE_DAYS:-$DEFAULT_MAX_AGE_DAYS}"
+GRACE_HOURS="${RELEASE_STALL_GRACE_HOURS:-$DEFAULT_GRACE_HOURS}"
 REPO="${GITHUB_REPOSITORY:-}"
 NOW_ISO=''
 PR_JSON_FILE=''
@@ -95,6 +141,9 @@ Usage: scripts/release-pr-age-check.sh [options]
                         else the repo `gh` resolves from the working directory.
   --max-age-days N      Alarm at or past N days old.
                         Default: $RELEASE_PR_MAX_AGE_DAYS, else 3.
+  --grace-hours N       With NO release PR open, alarm once a releasable change
+                        has waited N hours or more (issue #145).
+                        Default: $RELEASE_STALL_GRACE_HOURS, else 2.
   --dry-run             Print the report; make no writes to GitHub.
   --now ISO8601         Treat this instant as "now" (e.g. 2026-08-20T00:00:00Z).
                         Verification affordance; unused in CI.
@@ -122,6 +171,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --repo)          REPO="${2:-}";          shift 2 ;;
     --max-age-days)  MAX_AGE_DAYS="${2:-}";  shift 2 ;;
+    --grace-hours)   GRACE_HOURS="${2:-}";   shift 2 ;;
     --now)           NOW_ISO="${2:-}";       shift 2 ;;
     --pr-json)       PR_JSON_FILE="${2:-}";  shift 2 ;;
     --dry-run)       DRY_RUN=true;           shift ;;
@@ -132,6 +182,9 @@ done
 
 case "$MAX_AGE_DAYS" in
   ''|*[!0-9]*) die "--max-age-days must be a non-negative integer, got '$MAX_AGE_DAYS'" ;;
+esac
+case "$GRACE_HOURS" in
+  ''|*[!0-9]*) die "--grace-hours must be a non-negative integer, got '$GRACE_HOURS'" ;;
 esac
 
 command -v gh >/dev/null 2>&1 || die "the GitHub CLI (gh) is required and was not found on PATH"
@@ -255,6 +308,28 @@ close_tracking_issue() {
   fi
 }
 
+# Open the tracking issue, or update it in place when one already carries the
+# marker. Both alarm paths share it, so a stall that turns into a stale release
+# PR (or the reverse) stays on ONE issue. Returns non-zero on a failed write.
+upsert_tracking_issue() {
+  local title="$1" body="$2"
+  if [ -n "$tracking_issue" ]; then
+    if jq -n --arg t "$title" --arg b "$body" '{title:$t,body:$b}' \
+         | api_write PATCH "repos/$REPO/issues/$tracking_issue"; then
+      echo "Updated tracking issue #$tracking_issue."
+    else
+      echo "::error title=release-pr-age-check::failed to update tracking issue #$tracking_issue." >&2
+      return 1
+    fi
+  elif jq -n --arg t "$title" --arg b "$body" --argjson l "$ISSUE_LABELS" \
+         '{title:$t,body:$b,labels:$l}' | api_write POST "repos/$REPO/issues"; then
+    echo "Opened a tracking issue."
+  else
+    echo "::error title=release-pr-age-check::failed to open a tracking issue. Check that the workflow grants 'issues: write' and that the 'ci' and 'main-health' labels exist." >&2
+    return 1
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # 3. Gather the state the report needs
 # ---------------------------------------------------------------------------
@@ -268,33 +343,215 @@ fi
 
 unshipped_count='<unknown>'
 unshipped_subjects=''
+compare_json=''
 if compare_json="$(gh api "repos/$REPO/compare/stable...main" 2>/dev/null)"; then
   unshipped_count="$(printf '%s' "$compare_json" | jq -r '.ahead_by')"
   unshipped_subjects="$(printf '%s' "$compare_json" \
     | jq -r '[.commits[] | .commit.message | split("\n")[0]] | reverse | .[0:10] | .[] | "  - " + .')"
 else
+  compare_json=''
   echo "::warning::could not compare 'stable...main' on $REPO — reporting the frozen-commit count as <unknown>."
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Clear path — no release PR open
+# 4. No release PR open — is a release stalled? (issue #145)
 # ---------------------------------------------------------------------------
+# See "THE RELEASE PR THAT NEVER CAME" in the header for the three causes and
+# why they are checked in this order.
+
+# Whole hours from an ISO instant to now. Returns non-zero when it cannot parse.
+hours_since() {
+  local epoch
+  epoch="$(iso_to_epoch "$1")" || return 1
+  local h=$(( (NOW_EPOCH - epoch) / 3600 ))
+  [ "$h" -ge 0 ] || h=0
+  printf '%s\n' "$h"
+}
 
 if [ -z "$release_pr" ]; then
   echo "No open release PR on $REPO (searched open PRs for a '${RELEASE_BRANCH_PREFIX}*' head branch)."
   echo "  Consumers on 'stable': $stable_version"
   echo "  Commits on main not yet on stable: $unshipped_count"
-  if [ "$unshipped_count" != "<unknown>" ] && [ "$unshipped_count" -gt 0 ]; then
-    # release-please.yml opens its PR within ~a minute of a push to main, so on
-    # the daily cadence this state is not the normal post-merge transient — it
-    # means release-please took its documented soft-failure path (absent org
-    # vars, unreadable 1P PEM, or failed token mint all exit 0), or a tag was
-    # cut without promote-stable.yml succeeding (issue #108). Either way nothing
-    # else reports it.
-    echo "::warning::'stable' is $unshipped_count commit(s) behind 'main' with NO open release PR. Expected causes: release-please.yml soft-failed (it exits 0 on missing credentials by design), or a tag was cut but promote-stable.yml did not fast-forward 'stable' (issue #108). Check the most recent release-please and Promote to stable runs."
+
+  stall_cause=''   # tag-missing | promotion-failed | no-release-pr
+  stall_since=''   # ISO instant the stall is measured from; empty = unknown
+
+  # --- Causes 1 and 2 read main's manifest: the version the last merged
+  #     release PR wrote. Cheap, and no commit-type parsing to get wrong.
+  main_version='<unknown>'
+  tag_state='<unknown>'      # present | absent | <unknown>
+  manifest_changed_at=''
+  if main_manifest="$(file_at_ref '.release-please-manifest.json' 'main')"; then
+    main_version="$(printf '%s' "$main_manifest" | jq -r '.["."] // "<unparseable>"')"
+  else
+    echo "::warning::could not read .release-please-manifest.json from 'main' — cannot check for a merged release that was never tagged."
   fi
-  close_tracking_issue "Cleared — there is no longer an open release PR on \`$REPO\`. Consumers on \`stable\` are now at **$stable_version**. Closed automatically by \`scripts/release-pr-age-check.sh\`."
-  exit 0
+  case "$main_version" in
+    '<unknown>'|'<unparseable>') ;;
+    *)
+      # matching-refs answers [] for "no such tag", so an absent tag and an
+      # unreadable API are different results here, not both a failed call.
+      if tag_refs="$(gh api "repos/$REPO/git/matching-refs/tags/v$main_version" 2>/dev/null)" \
+         && printf '%s' "$tag_refs" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        if printf '%s' "$tag_refs" | jq -e --arg r "refs/tags/v$main_version" 'any(.[]; .ref == $r)' >/dev/null; then
+          tag_state=present
+        else
+          tag_state=absent
+        fi
+      else
+        echo "::warning::could not list tags on $REPO — cannot tell whether v$main_version was released."
+      fi
+      manifest_changed_at="$(gh api "repos/$REPO/commits?sha=main&path=.release-please-manifest.json&per_page=1" 2>/dev/null \
+        | jq -r '.[0].commit.committer.date // empty' 2>/dev/null || true)"
+      ;;
+  esac
+
+  case "$stable_version" in '<unknown>'|'<unparseable>') stable_known=false ;; *) stable_known=true ;; esac
+
+  # --- Cause 3 reads the delta: which commits on main would release-please
+  #     turn into a release?
+  releasable_subjects=''
+  releasable_count=0
+  if [ -n "$compare_json" ]; then
+    releasable_json="$(printf '%s' "$compare_json" | jq -c --arg t "$RELEASABLE_TYPES" '
+      [ .commits[]
+        | { subject: (.commit.message | split("\n")[0]),
+            message: .commit.message,
+            date: (.commit.committer.date // .commit.author.date // "") }
+        | select( (.subject | test("^(" + $t + ")(\\([^)]*\\))?!?: "))
+               or (.subject | test("^[A-Za-z]+(\\([^)]*\\))?!: "))
+               or (.message | test("(^|\n)BREAKING[ -]CHANGE: ")) ) ]')"
+    releasable_count="$(printf '%s' "$releasable_json" | jq 'length')"
+    releasable_subjects="$(printf '%s' "$releasable_json" \
+      | jq -r 'reverse | .[0:10] | .[] | "  - " + .subject')"
+  fi
+
+  if [ "$tag_state" = absent ]; then
+    stall_cause=tag-missing
+    stall_since="$manifest_changed_at"
+  elif [ "$tag_state" = present ] && [ "$stable_known" = true ] && [ "$stable_version" != "$main_version" ]; then
+    stall_cause=promotion-failed
+    stall_since="$manifest_changed_at"
+  elif [ "$releasable_count" -gt 0 ]; then
+    stall_cause=no-release-pr
+    # compare lists commits oldest first; the oldest one has waited longest.
+    stall_since="$(printf '%s' "$releasable_json" | jq -r '.[0].date')"
+  fi
+
+  if [ -z "$stall_cause" ]; then
+    if [ "$unshipped_count" != "<unknown>" ] && [ "$unshipped_count" -gt 0 ]; then
+      echo "  None of them is releasable (no feat/fix/perf/revert/deps or breaking change), so no release PR is expected. This is the normal state after a docs-, ci- or chore-only merge."
+    fi
+    close_tracking_issue "Cleared — there is no longer an open release PR on \`$REPO\`, and no releasable change is waiting. Consumers on \`stable\` are now at **$stable_version**. Closed automatically by \`scripts/release-pr-age-check.sh\`."
+    exit 0
+  fi
+
+  # Unknown age counts as past the window. A stall we cannot date is still a
+  # stall, and reporting health from absent evidence is the #122 failure.
+  stall_hours=''
+  if [ -n "$stall_since" ]; then stall_hours="$(hours_since "$stall_since" || true)"; fi
+  if [ -n "$stall_hours" ] && [ "$stall_hours" -lt "$GRACE_HOURS" ]; then
+    echo "Release stall suspected ($stall_cause), but it is ${stall_hours}h old — inside the ${GRACE_HOURS}h grace window. No alarm yet."
+    echo "  The tracking issue is left as it is: a waiting releasable change is never reported as cleared."
+    exit 0
+  fi
+  if [ -n "$stall_hours" ]; then age_text="${stall_hours}h"; else age_text='an unknown time'; fi
+
+  [ -n "$releasable_subjects" ] || releasable_subjects='  (none, or the list could not be read)'
+
+  case "$stall_cause" in
+    tag-missing)
+      issue_title="Release stalled — v${main_version} merged but never tagged; consumers on ${stable_version}"
+      cause_text="$(cat <<EOF
+**Likely cause: release-please failed AFTER the release PR merged.** \`main\`'s
+\`.release-please-manifest.json\` says \`${main_version}\`, but there is no tag
+\`v${main_version}\`. With no tag, \`promote-stable.yml\` never runs and \`stable\`
+never moves. This is how #310 happened: the release App had no \`workflows\`
+permission, so the GitHub-release step failed with *Resource not accessible by
+integration*.
+
+**Where to look:** the most recent **failed** \`release-please.yml\` run on
+\`main\` (the failure is in its log, not in any PR), and
+\`docs/solutions/build-errors/release-please-fails-when-release-app-lacks-workflows-permission.md\`.
+Fix the cause, then re-run that workflow; it tags the release it missed.
+EOF
+)"
+      ;;
+    promotion-failed)
+      issue_title="Release stalled — v${main_version} tagged but stable still on ${stable_version}"
+      cause_text="$(cat <<EOF
+**Likely cause: promotion failed.** Tag \`v${main_version}\` exists, but \`stable\`
+still carries \`${stable_version}\`. \`promote-stable.yml\` did not fast-forward
+\`stable\` to the tag (issue #108).
+
+**Where to look:** the **Promote to stable** run for tag \`v${main_version}\`.
+Re-run it once its cause is fixed.
+EOF
+)"
+      ;;
+    no-release-pr)
+      issue_title="Release stalled — ${releasable_count} releasable commit(s) on main with no release PR; consumers on ${stable_version}"
+      cause_text="$(cat <<EOF
+**Likely cause: release-please did not open a release PR.** ${releasable_count}
+releasable commit(s) are on \`main\` but not on \`stable\`. \`release-please.yml\`
+exits 0 by design when its org variables are missing, the PEM cannot be read,
+or the token mint fails, so its run can be green while it did nothing.
+
+**Where to look:** the annotations on the most recent \`release-please.yml\` run
+on \`main\`. Fix the cause, then re-run it; it opens the release PR.
+EOF
+)"
+      ;;
+  esac
+
+  report="$(cat <<EOF
+$MARKER
+**A release has stalled with no release PR open** (waiting ${age_text}; grace window: ${GRACE_HOURS}h).
+
+${cause_text}
+
+|  |  |
+| --- | --- |
+| Version on \`main\` (\`.release-please-manifest.json\`) | \`${main_version}\` |
+| Tag \`v${main_version}\` | ${tag_state} |
+| **Version consumers actually run** (\`stable\`) | \`${stable_version}\` |
+| Commits merged to \`main\` but not on \`stable\` | **${unshipped_count}** |
+| Of those, releasable | **${releasable_count}** |
+
+Releasable commits waiting (most recent first, up to 10):
+
+\`\`\`
+${releasable_subjects}
+\`\`\`
+
+**To clear this:** get the release out. The next run of this check closes this
+report automatically once no releasable change is waiting.
+
+<sub>Posted by \`.github/workflows/release-latency-alarm.yml\` via
+\`scripts/release-pr-age-check.sh\` (issue #145). Grace window is
+\`RELEASE_STALL_GRACE_HOURS\`.</sub>
+EOF
+)"
+
+  echo "::error title=Release stalled (${stall_cause})::${issue_title}"
+  echo
+  printf '%s\n' "$report"
+  echo
+
+  if [ "$DRY_RUN" = true ]; then
+    if [ -n "$tracking_issue" ]; then
+      echo "dry-run: would update tracking issue #$tracking_issue (title: $issue_title)"
+    else
+      echo "dry-run: would open a tracking issue (title: $issue_title)"
+    fi
+    exit 1
+  fi
+
+  # There is no release PR to comment on, so the tracking issue and the red run
+  # are the two layers here.
+  upsert_tracking_issue "$issue_title" "$report" \
+    || echo "::warning::the tracking-issue write failed. The alarm still fails this run, which is the remaining layer of the signal."
+  exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -421,21 +678,7 @@ else
 fi
 
 # --- Layer 2: a tracking issue, so the alarm survives outside the PR view ---
-if [ -n "$tracking_issue" ]; then
-  if jq -n --arg t "$issue_title" --arg b "$report" '{title:$t,body:$b}' \
-       | api_write PATCH "repos/$REPO/issues/$tracking_issue"; then
-    echo "Updated tracking issue #$tracking_issue."
-  else
-    echo "::error title=release-pr-age-check::failed to update tracking issue #$tracking_issue." >&2
-    write_failures=$((write_failures + 1))
-  fi
-elif jq -n --arg t "$issue_title" --arg b "$report" --argjson l "$ISSUE_LABELS" \
-       '{title:$t,body:$b,labels:$l}' | api_write POST "repos/$REPO/issues"; then
-  echo "Opened a tracking issue."
-else
-  echo "::error title=release-pr-age-check::failed to open a tracking issue. Check that the workflow grants 'issues: write' and that the 'ci' and 'main-health' labels exist." >&2
-  write_failures=$((write_failures + 1))
-fi
+upsert_tracking_issue "$issue_title" "$report" || write_failures=$((write_failures + 1))
 
 if [ "$write_failures" -gt 0 ]; then
   echo "::warning::${write_failures} notification path(s) failed. The alarm still fails this run, which is the remaining layer of the signal."

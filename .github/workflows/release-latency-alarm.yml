@@ -28,6 +28,12 @@ name: Release latency alarm
 #      and auto-closes on the next run once the release lands;
 #   3. a failed run, red in the Actions tab.
 #
+# It also alarms when NO release PR is open but a release has stalled: a
+# merged release that was never tagged (#310), a tag that never reached
+# `stable` (#108), or a releasable commit release-please never opened a PR for
+# (its soft-failure path). There is no PR to comment on in that case, so it
+# fires layers 2 and 3 only. See issue #145.
+#
 # Layers 1 and 2 are idempotent: they are found by an HTML-comment marker and
 # UPDATED in place, so a release PR left open for a week produces one comment
 # and one issue, not seven of each. The daily cadence plus in-place updates is
@@ -87,6 +93,10 @@ env:
   # Check phase. Three days lets a Friday merge survive the weekend and alarm on
   # Monday — the shortest window that does not manufacture noise.
   RELEASE_PR_MAX_AGE_DAYS: 3
+  # With NO release PR open, alarm once a releasable change has waited this many
+  # hours (#145). release-please tags and opens PRs within a minute or two of a
+  # push; two hours only absorbs a queued runner or a slow retry.
+  RELEASE_STALL_GRACE_HOURS: 2
 
 jobs:
   release-latency:

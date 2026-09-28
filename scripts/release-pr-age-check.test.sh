@@ -31,9 +31,9 @@
 # absorbs `gh api` failures into `<unknown>` -- a new call site would otherwise
 # degrade the report in silence, which is the defect class, not a test detail.
 #
-# THE MUTATION PROPERTY (section 9)
-# ---------------------------------
-# Sections 1-8 could all pass against a script whose defenses do nothing, so
+# THE MUTATION PROPERTY (section 10)
+# ----------------------------------
+# Sections 1-9 could all pass against a script whose defenses do nothing, so
 # section 9 asserts both directions the way scripts/skills-lint.test.sh does:
 # for each defense there is a one-line mutation, and the suite asserts BOTH that
 # the property holds on the real script AND that it FAILS on the mutant. The
@@ -73,8 +73,11 @@ case "${1:-}" in
     ep=''; for a in "$@"; do case "$a" in repos/*) ep="$a" ;; esac; done
     case "$ep" in
       */contents/.claude-plugin/plugin.json*)      serve stable-plugin.b64 ;;
+      */contents/.release-please-manifest.json?ref=main) serve main-manifest.b64 ;;
       */contents/.release-please-manifest.json*)   serve pending-manifest.b64 ;;
       */compare/stable...main)                     serve compare.json ;;
+      */git/matching-refs/tags/*)                  serve tag-refs.json ;;
+      */commits\?*path=.release-please-manifest.json*) serve manifest-commits.json ;;
       */issues/*/comments)                         serve pr-comments.json ;;
       *) unhandled "api $ep" ;;
     esac ;;
@@ -180,8 +183,10 @@ chmod +x "$TMP/bsd-bin/date" "$TMP/bsd-legacy-bin/date" "$TMP/gnu-bin/date"
 # Fixtures
 # ---------------------------------------------------------------------------
 
-# A stub dir preloaded with a healthy world: one release PR, a `stable` two
-# minor versions behind, four commits frozen. Sections mutate it from there.
+# A stub dir preloaded with a world where a release PR is open: `stable` on
+# 0.11.1, tagged and promoted, so `main`'s manifest also says 0.11.1; the PR
+# would ship 0.13.0; four commits frozen, two of them releasable (they are what
+# the PR carries). Sections mutate it from there.
 newstub() {  # newstub NAME -> echoes the dir
   local d="$TMP/stub-$1"
   mkdir -p "$d"
@@ -190,14 +195,29 @@ newstub() {  # newstub NAME -> echoes the dir
   printf '{"nameWithOwner":"o/r"}' > "$d/repo.json"
   printf '{"name":"holacracy","version":"0.11.1"}' | base64 > "$d/stable-plugin.b64"
   printf '{".":"0.13.0"}' | base64 > "$d/pending-manifest.b64"
+  printf '{".":"0.11.1"}' | base64 > "$d/main-manifest.b64"
+  printf '[{"ref":"refs/tags/v0.11.1"}]' > "$d/tag-refs.json"
+  printf '[{"commit":{"committer":{"date":"2026-07-20T00:00:00Z"}}}]' > "$d/manifest-commits.json"
   cat > "$d/compare.json" <<'EOF'
 {"ahead_by": 4, "commits": [
- {"commit": {"message": "feat: alpha\n\nbody text"}},
- {"commit": {"message": "fix: beta"}},
- {"commit": {"message": "docs: gamma"}},
- {"commit": {"message": "chore: delta"}}]}
+ {"commit": {"message": "feat: alpha\n\nbody text", "committer": {"date": "2026-08-01T00:00:00Z"}}},
+ {"commit": {"message": "fix: beta", "committer": {"date": "2026-08-02T00:00:00Z"}}},
+ {"commit": {"message": "docs: gamma", "committer": {"date": "2026-08-03T00:00:00Z"}}},
+ {"commit": {"message": "chore: delta", "committer": {"date": "2026-08-04T00:00:00Z"}}}]}
 EOF
   printf '%s\n' "$d"
+}
+
+# Replace the delta with commits release-please would never release. With no
+# release PR open this is the normal steady state after a docs-only merge, and
+# must not alarm (issue #145).
+docsonly() {  # docsonly STUBDIR
+  cat > "$1/compare.json" <<'EOF'
+{"ahead_by": 3, "commits": [
+ {"commit": {"message": "docs: gamma", "committer": {"date": "2026-08-01T00:00:00Z"}}},
+ {"commit": {"message": "ci(deps): bump action", "committer": {"date": "2026-08-02T00:00:00Z"}}},
+ {"commit": {"message": "chore(deps)(deps): bump a reusable workflow", "committer": {"date": "2026-08-03T00:00:00Z"}}}]}
+EOF
 }
 
 # A one-PR open-PR list in the shape `gh pr list --json ...` returns.
@@ -232,8 +252,9 @@ out="$(run "$SCRIPT" "$S1" --pr-json "$S1/prs.json" 2>&1)"; rc=$?
 echo "$out" | grep -q 'No alarm' || fail "expected an explicit no-alarm line; got: $out"
 
 printf '[]' > "$S1/none.json"                                     # no release PR
-out="$(run "$SCRIPT" "$S1" --pr-json "$S1/none.json" 2>&1)"; rc=$?
-[ "$rc" -eq 0 ] || fail "no open release PR must exit 0, got $rc: $out"
+S1d="$(newstub exitcodes-docsonly)"; docsonly "$S1d"
+out="$(run "$SCRIPT" "$S1d" --pr-json "$S1/none.json" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "no open release PR with nothing releasable must exit 0, got $rc: $out"
 echo "$out" | grep -q 'No open release PR' || fail "expected the no-release-PR line; got: $out"
 
 mkprs "$S1/stale.json" "$RELEASE_BRANCH" 2026-08-01T00:00:00Z     # 5 days old
@@ -249,6 +270,9 @@ out="$(run "$SCRIPT" "$S1" --max-age-days abc 2>&1)"; rc=$?
 
 out="$(run "$SCRIPT" "$S1" --max-age-days -1 2>&1)"; rc=$?
 [ "$rc" -eq 2 ] || fail "a negative --max-age-days must exit 2, got $rc: $out"
+
+out="$(run "$SCRIPT" "$S1" --grace-hours soon 2>&1)"; rc=$?
+[ "$rc" -eq 2 ] || fail "a non-integer --grace-hours must exit 2, got $rc: $out"
 
 out="$(run "$SCRIPT" "$S1" --pr-json "$TMP/no-such-file.json" 2>&1)"; rc=$?
 [ "$rc" -eq 2 ] || fail "a missing --pr-json file must exit 2, got $rc: $out"
@@ -306,6 +330,7 @@ out="$(run "$SCRIPT" "$S2" --pr-json "$S2/prs.json" --max-age-days 30 2>&1)"; rc
 # ---------------------------------------------------------------------------
 p_prefix() {  # p_prefix SCRIPT -> 0 when near-miss branches are NOT release PRs
   local script="$1" s; s="$(newstub "prefix-$$-$RANDOM")"
+  docsonly "$s"
   cat > "$s/nearmiss.json" <<'EOF'
 [{"number": 1, "title": "fix release notes", "headRefName": "release-notes-fix",
   "createdAt": "2026-01-01T00:00:00Z", "url": "https://github.com/o/r/pull/1"},
@@ -390,7 +415,8 @@ cat > "$S5/issues.json" <<'EOF'
 [{"number": 999, "body": "<!-- release-pr-age-check:v1 -->\nRelease PR #165 has been open..."}]
 EOF
 printf '[]' > "$S5/none.json"
-out="$(run "$SCRIPT" "$S5" --pr-json "$S5/none.json" 2>&1)"; rc=$?
+S5d="$(newstub autoclose-docsonly)"; docsonly "$S5d"; cp "$S5/issues.json" "$S5d/issues.json"
+out="$(run "$SCRIPT" "$S5d" --pr-json "$S5/none.json" 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] || fail "a cleared alarm must exit 0, got $rc: $out"
 echo "$out" | grep -q 'would close tracking issue #999' \
   || fail "an open tracking issue must be closed once the release PR is gone; got: $out"
@@ -419,13 +445,16 @@ echo "$out" | grep -q '::warning::' || fail "a degraded read must warn; got: $ou
 # which is the only other place release-please writes it.
 echo "$out" | grep -q '0.13.0' || fail "expected the title fallback for the pending version; got: $out"
 
-# `stable` behind `main` with NO open release PR is its own warning: it means
-# release-please soft-failed or promote-stable did not run (issue #108).
-S6b="$(newstub nopr-behind)"
+# `stable` behind `main` with NO open release PR used to be a bare warning on
+# exit 0. Section 9 pins what it is now (issue #145). Here: when the reads that
+# tell the causes apart all fail, the run warns rather than inventing a verdict.
+S6b="$(newstub nopr-degraded)"
+rm -f "$S6b/main-manifest.b64" "$S6b/compare.json"
 printf '[]' > "$S6b/none.json"
 out="$(run "$SCRIPT" "$S6b" --pr-json "$S6b/none.json" 2>&1)"; rc=$?
-[ "$rc" -eq 0 ] || fail "no release PR must exit 0 even when stable is behind, got $rc: $out"
-echo "$out" | grep -q '::warning::' || fail "stable behind main with no release PR must warn; got: $out"
+[ "$rc" -eq 0 ] || fail "no release PR with nothing readable must exit 0, got $rc: $out"
+echo "$out" | grep -q "could not read .release-please-manifest.json from 'main'" \
+  || fail "an unreadable main manifest must warn; got: $out"
 
 # ---------------------------------------------------------------------------
 # 7. `iso_to_epoch` on BOTH platforms. The script's comment says the BSD and GNU
@@ -461,7 +490,168 @@ out="$(run "$SCRIPT" "$S8" --pr-json "$S8/prs.json" 2>&1)"; rc=$?
 echo "$out" | grep -q 'is 0d old' || fail "a future-dated PR must report 0d; got: $out"
 
 # ---------------------------------------------------------------------------
-# 9. THE MUTATION PROPERTY. Each case seeds ONE defect and asserts the matching
+# 9. A release stalled with NO release PR open (issue #145). Three causes, each
+#    told apart and named, and a docs-only delta that must stay quiet. #310 is
+#    the case that motivated it: the release PR merged, release-please failed
+#    at the tag step, and this script said "cleared" for about 15 hours.
+# ---------------------------------------------------------------------------
+NONE="$TMP/none.json"; printf '[]' > "$NONE"
+
+p_docs_only_quiet() {  # a docs/ci/chore-only delta is the steady state: exit 0
+  local script="$1" s out rc; s="$(newstub "docs-$$-$RANDOM")"; docsonly "$s"
+  out="$(run "$script" "$s" --pr-json "$NONE" 2>&1)"; rc=$?
+  [ "$rc" -eq 0 ] || return 1
+  printf '%s' "$out" | grep -q 'None of them is releasable' || return 1
+  return 0
+}
+p_docs_only_quiet "$SCRIPT" || fail "a docs/ci/chore-only delta with no release PR must not alarm"
+
+p_releasable_alarms() {  # feat/fix waiting, no PR, past grace: exit 1, cause named
+  local script="$1" s out rc; s="$(newstub "rel-$$-$RANDOM")"
+  out="$(run "$script" "$s" --pr-json "$NONE" 2>&1)"; rc=$?
+  [ "$rc" -eq 1 ] || return 1
+  printf '%s' "$out" | grep -q 'release-please did not open a release PR' || return 1
+  return 0
+}
+p_releasable_alarms "$SCRIPT" || fail "a releasable commit with no release PR past the grace window must alarm"
+
+S9="$(newstub stall-report)"
+out="$(run "$SCRIPT" "$S9" --pr-json "$NONE" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "the stall fixture should alarm, got $rc: $out"
+echo "$out" | grep -q 'release-pr-age-check:v1' || fail "the stall report must carry the shared marker; got: $out"
+echo "$out" | grep -q '| Of those, releasable | \*\*2\*\* |' || fail "expected 2 releasable commits; got: $out"
+echo "$out" | grep -q -- '- feat: alpha' || fail "expected the releasable subjects; got: $out"
+echo "$out" | grep -q -- '- docs: gamma' && fail "a docs commit must not be listed as releasable: $out"
+echo "$out" | grep -q 'release-please.yml' || fail "the report must say where to look; got: $out"
+echo "$out" | grep -q 'would open a tracking issue' || fail "expected the tracking-issue layer; got: $out"
+echo "$out" | grep -q 'sticky comment' && fail "there is no release PR to comment on: $out"
+[ -s "$S9/unhandled.log" ] && fail "the gh stub saw an unhandled call: $(cat "$S9/unhandled.log")"
+
+# Which commit types count. Breaking changes of any type count; `chore(deps)`
+# (Dependabot's prefix here) does not, and neither does `ci:`.
+S9t="$(newstub stall-types)"
+cat > "$S9t/compare.json" <<'EOF'
+{"ahead_by": 4, "commits": [
+ {"commit": {"message": "chore(deps)(deps): bump x", "committer": {"date": "2026-08-01T00:00:00Z"}}},
+ {"commit": {"message": "refactor!: drop the old flag", "committer": {"date": "2026-08-01T00:00:00Z"}}},
+ {"commit": {"message": "docs: explain\n\nBREAKING CHANGE: the path moved", "committer": {"date": "2026-08-01T00:00:00Z"}}},
+ {"commit": {"message": "perf(lint): faster", "committer": {"date": "2026-08-01T00:00:00Z"}}}]}
+EOF
+out="$(run "$SCRIPT" "$S9t" --pr-json "$NONE" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "breaking changes and perf must count as releasable, got $rc: $out"
+echo "$out" | grep -q '| Of those, releasable | \*\*3\*\* |' \
+  || fail "expected exactly 3 releasable (not chore(deps)); got: $out"
+
+# The grace window, pinned in BOTH directions like the age threshold. Default 2h.
+p_grace_boundary() {
+  local script="$1" s rc; s="$(newstub "grace-$$-$RANDOM")"
+  cat > "$s/compare.json" <<'EOF'
+{"ahead_by": 1, "commits": [
+ {"commit": {"message": "feat: new", "committer": {"date": "2026-08-05T22:00:00Z"}}}]}
+EOF
+  run "$script" "$s" --pr-json "$NONE" >/dev/null 2>&1; rc=$?     # exactly 2h
+  [ "$rc" -eq 1 ] || return 1
+  sed -i.bak 's/2026-08-05T22:00:00Z/2026-08-05T23:00:00Z/' "$s/compare.json"
+  run "$script" "$s" --pr-json "$NONE" >/dev/null 2>&1; rc=$?     # exactly 1h
+  [ "$rc" -eq 0 ] || return 1
+  return 0
+}
+p_grace_boundary "$SCRIPT" || fail "stall age == grace must alarm and grace-1 must not"
+
+S9g="$(newstub grace-knob)"
+out="$(RELEASE_STALL_GRACE_HOURS=1000 run "$SCRIPT" "$S9g" --pr-json "$NONE" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "RELEASE_STALL_GRACE_HOURS should widen the window, got $rc: $out"
+out="$(run "$SCRIPT" "$S9g" --pr-json "$NONE" --grace-hours 1000 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "--grace-hours should widen the window, got $rc: $out"
+
+# Acceptance criterion from #310: while a releasable change waits, the run
+# must NOT report "cleared" -- inside the grace window included.
+p_no_close_while_waiting() {
+  local script="$1" s out; s="$(newstub "noclose-$$-$RANDOM")"
+  cat > "$s/issues.json" <<'EOF'
+[{"number": 999, "body": "<!-- release-pr-age-check:v1 -->\nA release has stalled..."}]
+EOF
+  cat > "$s/compare.json" <<'EOF'
+{"ahead_by": 1, "commits": [
+ {"commit": {"message": "fix: new", "committer": {"date": "2026-08-05T23:30:00Z"}}}]}
+EOF
+  out="$(run "$script" "$s" --pr-json "$NONE" 2>&1)"
+  printf '%s' "$out" | grep -q 'inside the 2h grace window' || return 1
+  printf '%s' "$out" | grep -q 'would close tracking issue' && return 1
+  out="$(run "$script" "$s" --pr-json "$NONE" --grace-hours 0 2>&1)"
+  printf '%s' "$out" | grep -q 'would update tracking issue #999' || return 1
+  printf '%s' "$out" | grep -q 'would close tracking issue' && return 1
+  return 0
+}
+p_no_close_while_waiting "$SCRIPT" || fail "a waiting releasable change must never close the tracking issue"
+
+# A stall that cannot be dated is still a stall: unknown age alarms.
+p_undated_alarms() {
+  local script="$1" s rc; s="$(newstub "undated-$$-$RANDOM")"
+  printf '{"ahead_by": 1, "commits": [{"commit": {"message": "feat: x"}}]}' > "$s/compare.json"
+  run "$script" "$s" --pr-json "$NONE" >/dev/null 2>&1; rc=$?
+  [ "$rc" -eq 1 ] || return 1
+  return 0
+}
+p_undated_alarms "$SCRIPT" || fail "a stall with no readable date must alarm, not read as fresh"
+
+# Cause 1 (#310): the manifest on main names a version with no tag. Caught even
+# with a docs-only delta, because it needs no commit-type parsing at all.
+p_tag_missing() {
+  local script="$1" s out rc; s="$(newstub "tagmiss-$$-$RANDOM")"; docsonly "$s"
+  printf '{".":"0.20.0"}' | base64 > "$s/main-manifest.b64"
+  printf '[]' > "$s/tag-refs.json"
+  out="$(run "$script" "$s" --pr-json "$NONE" 2>&1)"; rc=$?
+  [ "$rc" -eq 1 ] || return 1
+  printf '%s' "$out" | grep -q 'failed AFTER the release PR merged' || return 1
+  printf '%s' "$out" | grep -q 'release-please-fails-when-release-app-lacks-workflows-permission' || return 1
+  return 0
+}
+p_tag_missing "$SCRIPT" || fail "a merged release with no tag must alarm and name the #310 cause"
+
+# The tag match is exact. matching-refs is a PREFIX match, so v0.2.0 would also
+# return v0.2.01; a near-miss tag must not count as the release.
+p_tag_exact() {
+  local script="$1" s out rc; s="$(newstub "tagexact-$$-$RANDOM")"; docsonly "$s"
+  # stable matches main, so a wrongly "present" tag leaves no other cause to
+  # fall into -- the promotion check must not mask this property.
+  printf '{"name":"holacracy","version":"0.2.0"}' | base64 > "$s/stable-plugin.b64"
+  printf '{".":"0.2.0"}' | base64 > "$s/main-manifest.b64"
+  printf '[{"ref":"refs/tags/v0.2.01"}]' > "$s/tag-refs.json"
+  out="$(run "$script" "$s" --pr-json "$NONE" 2>&1)"; rc=$?
+  [ "$rc" -eq 1 ] || return 1
+  printf '%s' "$out" | grep -q 'failed AFTER the release PR merged' || return 1
+  return 0
+}
+p_tag_exact "$SCRIPT" || fail "a prefix-only tag match must not count as the release being tagged"
+
+# Cause 2 (#108): tagged, but stable was not promoted.
+S9p="$(newstub promotion)"; docsonly "$S9p"
+printf '{".":"0.12.0"}' | base64 > "$S9p/main-manifest.b64"
+printf '[{"ref":"refs/tags/v0.12.0"}]' > "$S9p/tag-refs.json"
+out="$(run "$SCRIPT" "$S9p" --pr-json "$NONE" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "a tag that never reached stable must alarm, got $rc: $out"
+echo "$out" | grep -q 'promotion failed' || fail "expected the promotion cause; got: $out"
+echo "$out" | grep -q 'Promote to stable' || fail "expected where to look; got: $out"
+
+# The manifest-change date also gates causes 1 and 2: a release merged an hour
+# ago may simply not be tagged yet.
+S9f="$(newstub tag-fresh)"; docsonly "$S9f"
+printf '{".":"0.20.0"}' | base64 > "$S9f/main-manifest.b64"
+printf '[]' > "$S9f/tag-refs.json"
+printf '[{"commit":{"committer":{"date":"2026-08-05T23:00:00Z"}}}]' > "$S9f/manifest-commits.json"
+out="$(run "$SCRIPT" "$S9f" --pr-json "$NONE" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "a release merged inside the grace window must not alarm yet, got $rc: $out"
+
+# An unreadable tag list warns and falls through to the commit-type rule.
+S9u="$(newstub tag-unreadable)"
+rm -f "$S9u/tag-refs.json"
+out="$(run "$SCRIPT" "$S9u" --pr-json "$NONE" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "an unreadable tag list must still reach the commit-type rule, got $rc: $out"
+echo "$out" | grep -q 'could not list tags' || fail "an unreadable tag list must warn; got: $out"
+
+# ---------------------------------------------------------------------------
+# 10. THE MUTATION PROPERTY. Each case seeds ONE defect and asserts the matching
 #    property FLIPS. Without this, every section above could be green against a
 #    script whose defenses had been deleted.
 # ---------------------------------------------------------------------------
@@ -506,5 +696,36 @@ p_gnu "$m"        || fail "the BSD-removal mutant should still work on GNU -- ot
 m="$(mutate nognu 's/date -u -d "$iso"/false -u -d "$iso"/')"
 p_gnu "$m" && fail "mutation: removing the GNU date branch did not fail the suite"
 p_bsd "$m" || fail "the GNU-removal mutant should still work on BSD -- otherwise 9e proves nothing"
+
+# 10f-10l. The issue #145 stall detection (section 9).
+
+# 10f. Treat every commit type as releasable: a docs-only merge alarms.
+m="$(mutate alltypes "s/^RELEASABLE_TYPES='feat|fix|perf|revert|deps'/RELEASABLE_TYPES='[a-z]+'/")"
+p_docs_only_quiet "$m" && fail "mutation: counting every commit type as releasable did not fail the suite"
+
+# 10g. Treat no commit type as releasable: the soft-failure stall goes silent.
+m="$(mutate notypes "s/^RELEASABLE_TYPES='feat|fix|perf|revert|deps'/RELEASABLE_TYPES='none'/")"
+p_releasable_alarms "$m" && fail "mutation: counting no commit type as releasable did not fail the suite"
+
+# 10h. Off-by-one in the grace comparison.
+m="$(mutate grace 's/-lt "$GRACE_HOURS"/-le "$GRACE_HOURS"/')"
+p_grace_boundary "$m" && fail "mutation: off-by-one in the grace comparison did not fail the suite"
+
+# 10i. Close the tracking issue from inside the grace window -- the #310
+#      acceptance criterion, broken on the one path where it is easy to break.
+m="$(mutate closewaiting 's/^    echo "  The tracking issue is left as it is/    close_tracking_issue x; echo "  The tracking issue is left as it is/')"
+p_no_close_while_waiting "$m" && fail "mutation: closing the issue while a change waits did not fail the suite"
+
+# 10j. Read an undated stall as fresh.
+m="$(mutate undated 's/if \[ -n "$stall_hours" \] \&\& \[ "$stall_hours" -lt/if [ -z "$stall_hours" ] || [ "$stall_hours" -lt/')"
+p_undated_alarms "$m" && fail "mutation: reading an undated stall as fresh did not fail the suite"
+
+# 10k. Drop the tag-missing cause entirely.
+m="$(mutate notagcheck 's/if \[ "$tag_state" = absent \]; then/if false; then/')"
+p_tag_missing "$m" && fail "mutation: dropping the tag-missing check did not fail the suite"
+
+# 10l. Accept a prefix-only tag match.
+m="$(mutate tagprefix 's/any(.\[\]; .ref == $r)/any(.[]; .ref | startswith($r))/')"
+p_tag_exact "$m" && fail "mutation: accepting a prefix-only tag match did not fail the suite"
 
 echo "PASS: all release-pr-age-check tests"

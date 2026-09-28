@@ -4,14 +4,25 @@ A Claude Code plugin for engaging with [Holacracy](https://www.holacracy.org/) f
 
 ## Install
 
-From the Integral Productivity marketplace:
+Two channels serve the plugin. Both track the `stable` branch, so both get the same release at the same time.
+
+**Anyone** — from this repo's own catalog:
 
 ```
-/plugin marketplace add Integral-Productivity/marketplace
-/plugin install holacracy
+/plugin marketplace add Integral-Productivity/holacracy-claude-plugin
+/plugin install holacracy@integral-productivity-holacracy
 ```
 
-Or add this repo directly to your plugin sources.
+**Integral Productivity members** — from the labs marketplace, the canonical channel (private; needs org access):
+
+```
+/plugin marketplace add Integral-Productivity/marketplace-labs
+/plugin install holacracy@integral-productivity-labs
+```
+
+Install from one channel, not both. Two registrations give two answers to "which version am I on" (#122).
+
+The core `Integral-Productivity/marketplace` does not list this plugin, and will not: Holacracy is a Domain plugin, which stays in labs by design. [ADR-0016](docs/adr/0016-labs-is-the-canonical-channel-and-this-repo-self-hosts-the-public-one.md) records the decision. `scripts/install-channel-check.sh` fails CI if this section names a channel that does not serve the plugin.
 
 ## What's included
 

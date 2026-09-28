@@ -235,6 +235,23 @@ jobs:
         # matching property flips.
         run: bash scripts/release-pr-age-check.test.sh
 
+      - name: install-channel-check regression suite
+        # scripts/install-channel-check.sh guards issue #234: README's Install
+        # block named a marketplace whose catalog was `"plugins": []`, so the
+        # documented install resolved to nothing and nothing reported it.
+        # Section 4 replays that README against that catalog and asserts exit 1.
+        # Hermetic: README and catalogs are synthesised; remote catalogs come
+        # from `--fixture-dir` or a stub `gh`. Mutation-checked with the checked
+        # mutant builder (see eval-cost.test.sh) -- section 8.
+        run: bash scripts/install-channel-check.test.sh
+
+      - name: install-channel-check on this ref (local channel)
+        # The self-hosted catalog (.claude-plugin/marketplace.json) is in this
+        # repo, so it is checked on every PR with no credential. The private
+        # labs channel is reported NOT MEASURED here and checked, with an App
+        # token, by install-channel-check.yml (ADR-0016).
+        run: bash scripts/install-channel-check.sh --local-only
+
       - name: session-start hook regression suite
         # Run under two timezones deliberately -- this is not redundancy.
         #

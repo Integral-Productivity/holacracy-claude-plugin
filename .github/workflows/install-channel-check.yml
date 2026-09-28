@@ -1,0 +1,108 @@
+name: Install channel check
+
+# Fails when README's Install block names a marketplace that does not serve
+# this plugin. See scripts/install-channel-check.sh and ADR-0016.
+#
+# WHY THIS EXISTS
+# ---------------
+# README told users to install from `Integral-Productivity/marketplace` while
+# that catalog was `"plugins": []` (#234). The documented install resolved to
+# nothing and nothing reported it. `scripts-test.yml` checks the channel this
+# repo serves itself on every PR; this workflow checks the one it cannot see
+# without a credential: the private labs catalog, the canonical channel.
+#
+# CREDENTIAL (ADR-0013)
+# ---------------------
+# Reads `Integral-Productivity/marketplace-labs` with an `ip-org-auditor` App
+# token — the read-only identity this repo already receives for auto-merge's
+# linked-issue resolve step, minted the same way: the PEM from the scoped
+# `ip-org-auditor-public` vault via `OP_AUDITOR_PUBLIC_TOKEN`, the client id from
+# `vars.IP_ORG_AUDITOR_APP_CLIENT_ID`. This is a second consumer of an existing
+# credential, not a new one: many consumers go through a scoped 1Password vault
+# token on a public repo (ADR-0013 clause 2), never the whole-vault
+# `OP_SERVICE_ACCOUNT_TOKEN` (ADR-045). The minted token is bounded at the
+# credential (ADR-0013 clause 4): narrowed to the one repo it reads
+# (`repositories: marketplace-labs`) and to `contents: read`, so it stays
+# read-only even if the App is later granted more.
+#
+# PRECONDITION: the ip-org-auditor App must be installed on marketplace-labs
+# with Contents: read. If it is not, the mint or the read fails and this job is
+# red with a message saying so — by design. A catalog this job cannot read is a
+# read failure (exit 2), never a pass: a private repo answers 404 whether the
+# plugin is missing or the token cannot look.
+#
+# WHY NOT ON pull_request
+# -----------------------
+# This job holds the ip-org-auditor PEM and `OP_AUDITOR_PUBLIC_TOKEN`, and then
+# runs `scripts/install-channel-check.sh` from the checkout. On a pull_request
+# trigger that checkout is the PR head, so anyone who can push a branch could
+# edit the script — no workflow-file change needed — and exfiltrate the token
+# or the PEM from the runner. So the credentialed job only ever runs
+# default-branch code: daily, on pushes to main that touch the README, the
+# catalog, or the check itself, and on dispatch. Never on pull requests.
+#
+# Per-PR coverage of this repo's own channel comes from
+# `bash scripts/install-channel-check.sh --local-only` in scripts-test.yml,
+# which needs no credential. The cost: a PR that breaks the labs channel is
+# caught only after merge. The schedule also catches drift in the labs catalog
+# itself, which changes in another repo with no event here.
+#
+# OPERATIONAL NOTES
+# -----------------
+# - GitHub disables scheduled workflows after 60 days without repo activity. A
+#   disabled check and a passing one look the same; check before trusting it.
+
+on:
+  # Not pull_request: see WHY NOT ON pull_request above.
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - .claude-plugin/**
+      - scripts/install-channel-check.sh
+      - .github/workflows/install-channel-check.yml
+  schedule:
+    # 15:41 UTC daily — off the hour, where GitHub delays queued cron runs.
+    - cron: '41 15 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-channel:
+    name: Install channel check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify ip-org-auditor client id is configured
+        env:
+          CLIENT_ID: ${{ vars.IP_ORG_AUDITOR_APP_CLIENT_ID }}
+        run: |
+          if [ -z "${CLIENT_ID:-}" ]; then
+            echo "::error::vars.IP_ORG_AUDITOR_APP_CLIENT_ID is not set, so the labs catalog cannot be read and the canonical install channel is UNMEASURED. Fix: gh variable set IP_ORG_AUDITOR_APP_CLIENT_ID --org Integral-Productivity --visibility all --body '<Iv23li...>'"
+            exit 2
+          fi
+
+      - name: Read ip-org-auditor App PEM from 1Password
+        id: pem
+        uses: Integral-Productivity/reusable-workflows/.github/actions/read-pem-from-1p@b0caf389303ff150b6c99d618ca7730c5ce6f589 # v1.3.0
+        with:
+          op-service-account-token: ${{ secrets.OP_AUDITOR_PUBLIC_TOKEN }}
+          item-path: op://ip-org-auditor-public/ip-org-auditor/private_key
+
+      - name: Generate ip-org-auditor token scoped to marketplace-labs
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.IP_ORG_AUDITOR_APP_CLIENT_ID }}
+          private-key: ${{ steps.pem.outputs.private-key }}
+          owner: Integral-Productivity
+          repositories: marketplace-labs
+          permission-contents: read
+
+      - name: Check every channel README names
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: bash scripts/install-channel-check.sh

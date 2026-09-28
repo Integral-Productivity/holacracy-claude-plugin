@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.21.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.20.0...v0.21.0) (2026-09-28)
+
+
+### Features
+
+* **governance:** adopt devops-excellence standard ([#311](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/311)) ([c929425](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/c9294255b153bbaebaba6c9c2cf44b0af1f7d765))
+
+
+### Bug Fixes
+
+* **ci:** pin validate-plugin-manifest to a commit, not the movable v1 tag ([#309](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/309)) ([3d51944](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/3d5194421d7d285a0700b9bcd1f324b27e5018e0))
+
 ## [0.20.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.19.1...v0.20.0) (2026-09-28)
 
 

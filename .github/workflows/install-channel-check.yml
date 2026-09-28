@@ -1,0 +1,95 @@
+name: Install channel check
+
+# Fails when README's Install block names a marketplace that does not serve
+# this plugin. See scripts/install-channel-check.sh and ADR-0016.
+#
+# WHY THIS EXISTS
+# ---------------
+# README told users to install from `Integral-Productivity/marketplace` while
+# that catalog was `"plugins": []` (#234). The documented install resolved to
+# nothing and nothing reported it. `scripts-test.yml` checks the channel this
+# repo serves itself on every PR; this workflow checks the one it cannot see
+# without a credential: the private labs catalog, the canonical channel.
+#
+# CREDENTIAL (ADR-0013)
+# ---------------------
+# Reads `Integral-Productivity/marketplace-labs` with an `ip-org-auditor` App
+# token — the read-only identity this repo already receives for auto-merge's
+# linked-issue resolve step, minted the same way: the PEM from the scoped
+# `ip-org-auditor-public` vault via `OP_AUDITOR_PUBLIC_TOKEN`, the client id from
+# `vars.IP_ORG_AUDITOR_APP_CLIENT_ID`. This is a second consumer of an existing
+# credential, not a new one (ADR-0013 clause 6), and never the whole-vault
+# `OP_SERVICE_ACCOUNT_TOKEN` (ADR-045). The token is narrowed to the one repo it
+# reads (`repositories: marketplace-labs`).
+#
+# PRECONDITION: the ip-org-auditor App must be installed on marketplace-labs
+# with Contents: read. If it is not, the mint or the read fails and this job is
+# red with a message saying so — by design. A catalog this job cannot read is a
+# read failure (exit 2), never a pass: a private repo answers 404 whether the
+# plugin is missing or the token cannot look.
+#
+# WHY NOT A REQUIRED CHECK
+# ------------------------
+# The labs catalog changes in another repo, with no event here. The schedule is
+# what catches that drift; the pull_request trigger catches this repo's side.
+#
+# OPERATIONAL NOTES
+# -----------------
+# - Fork PRs receive neither the secret nor the variable, so the job fails at
+#   the credential step on a fork. This repo takes no fork PRs in practice;
+#   the message names the cause.
+# - GitHub disables scheduled workflows after 60 days without repo activity. A
+#   disabled check and a passing one look the same; check before trusting it.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - README.md
+      - .claude-plugin/**
+      - scripts/install-channel-check.sh
+      - .github/workflows/install-channel-check.yml
+  schedule:
+    # 15:41 UTC daily — off the hour, where GitHub delays queued cron runs.
+    - cron: '41 15 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-channel:
+    name: Install channel check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify ip-org-auditor client id is configured
+        env:
+          CLIENT_ID: ${{ vars.IP_ORG_AUDITOR_APP_CLIENT_ID }}
+        run: |
+          if [ -z "${CLIENT_ID:-}" ]; then
+            echo "::error::vars.IP_ORG_AUDITOR_APP_CLIENT_ID is not set, so the labs catalog cannot be read and the canonical install channel is UNMEASURED. Fix: gh variable set IP_ORG_AUDITOR_APP_CLIENT_ID --org Integral-Productivity --visibility all --body '<Iv23li...>'"
+            exit 2
+          fi
+
+      - name: Read ip-org-auditor App PEM from 1Password
+        id: pem
+        uses: Integral-Productivity/reusable-workflows/.github/actions/read-pem-from-1p@b0caf389303ff150b6c99d618ca7730c5ce6f589 # v1.3.0
+        with:
+          op-service-account-token: ${{ secrets.OP_AUDITOR_PUBLIC_TOKEN }}
+          item-path: op://ip-org-auditor-public/ip-org-auditor/private_key
+
+      - name: Generate ip-org-auditor token scoped to marketplace-labs
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.IP_ORG_AUDITOR_APP_CLIENT_ID }}
+          private-key: ${{ steps.pem.outputs.private-key }}
+          owner: Integral-Productivity
+          repositories: marketplace-labs
+
+      - name: Check every channel README names
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: bash scripts/install-channel-check.sh

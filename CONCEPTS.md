@@ -7,7 +7,7 @@ Shared domain vocabulary for this project — entities, named processes, and sta
 ## Release channel
 
 ### Stable channel
-The published release channel installed users actually receive — a long-lived branch the plugin marketplace follows by ref rather than by pinned version, so whatever commit the channel points at *is* the current release. Distinct from the default branch, which carries in-flight work that has not been released.
+The published release channel installed users actually receive — a long-lived branch every install channel's catalog follows by ref rather than by pinned version, so whatever commit the channel points at *is* the current release. Distinct from the default branch, which carries in-flight work that has not been released.
 
 The channel only ever moves forward, and only onto a commit that has been tagged with a release version matching the plugin manifest's declared version; a mismatch aborts the move rather than publishing. Advancement is a fast-forward and is never forced, so a non-fast-forward attempt fails loudly instead of rewinding the channel. Because the channel is advanced by a separate automated step rather than by merging, the default branch can sit arbitrarily far ahead of it — a release can be tagged and announced while the channel, and therefore every installed user, stays on the previous version.
 

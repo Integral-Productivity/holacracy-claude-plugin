@@ -4,13 +4,14 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## What this repo is
 
-A public Claude Code plugin for engaging with [Holacracy](https://www.holacracy.org/) from inside Claude. The plugin bundles six skills (four Core Role co-pilots, a governance-aware operating frame, and a checklist & metric portfolio audit) and wires up the GlassFrog MCP as a connector.
+A public (MIT, public-repo) Claude Code plugin for engaging with [Holacracy](https://www.holacracy.org/) from inside Claude. It ships through two channels, both tracking `stable`: the private `integral-productivity-labs` marketplace (canonical, for Integral Productivity) and this repo's own one-plugin catalog, `.claude-plugin/marketplace.json` (for everyone else). The core `Integral-Productivity/marketplace` does not list it, by design. See [ADR-0016](docs/adr/0016-labs-is-the-canonical-channel-and-this-repo-self-hosts-the-public-one.md). The plugin bundles six skills (four Core Role co-pilots, a governance-aware operating frame, and a checklist & metric portfolio audit) and wires up the GlassFrog MCP as a connector.
 
 ## Layout
 
 ```
 holacracy-claude-plugin/
 ├── .claude-plugin/plugin.json     manifest
+├── .claude-plugin/marketplace.json  self-hosted public catalog (ADR-0016)
 ├── .mcp.json                      GlassFrog MCP connector (HTTP + OAuth)
 ├── LICENSE                        MIT
 ├── README.md                      install + GlassFrog setup
@@ -228,7 +229,7 @@ Do not edit any of them — not in a feature PR, not "to keep them in sync," not
 
 **What you do instead: write a Conventional Commit.** The type drives the bump — `fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE:` → major (this repo sets `bump-minor-pre-major: false`, so a breaking change takes 0.x straight to 1.0.0). A bundle-shape change — skill, command, or agent added; MCP repointed — is expressed by using `feat:`, not by editing a number.
 
-**Merging the release PR is the release act.** It writes all three files, updates `CHANGELOG.md`, tags `vX.Y.Z`, and `promote-stable.yml` fast-forwards the `stable` branch the public marketplace tracks. Don't let the release PR sit — an unmerged release PR freezes the shipped version, which is what makes hand-bumping feel necessary in the first place.
+**Merging the release PR is the release act.** It writes all three files, updates `CHANGELOG.md`, tags `vX.Y.Z`, and `promote-stable.yml` fast-forwards the `stable` branch both install channels track (ADR-0016). Don't let the release PR sit — an unmerged release PR freezes the shipped version, which is what makes hand-bumping feel necessary in the first place.
 
 **To force a specific version** (rare), add a one-shot footer as the final line of the commit message *and* the PR body, and let release-please do the writing:
 
@@ -293,6 +294,17 @@ The skew check adds `n/a` for a channel that is provably not in use — no plugi
 **`2` includes "nothing to measure."** An empty window, an unreadable readout, or a probe root with no plugin channels all exit 2 rather than reporting clear. Reporting health from absent evidence is precisely the failure #122 documents, and neither operator-local alarm is permitted to commit it.
 
 **The release check does not hold that line as tightly, and you should know where.** Its clear paths still exit `0` when `stable` or `compare/stable...main` could not be read; the unreadable figure degrades to `<unknown>` inside the report behind a `::warning::` rather than escalating to `2`. Its one genuinely absent-evidence state is handled differently again: `stable` behind `main` with *no* open release PR is a `::warning::` on an exit `0`, because it is not release latency — it is release-please having taken its soft-failure path, or a tag cut without `promote-stable.yml` fast-forwarding `stable` ([#108](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/108)). A green run of this check is therefore weaker evidence than a green run of the other two. Read the report, not just the exit code.
+
+## The install path is a checked claim
+
+README's `## Install` section is verified, not trusted. `scripts/install-channel-check.sh` loads the catalog of every `/plugin marketplace add` channel it names and fails unless each lists `holacracy` from this repo at `ref: stable` with no `version`, and every channel has a matching `/plugin install holacracy@<catalog>` line. It exists because the README pointed at an empty catalog for months (#234).
+
+```bash
+bash scripts/install-channel-check.sh --local-only   # the self-hosted channel; no credential
+bash scripts/install-channel-check.test.sh           # mutation-checked suite; replays #234
+```
+
+`--local-only` runs in `scripts-test.yml` on every PR and reports labs as NOT MEASURED. The labs catalog is private, so the full check runs in `install-channel-check.yml` with a read-only `ip-org-auditor` token. A catalog it cannot read exits `2`, never `0`: a private repo answers 404 whether the plugin is missing or the token cannot look. **If you change the README's install lines or `.claude-plugin/marketplace.json`, both must still pass.** Adding a third channel means amending ADR-0016, not just the README.
 
 ## Agent skills
 

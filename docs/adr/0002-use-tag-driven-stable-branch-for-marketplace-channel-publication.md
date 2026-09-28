@@ -12,12 +12,24 @@ the release act is now *merging the release-please PR*; release-please writes
 `plugin.json`'s version and pushes the tag. The tag-driven `stable` promotion
 described below is unchanged.
 
+Amended by
+[ADR-0016](0016-labs-is-the-canonical-channel-and-this-repo-self-hosts-the-public-one.md) —
+the plugin is no longer listed in `Integral-Productivity/marketplace`
+(`integral-productivity-tools`). It ships through `integral-productivity-labs`
+(canonical) and through this repo's own catalog (public). The release mechanics
+below bind both channels unchanged.
+
 ## Context
 
 This plugin ships through the public
 [`Integral-Productivity/marketplace`](https://github.com/Integral-Productivity/marketplace)
 catalog. Users install via `/plugin install holacracy@integral-productivity-tools`
 and refresh via `/plugin marketplace update integral-productivity-tools`.
+
+(No longer true — see
+[ADR-0016](0016-labs-is-the-canonical-channel-and-this-repo-self-hosts-the-public-one.md)
+for the current channels. Kept as written: this is the context the decision
+was made in.)
 
 The original convention was for the marketplace's `marketplace.json` to
 pin each plugin to a specific `version` matching the plugin repo's

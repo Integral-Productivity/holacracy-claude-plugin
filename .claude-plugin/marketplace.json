@@ -1,0 +1,21 @@
+{
+  "name": "integral-productivity-holacracy",
+  "owner": {
+    "name": "Integral Productivity Tooling Team",
+    "email": "devtools@integralproductivity.com"
+  },
+  "metadata": {
+    "description": "Public, self-hosted channel for the holacracy plugin. Integral Productivity's canonical channel is integral-productivity-labs (private); see ADR-0016."
+  },
+  "plugins": [
+    {
+      "name": "holacracy",
+      "source": {
+        "source": "github",
+        "repo": "Integral-Productivity/holacracy-claude-plugin",
+        "ref": "stable"
+      },
+      "description": "Engage with Holacracy — Facilitator, Secretary, Lead Link, Rep Link co-pilots, a governance-aware operating frame, and the GlassFrog MCP connector."
+    }
+  ]
+}

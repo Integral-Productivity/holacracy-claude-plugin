@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.19.1...v0.20.0) (2026-09-28)
+
+
+### Features
+
+* labs is the canonical channel, this repo self-hosts the public one, and CI checks the README's install path ([#234](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/234)) ([#307](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/307)) ([b8f03e2](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/b8f03e2f8cfce8ae487eb36cfef3ade8018f3547))
+
 ## [0.19.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.19.0...v0.19.1) (2026-09-28)
 
 

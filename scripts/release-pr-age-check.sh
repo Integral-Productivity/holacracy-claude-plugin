@@ -233,6 +233,15 @@ iso_to_epoch() {
   return 1
 }
 
+# Whole hours from an ISO instant to NOW_EPOCH (set before any call). Returns non-zero when it cannot parse.
+hours_since() {
+  local epoch
+  epoch="$(iso_to_epoch "$1")" || return 1
+  local h=$(( (NOW_EPOCH - epoch) / 3600 ))
+  [ "$h" -ge 0 ] || h=0
+  printf '%s\n' "$h"
+}
+
 # Read one JSON file from a git ref via the contents API. Prints nothing and
 # returns non-zero when the ref or path is absent (e.g. `stable` does not exist
 # yet), so callers can substitute an explicit "unknown" rather than an empty
@@ -349,7 +358,6 @@ if compare_json="$(gh api "repos/$REPO/compare/stable...main" 2>/dev/null)"; the
   unshipped_subjects="$(printf '%s' "$compare_json" \
     | jq -r '[.commits[] | .commit.message | split("\n")[0]] | reverse | .[0:10] | .[] | "  - " + .')"
 else
-  compare_json=''
   echo "::warning::could not compare 'stable...main' on $REPO — reporting the frozen-commit count as <unknown>."
 fi
 
@@ -358,15 +366,6 @@ fi
 # ---------------------------------------------------------------------------
 # See "THE RELEASE PR THAT NEVER CAME" in the header for the three causes and
 # why they are checked in this order.
-
-# Whole hours from an ISO instant to now. Returns non-zero when it cannot parse.
-hours_since() {
-  local epoch
-  epoch="$(iso_to_epoch "$1")" || return 1
-  local h=$(( (NOW_EPOCH - epoch) / 3600 ))
-  [ "$h" -ge 0 ] || h=0
-  printf '%s\n' "$h"
-}
 
 if [ -z "$release_pr" ]; then
   echo "No open release PR on $REPO (searched open PRs for a '${RELEASE_BRANCH_PREFIX}*' head branch)."
@@ -502,6 +501,7 @@ on \`main\`. Fix the cause, then re-run it; it opens the release PR.
 EOF
 )"
       ;;
+    *) die "unhandled stall cause '$stall_cause' -- this is a bug in the script" ;;
   esac
 
   report="$(cat <<EOF

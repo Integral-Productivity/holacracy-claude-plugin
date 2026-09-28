@@ -34,14 +34,14 @@
 # THE MUTATION PROPERTY (section 10)
 # ----------------------------------
 # Sections 1-9 could all pass against a script whose defenses do nothing, so
-# section 9 asserts both directions the way scripts/skills-lint.test.sh does:
+# section 10 asserts both directions the way scripts/skills-lint.test.sh does:
 # for each defense there is a one-line mutation, and the suite asserts BOTH that
 # the property holds on the real script AND that it FAILS on the mutant. The
 # second half is what proves a check is load-bearing rather than incidentally
 # covered by another. Every property used there is written as a `p_*` function
 # taking the script path, so the same assertion runs against both.
 
-# shellcheck disable=SC2016  # $p / $MAX_AGE_DAYS / $iso inside the section 9 sed
+# shellcheck disable=SC2016  # $p / $MAX_AGE_DAYS / $iso inside the section 10 sed
 # expressions are literal text matched IN the script under test, not expansions.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"

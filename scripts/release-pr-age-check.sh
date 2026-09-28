@@ -52,7 +52,10 @@
 #                     "cleared".
 #   promotion-failed  the tag exists but `stable` still carries an older
 #                     version: `promote-stable.yml` did not fast-forward it
-#                     (issue #108).
+#                     (issue #108). This one is checked whether or not a
+#                     release PR is open: the next releasable merge makes
+#                     release-please open a new PR, and a young PR must not
+#                     hide it.
 #   no-release-pr     a releasable commit (feat, fix, perf, revert, deps, or
 #                     any breaking change) is on `main` but not on `stable`,
 #                     and release-please never opened a PR for it. That is its
@@ -69,12 +72,16 @@
 # a stall is inside the window, the run neither alarms nor closes the tracking
 # issue: "cleared" is never reported while a releasable change is waiting.
 #
+# Nor is it reported when a read the stall check needs has failed (`stable`,
+# the compare, main's manifest, the tag list). The run warns that the check was
+# inconclusive and leaves the tracking issue open.
+#
 # EXIT CODES
 # ----------
 #   0  no release PR open and nothing releasable waiting (or still inside the
 #      grace window), or the release PR is younger than the threshold
 #   1  ALARM — a release PR is at or past the threshold, or a release has
-#      stalled with no release PR (notifications sent)
+#      stalled (notifications sent)
 #   2  usage error or an operational failure (gh/network/parse)
 #
 # Exit 1 is deliberate: it turns the scheduled run red in the Actions tab, which
@@ -141,8 +148,8 @@ Usage: scripts/release-pr-age-check.sh [options]
                         else the repo `gh` resolves from the working directory.
   --max-age-days N      Alarm at or past N days old.
                         Default: $RELEASE_PR_MAX_AGE_DAYS, else 3.
-  --grace-hours N       With NO release PR open, alarm once a releasable change
-                        has waited N hours or more (issue #145).
+  --grace-hours N       Alarm once a stalled release has waited N hours or
+                        more (issue #145).
                         Default: $RELEASE_STALL_GRACE_HOURS, else 2.
   --dry-run             Print the report; make no writes to GitHub.
   --now ISO8601         Treat this instant as "now" (e.g. 2026-08-20T00:00:00Z).
@@ -151,10 +158,12 @@ Usage: scripts/release-pr-age-check.sh [options]
                         `gh pr list`. Same shape as:
                           gh pr list --state open \
                             --json number,title,headRefName,createdAt,url
-                        Substitutes PR METADATA only — reads of `stable` and of
-                        the PR's head branch still hit the live repo, so a
-                        fixture naming a branch that exists will report that
-                        branch's real pending version, not the fixture's title.
+                        Substitutes PR METADATA only — reads of `stable`, of
+                        the PR's head branch, of main's release manifest, of
+                        the tag list and of the manifest's last-change date
+                        still hit the live repo, so a fixture naming a branch
+                        that exists will report that branch's real pending
+                        version, not the fixture's title.
                         Verification affordance; unused in CI.
   -h, --help            This text.
 
@@ -342,6 +351,17 @@ upsert_tracking_issue() {
 # ---------------------------------------------------------------------------
 # 3. Gather the state the report needs
 # ---------------------------------------------------------------------------
+# A failed read is recorded as a gap. A run with a gap never closes the tracking
+# issue: it cannot tell "nothing has stalled" from "could not look", and closing
+# on absent evidence is the #122 failure.
+evidence_gaps=''     # every unreadable input the stall causes depend on
+promotion_gaps=''    # the ones the promotion-failed check depends on
+note_gap() {  # note_gap WHAT [promotion]
+  evidence_gaps="${evidence_gaps:+$evidence_gaps, }$1"
+  if [ "${2:-}" = promotion ]; then
+    promotion_gaps="${promotion_gaps:+$promotion_gaps, }$1"
+  fi
+}
 
 stable_version='<unknown>'
 if stable_plugin_json="$(file_at_ref '.claude-plugin/plugin.json' 'stable')"; then
@@ -349,113 +369,106 @@ if stable_plugin_json="$(file_at_ref '.claude-plugin/plugin.json' 'stable')"; th
 else
   echo "::warning::could not read .claude-plugin/plugin.json from the 'stable' branch of $REPO — reporting the consumer-facing version as <unknown>."
 fi
+case "$stable_version" in
+  '<unknown>'|'<unparseable>') stable_known=false; note_gap "the version on 'stable'" promotion ;;
+  *) stable_known=true ;;
+esac
 
 unshipped_count='<unknown>'
 unshipped_subjects=''
 compare_json=''
-if compare_json="$(gh api "repos/$REPO/compare/stable...main" 2>/dev/null)"; then
+if compare_json="$(gh api "repos/$REPO/compare/stable...main" 2>/dev/null)" \
+   && printf '%s' "$compare_json" | jq -e '(.commits | type == "array") and (.ahead_by | type == "number")' >/dev/null 2>&1; then
   unshipped_count="$(printf '%s' "$compare_json" | jq -r '.ahead_by')"
   unshipped_subjects="$(printf '%s' "$compare_json" \
     | jq -r '[.commits[] | .commit.message | split("\n")[0]] | reverse | .[0:10] | .[] | "  - " + .')"
 else
+  # gh prints the HTTP error body to stdout, so a failed call still leaves
+  # text in compare_json. Drop it, or later reads parse the error as a result.
+  compare_json=''
   echo "::warning::could not compare 'stable...main' on $REPO — reporting the frozen-commit count as <unknown>."
+  note_gap "the 'stable...main' comparison"
 fi
 
 # ---------------------------------------------------------------------------
-# 4. No release PR open — is a release stalled? (issue #145)
+# 4. The release state on main (issue #145)
 # ---------------------------------------------------------------------------
-# See "THE RELEASE PR THAT NEVER CAME" in the header for the three causes and
-# why they are checked in this order.
+# Read on both paths. promotion-failed is checked whether or not a release PR
+# is open: after a failed promotion the next releasable merge makes
+# release-please open a new PR, and a young PR must not hide the stall.
 
-if [ -z "$release_pr" ]; then
-  echo "No open release PR on $REPO (searched open PRs for a '${RELEASE_BRANCH_PREFIX}*' head branch)."
-  echo "  Consumers on 'stable': $stable_version"
-  echo "  Commits on main not yet on stable: $unshipped_count"
-
-  stall_cause=''   # tag-missing | promotion-failed | no-release-pr
-  stall_since=''   # ISO instant the stall is measured from; empty = unknown
-
-  # --- Causes 1 and 2 read main's manifest: the version the last merged
-  #     release PR wrote. Cheap, and no commit-type parsing to get wrong.
-  main_version='<unknown>'
-  tag_state='<unknown>'      # present | absent | <unknown>
-  manifest_changed_at=''
-  if main_manifest="$(file_at_ref '.release-please-manifest.json' 'main')"; then
-    main_version="$(printf '%s' "$main_manifest" | jq -r '.["."] // "<unparseable>"')"
-  else
-    echo "::warning::could not read .release-please-manifest.json from 'main' — cannot check for a merged release that was never tagged."
-  fi
-  case "$main_version" in
-    '<unknown>'|'<unparseable>') ;;
-    *)
-      # matching-refs answers [] for "no such tag", so an absent tag and an
-      # unreadable API are different results here, not both a failed call.
-      if tag_refs="$(gh api "repos/$REPO/git/matching-refs/tags/v$main_version" 2>/dev/null)" \
-         && printf '%s' "$tag_refs" | jq -e 'type == "array"' >/dev/null 2>&1; then
-        if printf '%s' "$tag_refs" | jq -e --arg r "refs/tags/v$main_version" 'any(.[]; .ref == $r)' >/dev/null; then
-          tag_state=present
-        else
-          tag_state=absent
-        fi
+# Main's manifest is the version the last merged release PR wrote. Cheap, and
+# no commit-type parsing to get wrong.
+main_version='<unknown>'
+tag_state='<unknown>'      # present | absent | <unknown>
+manifest_changed_at=''
+if main_manifest="$(file_at_ref '.release-please-manifest.json' 'main')"; then
+  main_version="$(printf '%s' "$main_manifest" | jq -r '.["."] // "<unparseable>"')"
+else
+  echo "::warning::could not read .release-please-manifest.json from 'main' — cannot check for a merged release that was never tagged."
+fi
+case "$main_version" in
+  '<unknown>'|'<unparseable>') note_gap "main's .release-please-manifest.json" promotion ;;
+  *)
+    # matching-refs answers [] for "no such tag", so an absent tag and an
+    # unreadable API are different results here, not both a failed call.
+    if tag_refs="$(gh api "repos/$REPO/git/matching-refs/tags/v$main_version" 2>/dev/null)" \
+       && printf '%s' "$tag_refs" | jq -e 'type == "array"' >/dev/null 2>&1; then
+      if printf '%s' "$tag_refs" | jq -e --arg r "refs/tags/v$main_version" 'any(.[]; .ref == $r)' >/dev/null; then
+        tag_state=present
       else
-        echo "::warning::could not list tags on $REPO — cannot tell whether v$main_version was released."
+        tag_state=absent
       fi
-      manifest_changed_at="$(gh api "repos/$REPO/commits?sha=main&path=.release-please-manifest.json&per_page=1" 2>/dev/null \
-        | jq -r '.[0].commit.committer.date // empty' 2>/dev/null || true)"
-      ;;
-  esac
-
-  case "$stable_version" in '<unknown>'|'<unparseable>') stable_known=false ;; *) stable_known=true ;; esac
-
-  # --- Cause 3 reads the delta: which commits on main would release-please
-  #     turn into a release?
-  releasable_subjects=''
-  releasable_count=0
-  if [ -n "$compare_json" ]; then
-    releasable_json="$(printf '%s' "$compare_json" | jq -c --arg t "$RELEASABLE_TYPES" '
-      [ .commits[]
-        | { subject: (.commit.message | split("\n")[0]),
-            message: .commit.message,
-            date: (.commit.committer.date // .commit.author.date // "") }
-        | select( (.subject | test("^(" + $t + ")(\\([^)]*\\))?!?: "))
-               or (.subject | test("^[A-Za-z]+(\\([^)]*\\))?!: "))
-               or (.message | test("(^|\n)BREAKING[ -]CHANGE: ")) ) ]')"
-    releasable_count="$(printf '%s' "$releasable_json" | jq 'length')"
-    releasable_subjects="$(printf '%s' "$releasable_json" \
-      | jq -r 'reverse | .[0:10] | .[] | "  - " + .subject')"
-  fi
-
-  if [ "$tag_state" = absent ]; then
-    stall_cause=tag-missing
-    stall_since="$manifest_changed_at"
-  elif [ "$tag_state" = present ] && [ "$stable_known" = true ] && [ "$stable_version" != "$main_version" ]; then
-    stall_cause=promotion-failed
-    stall_since="$manifest_changed_at"
-  elif [ "$releasable_count" -gt 0 ]; then
-    stall_cause=no-release-pr
-    # compare lists commits oldest first; the oldest one has waited longest.
-    stall_since="$(printf '%s' "$releasable_json" | jq -r '.[0].date')"
-  fi
-
-  if [ -z "$stall_cause" ]; then
-    if [ "$unshipped_count" != "<unknown>" ] && [ "$unshipped_count" -gt 0 ]; then
-      echo "  None of them is releasable (no feat/fix/perf/revert/deps or breaking change), so no release PR is expected. This is the normal state after a docs-, ci- or chore-only merge."
+    else
+      echo "::warning::could not list tags on $REPO — cannot tell whether v$main_version was released."
+      note_gap "the tag list" promotion
     fi
-    close_tracking_issue "Cleared — there is no longer an open release PR on \`$REPO\`, and no releasable change is waiting. Consumers on \`stable\` are now at **$stable_version**. Closed automatically by \`scripts/release-pr-age-check.sh\`."
-    exit 0
-  fi
+    manifest_changed_at="$(gh api "repos/$REPO/commits?sha=main&path=.release-please-manifest.json&per_page=1" 2>/dev/null \
+      | jq -r '.[0].commit.committer.date // empty' 2>/dev/null || true)"
+    ;;
+esac
 
-  # Unknown age counts as past the window. A stall we cannot date is still a
-  # stall, and reporting health from absent evidence is the #122 failure.
+promotion_failed=false
+if [ "$tag_state" = present ] && [ "$stable_known" = true ] && [ "$stable_version" != "$main_version" ]; then
+  promotion_failed=true
+fi
+
+# The delta: which commits on main would release-please turn into a release?
+releasable_json='[]'
+releasable_subjects=''
+releasable_count=0
+if [ -n "$compare_json" ] && printf '%s' "$compare_json" | jq -e '.commits | type == "array"' >/dev/null 2>&1; then
+  releasable_json="$(printf '%s' "$compare_json" | jq -c --arg t "$RELEASABLE_TYPES" '
+    [ .commits[]
+      | { subject: (.commit.message | split("\n")[0]),
+          message: .commit.message,
+          date: (.commit.committer.date // .commit.author.date // "") }
+      | select( (.subject | test("^(" + $t + ")(\\([^)]*\\))?!?: "))
+             or (.subject | test("^[A-Za-z]+(\\([^)]*\\))?!: "))
+             or (.message | test("(^|\n)BREAKING[ -]CHANGE: ")) ) ]')"
+  releasable_count="$(printf '%s' "$releasable_json" | jq 'length')"
+  releasable_subjects="$(printf '%s' "$releasable_json" \
+    | jq -r 'reverse | .[0:10] | .[] | "  - " + .subject')"
+fi
+
+# Sets stall_hours and age_text from an ISO instant, and returns 0 while the
+# stall is still inside the grace window. Unknown age counts as past the
+# window: a stall we cannot date is still a stall, and reporting health from
+# absent evidence is the #122 failure.
+stall_hours=''
+age_text=''
+stall_inside_grace() {  # stall_inside_grace SINCE_ISO
   stall_hours=''
-  if [ -n "$stall_since" ]; then stall_hours="$(hours_since "$stall_since" || true)"; fi
-  if [ -n "$stall_hours" ] && [ "$stall_hours" -lt "$GRACE_HOURS" ]; then
-    echo "Release stall suspected ($stall_cause), but it is ${stall_hours}h old — inside the ${GRACE_HOURS}h grace window. No alarm yet."
-    echo "  The tracking issue is left as it is: a waiting releasable change is never reported as cleared."
-    exit 0
-  fi
+  if [ -n "$1" ]; then stall_hours="$(hours_since "$1" || true)"; fi
   if [ -n "$stall_hours" ]; then age_text="${stall_hours}h"; else age_text='an unknown time'; fi
+  [ -n "$stall_hours" ] && [ "$stall_hours" -lt "$GRACE_HOURS" ]
+}
 
+# Print the stall report, open or update the tracking issue, and exit 1. Both
+# paths share it, so a stall stays on the ONE tracking issue whether or not a
+# release PR is open. Call stall_inside_grace first; it sets age_text.
+emit_stall_alarm() {  # emit_stall_alarm CAUSE WHERE
+  local stall_cause="$1" where="$2" issue_title cause_text report
   [ -n "$releasable_subjects" ] || releasable_subjects='  (none, or the list could not be read)'
 
   case "$stall_cause" in
@@ -465,9 +478,9 @@ if [ -z "$release_pr" ]; then
 **Likely cause: release-please failed AFTER the release PR merged.** \`main\`'s
 \`.release-please-manifest.json\` says \`${main_version}\`, but there is no tag
 \`v${main_version}\`. With no tag, \`promote-stable.yml\` never runs and \`stable\`
-never moves. This is how #310 happened: the release App had no \`workflows\`
-permission, so the GitHub-release step failed with *Resource not accessible by
-integration*.
+never moves. One known cause is #310: there, for example, the release App had
+no \`workflows\` permission, so the GitHub-release step failed with *Resource not
+accessible by integration*.
 
 **Where to look:** the most recent **failed** \`release-please.yml\` run on
 \`main\` (the failure is in its log, not in any PR), and
@@ -484,7 +497,11 @@ still carries \`${stable_version}\`. \`promote-stable.yml\` did not fast-forward
 \`stable\` to the tag (issue #108).
 
 **Where to look:** the **Promote to stable** run for tag \`v${main_version}\`.
-Re-run it once its cause is fixed.
+Re-run it once its cause is fixed. A re-run is not always enough: a
+tag-triggered run uses the workflow file as it was at the tag. If the caller
+file itself was broken, a re-run replays the broken file, and recovery needs a
+new patch release. See
+\`docs/solutions/build-errors/promote-stable-startup-failure-missing-caller-permissions.md\`.
 EOF
 )"
       ;;
@@ -506,7 +523,7 @@ EOF
 
   report="$(cat <<EOF
 $MARKER
-**A release has stalled with no release PR open** (waiting ${age_text}; grace window: ${GRACE_HOURS}h).
+**A release has stalled ${where}** (waiting ${age_text}; grace window: ${GRACE_HOURS}h).
 
 ${cause_text}
 
@@ -525,7 +542,7 @@ ${releasable_subjects}
 \`\`\`
 
 **To clear this:** get the release out. The next run of this check closes this
-report automatically once no releasable change is waiting.
+report automatically once the stall has cleared.
 
 <sub>Posted by \`.github/workflows/release-latency-alarm.yml\` via
 \`scripts/release-pr-age-check.sh\` (issue #145). Grace window is
@@ -547,15 +564,63 @@ EOF
     exit 1
   fi
 
-  # There is no release PR to comment on, so the tracking issue and the red run
-  # are the two layers here.
+  # The stall alarm does not comment on a release PR: on the no-PR path there is
+  # none, and on the PR path the PR is not what is stuck. The tracking issue and
+  # the red run are the two layers here.
   upsert_tracking_issue "$issue_title" "$report" \
     || echo "::warning::the tracking-issue write failed. The alarm still fails this run, which is the remaining layer of the signal."
   exit 1
+}
+
+# ---------------------------------------------------------------------------
+# 5. No release PR open — is a release stalled? (issue #145)
+# ---------------------------------------------------------------------------
+# See "THE RELEASE PR THAT NEVER CAME" in the header for the three causes and
+# why they are checked in this order.
+
+if [ -z "$release_pr" ]; then
+  echo "No open release PR on $REPO (searched open PRs for a '${RELEASE_BRANCH_PREFIX}*' head branch)."
+  echo "  Consumers on 'stable': $stable_version"
+  echo "  Commits on main not yet on stable: $unshipped_count"
+
+  stall_cause=''   # tag-missing | promotion-failed | no-release-pr
+  stall_since=''   # ISO instant the stall is measured from; empty = unknown
+
+  if [ "$tag_state" = absent ]; then
+    stall_cause=tag-missing
+    stall_since="$manifest_changed_at"
+  elif [ "$promotion_failed" = true ]; then
+    stall_cause=promotion-failed
+    stall_since="$manifest_changed_at"
+  elif [ "$releasable_count" -gt 0 ]; then
+    stall_cause=no-release-pr
+    # compare lists commits oldest first; the oldest one has waited longest.
+    stall_since="$(printf '%s' "$releasable_json" | jq -r '.[0].date')"
+  fi
+
+  if [ -z "$stall_cause" ]; then
+    if [ "$unshipped_count" != "<unknown>" ] && [ "$unshipped_count" -gt 0 ]; then
+      echo "  None of them is releasable (no feat/fix/perf/revert/deps or breaking change), so no release PR is expected. This is the normal state after a docs-, ci- or chore-only merge."
+    fi
+    if [ -n "$evidence_gaps" ]; then
+      echo "::warning::the release-stall check was inconclusive: could not read ${evidence_gaps}. No stall was found, but the tracking issue is left open rather than closed on missing evidence."
+      exit 0
+    fi
+    close_tracking_issue "Cleared — there is no longer an open release PR on \`$REPO\`, and no releasable change is waiting. Consumers on \`stable\` are now at **$stable_version**. Closed automatically by \`scripts/release-pr-age-check.sh\`."
+    exit 0
+  fi
+
+  if stall_inside_grace "$stall_since"; then
+    echo "Release stall suspected ($stall_cause), but it is ${stall_hours}h old — inside the ${GRACE_HOURS}h grace window. No alarm yet."
+    echo "  The tracking issue is left as it is: a waiting releasable change is never reported as cleared."
+    exit 0
+  fi
+
+  emit_stall_alarm "$stall_cause" "with no release PR open"
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Compute age
+# 6. Compute age
 # ---------------------------------------------------------------------------
 
 pr_number="$(printf '%s' "$release_pr"  | jq -r '.number')"
@@ -584,20 +649,37 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Under threshold — report and clear
+# 7. Under threshold — report and clear, unless an earlier promotion failed
 # ---------------------------------------------------------------------------
+# tag-missing and no-release-pr are not checked here. A young release PR
+# explains unreleased commits, and release-please does not open a new PR while a
+# merged one is still untagged. A failed promotion is different: the tag exists,
+# so release-please moves on and opens the next PR while `stable` stays behind.
 
 if [ "$age_days" -lt "$MAX_AGE_DAYS" ]; then
+  if [ "$promotion_failed" = true ] && ! stall_inside_grace "$manifest_changed_at"; then
+    echo "Release PR #$pr_number is ${age_days}d old — under the ${MAX_AGE_DAYS}d threshold, but an earlier release never reached 'stable'."
+    emit_stall_alarm promotion-failed "while release PR #${pr_number} is open"
+  fi
   echo "Release PR #$pr_number is ${age_days}d old — under the ${MAX_AGE_DAYS}d threshold. No alarm."
   echo "  Waiting to ship: $pending_version"
   echo "  Consumers on 'stable': $stable_version"
   echo "  Commits frozen behind it: $unshipped_count"
+  if [ "$promotion_failed" = true ]; then
+    echo "  Promotion of v$main_version to 'stable' looks failed, but it is ${stall_hours}h old — inside the ${GRACE_HOURS}h grace window. No alarm yet."
+    echo "  The tracking issue is left as it is: a failed promotion is never reported as cleared."
+    exit 0
+  fi
+  if [ -n "$promotion_gaps" ]; then
+    echo "::warning::the promotion check was inconclusive: could not read ${promotion_gaps}. The tracking issue is left open rather than closed on missing evidence."
+    exit 0
+  fi
   close_tracking_issue "Cleared — release PR #$pr_number is back under the ${MAX_AGE_DAYS}-day threshold (now ${age_days}d old). Closed automatically by \`scripts/release-pr-age-check.sh\`."
   exit 0
 fi
 
 # ---------------------------------------------------------------------------
-# 7. ALARM
+# 8. ALARM
 # ---------------------------------------------------------------------------
 
 [ -n "$unshipped_subjects" ] || unshipped_subjects='  (could not list commits)'

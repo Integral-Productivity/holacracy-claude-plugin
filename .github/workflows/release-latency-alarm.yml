@@ -32,7 +32,8 @@ name: Release latency alarm
 # merged release that was never tagged (#310), a tag that never reached
 # `stable` (#108), or a releasable commit release-please never opened a PR for
 # (its soft-failure path). There is no PR to comment on in that case, so it
-# fires layers 2 and 3 only. See issue #145.
+# fires layers 2 and 3 only. See issue #145. The promotion-failed alarm can
+# also fire while a young release PR is open, again as layers 2 and 3 only.
 #
 # Layers 1 and 2 are idempotent: they are found by an HTML-comment marker and
 # UPDATED in place, so a release PR left open for a week produces one comment
@@ -41,10 +42,12 @@ name: Release latency alarm
 #
 # THRESHOLD
 # ---------
-# `RELEASE_PR_MAX_AGE_DAYS` below is the single tuning knob — deliberately a
+# `RELEASE_PR_MAX_AGE_DAYS` below is the main tuning knob — deliberately a
 # top-level `env:` rather than a number buried in the script, so changing it is
 # a one-line diff on this file. The script's own default (3) applies only when
-# it is run by hand with no override.
+# it is run by hand with no override. The second knob is
+# `RELEASE_STALL_GRACE_HOURS`, set the same way: the grace window before a
+# stalled release alarms.
 #
 # WHY NOT A REQUIRED CHECK ON THE PR
 # ----------------------------------
@@ -93,8 +96,8 @@ env:
   # Check phase. Three days lets a Friday merge survive the weekend and alarm on
   # Monday — the shortest window that does not manufacture noise.
   RELEASE_PR_MAX_AGE_DAYS: 3
-  # With NO release PR open, alarm once a releasable change has waited this many
-  # hours (#145). release-please tags and opens PRs within a minute or two of a
+  # Alarm once a stalled release has waited this many hours (#145), with or
+  # without a release PR open. release-please tags and opens PRs within a minute or two of a
   # push; two hours only absorbs a queued runner or a slow retry.
   RELEASE_STALL_GRACE_HOURS: 2
 

@@ -26,10 +26,13 @@
 #
 # The stub serves a response only when the canned file exists and exits 1
 # otherwise, which is also how the "GitHub said no" degradation paths get
-# exercised (section 6). Anything it was never taught is recorded in
-# unhandled.log rather than merely failing, because the script deliberately
-# absorbs `gh api` failures into `<unknown>` -- a new call site would otherwise
-# degrade the report in silence, which is the defect class, not a test detail.
+# exercised (section 6). A canned `<name>.err` file makes it print that body to
+# stdout and exit 1 instead, because that is what real `gh api` does on an HTTP
+# error: the error body lands where the script expects the answer. Anything it
+# was never taught is recorded in unhandled.log rather than merely failing,
+# because the script deliberately absorbs `gh api` failures into `<unknown>` --
+# a new call site would otherwise degrade the report in silence, which is the
+# defect class, not a test detail.
 #
 # THE MUTATION PROPERTY (section 10)
 # ----------------------------------
@@ -65,7 +68,10 @@ cat > "$TMP/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 set -uo pipefail
 printf '%s\n' "$*" >> "$STUB_DIR/calls.log"
-serve() { [ -f "$STUB_DIR/$1" ] || exit 1; cat "$STUB_DIR/$1"; }
+serve() {
+  if [ -f "$STUB_DIR/$1.err" ]; then cat "$STUB_DIR/$1.err"; exit 1; fi
+  [ -f "$STUB_DIR/$1" ] || exit 1; cat "$STUB_DIR/$1"
+}
 unhandled() { printf '%s\n' "$*" >> "$STUB_DIR/unhandled.log"; exit 1; }
 case "${1:-}" in
   api)
@@ -396,7 +402,7 @@ echo "$out" | grep -q 'chore: delta' || fail "expected the frozen commit subject
 # Subjects are first-line only -- a commit body must not leak into the table.
 echo "$out" | grep -q 'body text' && fail "commit bodies must not appear in the report: $out"
 # Both notification layers are announced before the non-zero exit, because an
-# alarm that exits before it notifies is no alarm (script section 7).
+# alarm that exits before it notifies is no alarm (script section 8).
 echo "$out" | grep -q 'would upsert a sticky comment' || fail "expected the PR-comment layer; got: $out"
 echo "$out" | grep -q 'would open a tracking issue' || fail "expected the tracking-issue layer; got: $out"
 
@@ -650,82 +656,211 @@ out="$(run "$SCRIPT" "$S9u" --pr-json "$NONE" 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] || fail "an unreadable tag list must still reach the commit-type rule, got $rc: $out"
 echo "$out" | grep -q 'could not list tags' || fail "an unreadable tag list must warn; got: $out"
 
+# The stall is dated from the OLDEST waiting releasable commit. Here the oldest
+# is past the window and the newest is inside it, so it must alarm.
+p_oldest_commit_dates() {
+  local script="$1" s rc; s="$(newstub "oldest-$$-$RANDOM")"
+  cat > "$s/compare.json" <<'EOF'
+{"ahead_by": 2, "commits": [
+ {"commit": {"message": "feat: older", "committer": {"date": "2026-08-05T20:00:00Z"}}},
+ {"commit": {"message": "fix: newer", "committer": {"date": "2026-08-05T23:30:00Z"}}}]}
+EOF
+  run "$script" "$s" --pr-json "$NONE" >/dev/null 2>&1; rc=$?
+  [ "$rc" -eq 1 ] || return 1
+  return 0
+}
+p_oldest_commit_dates "$SCRIPT" || fail "a stall must be dated from its oldest releasable commit"
+
+# A failed compare. Real `gh api` prints the error body to stdout, so the
+# script must not parse that body as a comparison. It used to, and died in jq
+# with exit 5: no report, no stall check, outside the 0/1/2 contract.
+S9e="$(newstub compare-error)"
+rm -f "$S9e/compare.json"
+printf '{"message":"Not Found","documentation_url":"https://docs.github.com/rest"}' > "$S9e/compare.json.err"
+out="$(run "$SCRIPT" "$S9e" --pr-json "$NONE" 2>&1)"; rc=$?
+{ [ "$rc" -eq 0 ] || [ "$rc" -eq 1 ]; } || fail "a compare error body must give exit 0 or 1, got $rc: $out"
+echo "$out" | grep -q 'No open release PR' || fail "a compare error body must still print the report; got: $out"
+echo "$out" | grep -q "could not compare 'stable...main'" || fail "a compare error body must warn; got: $out"
+echo "$out" | grep -q 'Commits on main not yet on stable: <unknown>' \
+  || fail "a compare error body must report the count as <unknown>; got: $out"
+# The tag-missing cause needs no compare data, so it must still fire.
+printf '{".":"0.20.0"}' | base64 > "$S9e/main-manifest.b64"
+printf '[]' > "$S9e/tag-refs.json"
+out="$(run "$SCRIPT" "$S9e" --pr-json "$NONE" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "tag-missing must still alarm when the compare fails, got $rc: $out"
+# Same on the release-PR path, which reads the compare too.
+S9e2="$(newstub compare-error-pr)"
+rm -f "$S9e2/compare.json"
+printf '{"message":"Server Error"}' > "$S9e2/compare.json.err"
+mkprs "$S9e2/prs.json" "$RELEASE_BRANCH" 2026-08-01T00:00:00Z
+out="$(run "$SCRIPT" "$S9e2" --pr-json "$S9e2/prs.json" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] || fail "a stale PR with a compare error body must still alarm, got $rc: $out"
+
+# Missing evidence is not "cleared". When a read the stall check depends on
+# fails and no stall is found, the run warns and leaves the tracking issue open.
+p_gap_keeps_issue_open() {
+  local script="$1" s out
+  s="$(newstub "gap-compare-$$-$RANDOM")"
+  cat > "$s/issues.json" <<'EOF'
+[{"number": 999, "body": "<!-- release-pr-age-check:v1 -->\nA release has stalled..."}]
+EOF
+  rm -f "$s/compare.json"
+  out="$(run "$script" "$s" --pr-json "$NONE" 2>&1)" || return 1
+  printf '%s' "$out" | grep -q 'would close tracking issue' && return 1
+  printf '%s' "$out" | grep -q 'inconclusive' || return 1
+
+  s="$(newstub "gap-manifest-$$-$RANDOM")"; docsonly "$s"
+  cat > "$s/issues.json" <<'EOF'
+[{"number": 999, "body": "<!-- release-pr-age-check:v1 -->\nA release has stalled..."}]
+EOF
+  rm -f "$s/main-manifest.b64"
+  out="$(run "$script" "$s" --pr-json "$NONE" 2>&1)" || return 1
+  printf '%s' "$out" | grep -q 'would close tracking issue' && return 1
+  printf '%s' "$out" | grep -q 'inconclusive' || return 1
+  return 0
+}
+p_gap_keeps_issue_open "$SCRIPT" || fail "an unreadable input must leave the tracking issue open, not close it"
+
+# The same on the release-PR path: a young PR with `stable` unreadable cannot
+# rule out a failed promotion, so it must not close the issue either.
+S9gp="$(newstub gap-pr)"
+cp "$S5/issues.json" "$S9gp/issues.json"
+rm -f "$S9gp/stable-plugin.b64"
+mkprs "$S9gp/prs.json" "$RELEASE_BRANCH" 2026-08-05T00:00:00Z
+out="$(run "$SCRIPT" "$S9gp" --pr-json "$S9gp/prs.json" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "a young PR with stable unreadable must exit 0, got $rc: $out"
+echo "$out" | grep -q 'would close tracking issue' && fail "an unreadable stable must not close the tracking issue: $out"
+
+# promotion-failed while a release PR IS open. After a failed promotion the
+# next releasable merge makes release-please open a new PR. A young PR must not
+# hide the stall, and must not close the tracking issue that reports it.
+promotion_with_pr() {  # promotion_with_pr NAME MANIFEST_DATE -> echoes the stub dir
+  local s; s="$(newstub "$1")"
+  cp "$S5/issues.json" "$s/issues.json"
+  printf '{".":"0.12.0"}' | base64 > "$s/main-manifest.b64"
+  printf '[{"ref":"refs/tags/v0.12.0"}]' > "$s/tag-refs.json"
+  printf '[{"commit":{"committer":{"date":"%s"}}}]' "$2" > "$s/manifest-commits.json"
+  mkprs "$s/prs.json" "$RELEASE_BRANCH" 2026-08-05T00:00:00Z       # 1 day old
+  printf '%s\n' "$s"
+}
+p_promotion_with_pr() {
+  local script="$1" s out rc; s="$(promotion_with_pr "promopr-$$-$RANDOM" 2026-07-20T00:00:00Z)"
+  out="$(run "$script" "$s" --pr-json "$s/prs.json" 2>&1)"; rc=$?
+  [ "$rc" -eq 1 ] || return 1
+  printf '%s' "$out" | grep -q 'promotion failed' || return 1
+  printf '%s' "$out" | grep -q 'while release PR #165 is open' || return 1
+  printf '%s' "$out" | grep -q 'would update tracking issue #999' || return 1
+  printf '%s' "$out" | grep -q 'would close tracking issue' && return 1
+  return 0
+}
+p_promotion_with_pr "$SCRIPT" || fail "a failed promotion must alarm even while a young release PR is open"
+
+S9pg="$(promotion_with_pr promotion-pr-grace 2026-08-05T23:00:00Z)"
+out="$(run "$SCRIPT" "$S9pg" --pr-json "$S9pg/prs.json" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "a failed promotion inside the grace window must not alarm yet, got $rc: $out"
+echo "$out" | grep -q 'inside the 2h grace window' || fail "expected the grace-window line; got: $out"
+echo "$out" | grep -q 'would close tracking issue' && fail "a failed promotion inside the window must not close the issue: $out"
+[ -s "$S9pg/unhandled.log" ] && fail "the gh stub saw an unhandled call: $(cat "$S9pg/unhandled.log")"
+
 # ---------------------------------------------------------------------------
 # 10. THE MUTATION PROPERTY. Each case seeds ONE defect and asserts the matching
 #    property FLIPS. Without this, every section above could be green against a
 #    script whose defenses had been deleted.
 # ---------------------------------------------------------------------------
+# mutate runs inside `$(...)`, so a `fail` in it would only end the subshell.
+# It returns non-zero instead, and every call site checks that. Without the
+# check, a sed that stopped matching would hand back an unchanged copy (or no
+# file at all), the property would "fail" on it, and the case would pass while
+# testing nothing.
 mutate() {  # mutate NAME SED_EXPR -> echoes the mutant's path
-  local name="$1" expr="$2" out="$TMP/mutant-$1.sh"
-  sed "$expr" "$SCRIPT" > "$out"
-  cmp -s "$SCRIPT" "$out" \
-    && fail "mutation '$name' changed nothing -- its sed no longer matches the script"
+  local expr="$2" out="$TMP/mutant-$1.sh"
+  sed "$expr" "$SCRIPT" > "$out" || return 1
+  cmp -s "$SCRIPT" "$out" && return 1
   printf '%s\n' "$out"
 }
 
-# 9a. Break the prefix filter: every open PR becomes a "release PR", so a
-#     human branch impersonates a release and the alarm fires on noise.
-m="$(mutate prefix 's/startswith($p)/startswith("")/')"
+# Self-test: a sed that matches nothing must make mutate fail, or every
+# "could not be built" check below is unreachable.
+if mutate selftest 's/this text is deliberately absent from the script/x/' >/dev/null 2>&1; then
+  fail "mutate accepted a sed that matches nothing; every mutation case below is vacuous"
+fi
+
+# 10a. Break the prefix filter: every open PR becomes a "release PR", so a
+#      human branch impersonates a release and the alarm fires on noise.
+m="$(mutate prefix 's/startswith($p)/startswith("")/')" || fail "mutation prefix could not be built"
 p_prefix "$m" && fail "mutation: breaking the branch prefix match did not fail the suite"
 
-# 9b. Break the age arithmetic: dividing by 10x the seconds-per-day deflates
-#     every age toward 0, which is the alarm going permanently silent.
-m="$(mutate age 's|/ 86400 ))|/ 864000 ))|')"
+# 10b. Break the age arithmetic: dividing by 10x the seconds-per-day deflates
+#      every age toward 0, which is the alarm going permanently silent.
+m="$(mutate age 's|/ 86400 ))|/ 864000 ))|')" || fail "mutation age could not be built"
 p_age "$m"      && fail "mutation: breaking the age arithmetic did not fail the suite"
 p_boundary "$m" && fail "mutation: breaking the age arithmetic did not fail the boundary check"
 
-# 9c. Break the threshold comparison by one: `-le` clears at exactly the
-#     threshold, so the alarm fires a day later than documented, forever.
-m="$(mutate threshold 's/-lt "$MAX_AGE_DAYS"/-le "$MAX_AGE_DAYS"/')"
+# 10c. Break the threshold comparison by one: `-le` clears at exactly the
+#      threshold, so the alarm fires a day later than documented, forever.
+m="$(mutate threshold 's/-lt "$MAX_AGE_DAYS"/-le "$MAX_AGE_DAYS"/')" || fail "mutation threshold could not be built"
 p_boundary "$m" && fail "mutation: off-by-one in the threshold comparison did not fail the suite"
 
-# 9d/9e. Collapse `iso_to_epoch` to a single platform. Each mutant still passes
-#        on the platform it kept, which is exactly why this would go unnoticed:
-#        a GNU-only script is green on every CI runner we have and wrong on the
-#        operator's Mac, where the check is also run by hand.
+# 10d/10e. Collapse `iso_to_epoch` to a single platform. Each mutant still passes
+#          on the platform it kept, which is exactly why this would go unnoticed:
+#          a GNU-only script is green on every CI runner we have and wrong on the
+#          operator's Mac, where the check is also run by hand.
 #
-#        The BSD-removal mutant is also the closest one-line stand-in for a
-#        REORDER. On the legacy platform, "BSD attempt no longer succeeds" and
-#        "GNU attempt runs first" have the same consequence: the GNU form
-#        answers `now` and every PR reads as zero days old.
-m="$(mutate nobsd 's/date -u -j -f/false -u -j -f/')"
+#          The BSD-removal mutant is also the closest one-line stand-in for a
+#          REORDER. On the legacy platform, "BSD attempt no longer succeeds" and
+#          "GNU attempt runs first" have the same consequence: the GNU form
+#          answers `now` and every PR reads as zero days old.
+m="$(mutate nobsd 's/date -u -j -f/false -u -j -f/')" || fail "mutation nobsd could not be built"
 p_bsd "$m"        && fail "mutation: removing the BSD date branch did not fail the suite"
 p_bsd_legacy "$m" && fail "mutation: removing the BSD date branch did not fail on legacy BSD"
-p_gnu "$m"        || fail "the BSD-removal mutant should still work on GNU -- otherwise 9d proves nothing"
+p_gnu "$m"        || fail "the BSD-removal mutant should still work on GNU -- otherwise 10d proves nothing"
 
-m="$(mutate nognu 's/date -u -d "$iso"/false -u -d "$iso"/')"
+m="$(mutate nognu 's/date -u -d "$iso"/false -u -d "$iso"/')" || fail "mutation nognu could not be built"
 p_gnu "$m" && fail "mutation: removing the GNU date branch did not fail the suite"
-p_bsd "$m" || fail "the GNU-removal mutant should still work on BSD -- otherwise 9e proves nothing"
+p_bsd "$m" || fail "the GNU-removal mutant should still work on BSD -- otherwise 10e proves nothing"
 
-# 10f-10l. The issue #145 stall detection (section 9).
+# 10f-10o. The issue #145 stall detection (section 9).
 
 # 10f. Treat every commit type as releasable: a docs-only merge alarms.
-m="$(mutate alltypes "s/^RELEASABLE_TYPES='feat|fix|perf|revert|deps'/RELEASABLE_TYPES='[a-z]+'/")"
+m="$(mutate alltypes "s/^RELEASABLE_TYPES='feat|fix|perf|revert|deps'/RELEASABLE_TYPES='[a-z]+'/")" || fail "mutation alltypes could not be built"
 p_docs_only_quiet "$m" && fail "mutation: counting every commit type as releasable did not fail the suite"
 
 # 10g. Treat no commit type as releasable: the soft-failure stall goes silent.
-m="$(mutate notypes "s/^RELEASABLE_TYPES='feat|fix|perf|revert|deps'/RELEASABLE_TYPES='none'/")"
+m="$(mutate notypes "s/^RELEASABLE_TYPES='feat|fix|perf|revert|deps'/RELEASABLE_TYPES='none'/")" || fail "mutation notypes could not be built"
 p_releasable_alarms "$m" && fail "mutation: counting no commit type as releasable did not fail the suite"
 
 # 10h. Off-by-one in the grace comparison.
-m="$(mutate grace 's/-lt "$GRACE_HOURS"/-le "$GRACE_HOURS"/')"
+m="$(mutate grace 's/-lt "$GRACE_HOURS"/-le "$GRACE_HOURS"/')" || fail "mutation grace could not be built"
 p_grace_boundary "$m" && fail "mutation: off-by-one in the grace comparison did not fail the suite"
 
 # 10i. Close the tracking issue from inside the grace window -- the #310
 #      acceptance criterion, broken on the one path where it is easy to break.
-m="$(mutate closewaiting 's/^    echo "  The tracking issue is left as it is/    close_tracking_issue x; echo "  The tracking issue is left as it is/')"
+m="$(mutate closewaiting 's/^    echo "  The tracking issue is left as it is/    close_tracking_issue x; echo "  The tracking issue is left as it is/')" || fail "mutation closewaiting could not be built"
 p_no_close_while_waiting "$m" && fail "mutation: closing the issue while a change waits did not fail the suite"
 
 # 10j. Read an undated stall as fresh.
-m="$(mutate undated 's/if \[ -n "$stall_hours" \] \&\& \[ "$stall_hours" -lt/if [ -z "$stall_hours" ] || [ "$stall_hours" -lt/')"
+m="$(mutate undated 's/\[ -n "$stall_hours" \] \&\& \[ "$stall_hours" -lt/[ -z "$stall_hours" ] || [ "$stall_hours" -lt/')" || fail "mutation undated could not be built"
 p_undated_alarms "$m" && fail "mutation: reading an undated stall as fresh did not fail the suite"
 
 # 10k. Drop the tag-missing cause entirely.
-m="$(mutate notagcheck 's/if \[ "$tag_state" = absent \]; then/if false; then/')"
+m="$(mutate notagcheck 's/if \[ "$tag_state" = absent \]; then/if false; then/')" || fail "mutation notagcheck could not be built"
 p_tag_missing "$m" && fail "mutation: dropping the tag-missing check did not fail the suite"
 
 # 10l. Accept a prefix-only tag match.
-m="$(mutate tagprefix 's/any(.\[\]; .ref == $r)/any(.[]; .ref | startswith($r))/')"
+m="$(mutate tagprefix 's/any(.\[\]; .ref == $r)/any(.[]; .ref | startswith($r))/')" || fail "mutation tagprefix could not be built"
 p_tag_exact "$m" && fail "mutation: accepting a prefix-only tag match did not fail the suite"
+
+# 10m. Close the tracking issue even when a read the stall check needs failed.
+m="$(mutate gapclose 's/    if \[ -n "$evidence_gaps" \]; then/    if false; then/')" || fail "mutation gapclose could not be built"
+p_gap_keeps_issue_open "$m" && fail "mutation: closing the issue on missing evidence did not fail the suite"
+
+# 10n. Skip the promotion check while a release PR is open: a young PR hides
+#      the stall and closes its tracking issue.
+m="$(mutate promopr 's/if \[ "$promotion_failed" = true \] \&\& ! stall_inside_grace/if false \&\& ! stall_inside_grace/')" || fail "mutation promopr could not be built"
+p_promotion_with_pr "$m" && fail "mutation: skipping the promotion check on the release-PR path did not fail the suite"
+
+# 10o. Date the stall from the NEWEST releasable commit instead of the oldest.
+m="$(mutate newestdate "s/jq -r '.\[0\].date'/jq -r '.[-1].date'/")" || fail "mutation newestdate could not be built"
+p_oldest_commit_dates "$m" && fail "mutation: dating the stall from the newest commit did not fail the suite"
 
 echo "PASS: all release-pr-age-check tests"

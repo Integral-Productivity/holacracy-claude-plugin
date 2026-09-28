@@ -229,7 +229,7 @@ jobs:
         # Hermetic: `--now` and `--pr-json` are the script's own affordances,
         # and the suite adds a stub `gh` plus BSD-only and GNU-only `date` stubs
         # on PATH, so no network and no real repository are involved. Mutation-
-        # checked to the same contract as the suites above -- section 9 seeds
+        # checked to the same contract as the suites above -- section 10 seeds
         # one defect at a time (branch prefix, age arithmetic, threshold
         # comparison, each half of the BSD/GNU date fallback) and asserts the
         # matching property flips.

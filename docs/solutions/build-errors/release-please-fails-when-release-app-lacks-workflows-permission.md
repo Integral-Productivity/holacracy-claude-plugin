@@ -40,7 +40,7 @@ The `v0.20.0` release PR (#308) merged, but release-please could not create the 
   ```
 - Every earlier step passes: the PEM read and `actions/create-github-app-token` both succeed.
 - Re-runs and later pushes to `main` fail identically (4 failures across 3 commits).
-- **Nothing alarms.** Once the release PR has merged there is no open release PR, so `release-pr-age-check.sh` treats "`stable` behind `main`" as a warning on exit 0. The only reliable tell is `git ls-remote origin refs/tags/vX.Y.Z refs/heads/stable`.
+- **Nothing alarms.** Once the release PR has merged there is no open release PR, so `release-pr-age-check.sh` treats "`stable` behind `main`" as a warning on exit 0. The only reliable tell is `git ls-remote origin refs/tags/vX.Y.Z refs/heads/stable`. (Since #145 the release alarm raises this as **tag-missing**; see Prevention.)
 
 ## What Didn't Work
 
@@ -79,7 +79,7 @@ Creating a GitHub Release for a tag that does not exist yet creates the tag. Git
   git ls-remote origin refs/tags/vX.Y.Z refs/heads/stable refs/heads/main
   ```
 - **Diagnose by elimination, cheapest first:** installation-granted permissions, then rulesets (`includes_parents=true`, check `target`), then tool version in the logs, then a diff of the release ranges. The last step found it; the first three only narrowed the field.
-- **The release alarm has a blind spot here.** "`stable` behind `main` with no open release PR" is a warning on exit 0 (CLAUDE.md § The alarms, #108). This incident went unalarmed for about 15 hours because of it. Whether it should become an alarm is an open question recorded on #310.
+- **The release alarm has a blind spot here.** "`stable` behind `main` with no open release PR" is a warning on exit 0 (CLAUDE.md § The alarms, #108). This incident went unalarmed for about 15 hours because of it. Whether it should become an alarm is an open question recorded on #310. *Update:* #145 closed this blind spot. The release alarm now raises **tag-missing** when `main`'s manifest names a version with no tag.
 
 ## Related Issues
 

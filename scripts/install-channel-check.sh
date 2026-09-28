@@ -18,10 +18,19 @@
 #
 # WHAT IT CHECKS
 # --------------
-# It reads the `## Install` section of README.md and collects:
+# It reads the `## Install` section of README.md — exactly one level-2 heading
+# may start with `## Install`; a second one (`## Installation`, `## Install
+# (legacy)`) is a defect, not a choice the check makes silently — and walks it
+# top to bottom, line by line. Two line forms are parsed, each alone on its line:
 #
-#   - every `/plugin marketplace add <owner>/<repo>` line  (a channel)
-#   - every `/plugin install holacracy@<name>` line        (an install target)
+#   - `/plugin marketplace add <owner>/<repo>`  (a channel)
+#   - `/plugin install holacracy@<name>`        (an install target)
+#
+# Any other line in the section that contains `marketplace add` or `plugin
+# install` — a trailing comment, inline code in prose, the `claude plugin ...`
+# CLI form, `<owner>/<repo>@<ref>` — is a FAIL naming the line as an
+# unrecognised install instruction. The check must not pass a README that
+# instructs something it cannot see.
 #
 # For each channel it loads that repo's `.claude-plugin/marketplace.json` —
 # from disk when the channel is this repo, from the GitHub API otherwise — and
@@ -32,16 +41,22 @@
 #   - at ref `stable`           (ADR-0002: installs follow the release channel)
 #   - with no `version` field   (ADR-0002: a pinned version is what drifted)
 #
-# Then it cross-checks the two lists: every install target must name a catalog
-# a listed channel declares, and every listed channel must have an install
-# line. A bare `/plugin install holacracy` with no `@<name>` is rejected — with
-# more than one channel it does not say which one it means.
+# Then it pairs them, in order: each install line belongs to the most recent
+# channel above it, and its `@<name>` must equal THAT channel's catalog `.name`.
+# An install line with no channel above it fails, and so does a channel with no
+# install line of its own. Pairing is per block, not per set: a README whose
+# two blocks each install from the other block's catalog names the right names
+# overall and still sends every reader to the wrong one. A bare
+# `/plugin install holacracy` with no `@<name>` is rejected — with more than one
+# channel it does not say which one it means.
 #
 # EXIT CODES
 # ----------
-#   0  every channel serves holacracy correctly, and the lists agree
-#   1  a channel does not serve it, serves it wrongly, or the lists disagree
-#   2  usage error, or a catalog could not be read (gh/network/parse/auth)
+#   0  every channel serves holacracy correctly, and every pair is right
+#   1  a README or catalog defect: a channel does not serve it or serves it
+#      wrongly, a pair is wrong, or the Install section is malformed
+#   2  usage error, a catalog could not be read (gh/network/parse/auth), or
+#      nothing was measured
 #
 # A catalog that cannot be read is 2, never 0 and never 1. A private repo the
 # token cannot see answers 404 exactly like a repo with no catalog, so the
@@ -54,7 +69,8 @@
 # `--fixture-dir` substitutes remote catalogs with files named
 # `<owner>__<repo>.json`, so the suite can drive every path offline.
 # `--local-only` measures only the channel served from this repo and reports
-# the rest as NOT MEASURED; `scripts-test.yml` runs it on every PR, where no
+# the rest as NOT MEASURED — an install line paired with an unmeasured channel
+# is reported NOT JUDGED, while one paired with the local channel is judged; `scripts-test.yml` runs it on every PR, where no
 # credential for the private labs catalog exists. The credentialed full run is
 # `.github/workflows/install-channel-check.yml`.
 
@@ -84,7 +100,8 @@ Usage: install-channel-check.sh [options]
                         others as NOT MEASURED
   -h, --help            show this help
 
-Exit: 0 = every channel serves holacracy, 1 = a channel does not, 2 = usage or read failure
+Exit: 0 = every channel serves holacracy and every pair is right,
+      1 = a README or catalog defect, 2 = usage error, read failure, or nothing measured
 EOF
 }
 
@@ -93,12 +110,18 @@ die() {
   exit 2
 }
 
+# need_value "$@" — a value-taking option must have a value; without this,
+# `shift 2` fails under set -e and the script exits 1 with no message.
+need_value() {
+  [ $# -ge 2 ] || die "$1 needs a value"
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --readme)        README="${2:-}"; shift 2 ;;
-    --local-catalog) LOCAL_CATALOG="${2:-}"; shift 2 ;;
-    --self-repo)     SELF_REPO="${2:-}"; shift 2 ;;
-    --fixture-dir)   FIXTURE_DIR="${2:-}"; shift 2 ;;
+    --readme)        need_value "$@"; README="$2"; shift 2 ;;
+    --local-catalog) need_value "$@"; LOCAL_CATALOG="$2"; shift 2 ;;
+    --self-repo)     need_value "$@"; SELF_REPO="$2"; shift 2 ;;
+    --fixture-dir)   need_value "$@"; FIXTURE_DIR="$2"; shift 2 ;;
     --local-only)    LOCAL_ONLY=true; shift ;;
     -h|--help)       usage; exit 0 ;;
     *) usage >&2; die "unknown argument: $1" ;;
@@ -113,10 +136,24 @@ if [ -n "$FIXTURE_DIR" ] && [ ! -d "$FIXTURE_DIR" ]; then
 fi
 
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+trim()  { printf '%s' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'; }
+
+failures=0
+report=""
 
 # ---------------------------------------------------------------------------
 # 1. Read the Install section
 # ---------------------------------------------------------------------------
+# More than one level-2 heading starting `## Install` means the README tells
+# two install stories; reading only one of them would be a silent choice.
+install_headings="$(grep -cE '^## Install' "$README" || true)"
+if [ "$install_headings" -gt 1 ]; then
+  echo "install-channel-check: $README"
+  grep -nE '^## Install' "$README" | sed -E 's/^([0-9]+):/  FAIL          line \1 — /'
+  echo "::error title=install-channel-check::README has $install_headings level-2 headings starting with '## Install'; keep exactly one '## Install' section" >&2
+  exit 1
+fi
+
 # From the `## Install` heading to the next level-2 heading. Sub-headings
 # (`### ...`) stay inside it.
 install_block="$(awk '
@@ -125,13 +162,36 @@ install_block="$(awk '
 ' "$README")"
 [ -n "$install_block" ] || die "README has no '## Install' section: $README"
 
-channels="$(printf '%s\n' "$install_block" \
-  | sed -nE 's#^[[:space:]]*/plugin marketplace add[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)[[:space:]]*$#\1#p' \
-  | awk '!seen[tolower($0)]++')"
-install_lines="$(printf '%s\n' "$install_block" \
-  | grep -E "^[[:space:]]*/plugin install[[:space:]]+$PLUGIN_NAME([@[:space:]]|$)" || true)"
+# One ordered pass. Each install line is paired with the most recent channel
+# above it (`pairs`: "<target>\t<channel>", channel empty when none precedes).
+CHANNEL_RE='^[[:space:]]*/plugin marketplace add[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)[[:space:]]*$'
+INSTALL_RE="^[[:space:]]*/plugin install[[:space:]]+$PLUGIN_NAME@([A-Za-z0-9_.-]+)[[:space:]]*\$"
+BARE_RE="^[[:space:]]*/plugin install[[:space:]]+${PLUGIN_NAME}[[:space:]]*\$"
+channels=""
+pairs=""
+install_count=0
+current=""
+while IFS= read -r line; do
+  if [[ $line =~ $CHANNEL_RE ]]; then
+    current="${BASH_REMATCH[1]}"
+    channels+="$current"$'\n'
+  elif [[ $line =~ $INSTALL_RE ]]; then
+    install_count=$((install_count + 1))
+    pairs+="${BASH_REMATCH[1]}"$'\t'"$current"$'\n'
+  elif [[ $line =~ $BARE_RE ]]; then
+    install_count=$((install_count + 1))
+    failures=$((failures + 1))
+    report+="  FAIL          '$(trim "$line")' names no catalog — use $PLUGIN_NAME@<catalog>"$'\n'
+  elif [[ $line == *"marketplace add"* || $line == *"plugin install"* ]]; then
+    failures=$((failures + 1))
+    report+="  FAIL          unrecognised install instruction: '$(trim "$line")' — only '/plugin marketplace add <owner>/<repo>' and '/plugin install $PLUGIN_NAME@<catalog>', each alone on its line, can be checked"$'\n'
+  fi
+done <<< "$install_block"
+channels="$(printf '%s' "$channels" | awk '!seen[tolower($0)]++')"
 
-[ -n "$channels" ] || die "the Install section names no '/plugin marketplace add <owner>/<repo>' channel — nothing to measure"
+if [ -z "$channels" ] && [ "$failures" -eq 0 ]; then
+  die "the Install section names no '/plugin marketplace add <owner>/<repo>' channel — nothing to measure"
+fi
 
 # ---------------------------------------------------------------------------
 # 2. Load and judge each channel's catalog
@@ -175,11 +235,9 @@ judge() {
   '
 }
 
-failures=0
 unmeasured=0
 measured=0
-declared_names=""
-report=""
+channel_status=""   # "<lowercased channel>\t<measured|unmeasured>\t<catalog name>"
 
 while IFS= read -r channel; do
   [ -n "$channel" ] || continue
@@ -188,6 +246,7 @@ while IFS= read -r channel; do
 
   if [ "$LOCAL_ONLY" = true ] && [ "$is_self" = false ]; then
     unmeasured=$((unmeasured + 1))
+    channel_status+="$(lower "$channel")"$'\t'unmeasured$'\t'$'\n'
     report+="  NOT MEASURED  $channel (--local-only)"$'\n'
     continue
   fi
@@ -203,7 +262,7 @@ while IFS= read -r channel; do
   fi
 
   measured=$((measured + 1))
-  declared_names+="$cat_name"$'\n'
+  channel_status+="$(lower "$channel")"$'\t'measured$'\t'"$cat_name"$'\n'
   if [ -n "$problems" ]; then
     failures=$((failures + 1))
     report+="  FAIL          $channel (catalog $cat_name)"$'\n'
@@ -214,39 +273,53 @@ while IFS= read -r channel; do
 done <<< "$channels"
 
 # ---------------------------------------------------------------------------
-# 3. Cross-check install lines against the catalogs that were measured
+# 3. Judge each install line against the channel it follows
 # ---------------------------------------------------------------------------
-if [ -z "$install_lines" ]; then
+# lookup CHANNEL -> "<status>\t<catalog name>" from section 2
+lookup() {
+  printf '%s' "$channel_status" | awk -F'\t' -v c="$(lower "$1")" '$1 == c { print $2 "\t" $3; exit }'
+}
+
+if [ "$install_count" -eq 0 ]; then
   failures=$((failures + 1))
   report+="  FAIL          no '/plugin install $PLUGIN_NAME@<catalog>' line in the Install section"$'\n'
 fi
-installed_names=""
-while IFS= read -r line; do
-  [ -n "$line" ] || continue
-  target="$(printf '%s' "$line" | sed -nE "s#^[[:space:]]*/plugin install[[:space:]]+$PLUGIN_NAME@([A-Za-z0-9_.-]+)[[:space:]]*\$#\1#p")"
-  if [ -z "$target" ]; then
+paired=""
+while IFS=$'\t' read -r target via; do
+  [ -n "$target" ] || continue
+  if [ -z "$via" ]; then
     failures=$((failures + 1))
-    report+="  FAIL          '$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//')' names no catalog — use $PLUGIN_NAME@<catalog>"$'\n'
+    report+="  FAIL          '$PLUGIN_NAME@$target' has no '/plugin marketplace add' line above it — nothing says which channel it installs from"$'\n'
     continue
   fi
-  installed_names+="$target"$'\n'
-  if [ "$LOCAL_ONLY" = false ] && ! printf '%s' "$declared_names" | grep -qxF "$target"; then
+  paired+="$(lower "$via")"$'\n'
+  IFS=$'\t' read -r status name <<< "$(lookup "$via")"
+  if [ "$status" != measured ]; then
+    report+="  NOT JUDGED    '$PLUGIN_NAME@$target' after $via — that channel was not measured (--local-only)"$'\n'
+  elif [ "$name" != "$target" ]; then
     failures=$((failures + 1))
-    report+="  FAIL          '$PLUGIN_NAME@$target' — no listed channel declares a catalog named $target"$'\n'
+    report+="  FAIL          '$PLUGIN_NAME@$target' follows '/plugin marketplace add $via', whose catalog is named $name"$'\n'
   fi
-done <<< "$install_lines"
-while IFS= read -r name; do
-  [ -n "$name" ] || continue
-  if ! printf '%s' "$installed_names" | grep -qxF "$name"; then
+done <<< "$pairs"
+while IFS= read -r channel; do
+  [ -n "$channel" ] || continue
+  if ! printf '%s' "$paired" | grep -qxF "$(lower "$channel")"; then
     failures=$((failures + 1))
-    report+="  FAIL          catalog $name is added but no '/plugin install $PLUGIN_NAME@$name' line follows"$'\n'
+    IFS=$'\t' read -r status name <<< "$(lookup "$channel")"
+    if [ "$status" = measured ]; then
+      report+="  FAIL          catalog $name is added but no '/plugin install $PLUGIN_NAME@$name' line follows"$'\n'
+    else
+      report+="  FAIL          channel $channel is added but no '/plugin install $PLUGIN_NAME@<catalog>' line follows it"$'\n'
+    fi
   fi
-done <<< "$declared_names"
+done <<< "$channels"
 
 echo "install-channel-check: $README"
 printf '%s' "$report"
 echo "measured: $measured  not measured: $unmeasured  failures: $failures"
 
-[ "$measured" -gt 0 ] || die "no channel was measured — nothing to report health from"
+# A defect found is a verdict even when no catalog was measured; a clean
+# report with nothing measured is not health — it is absent evidence.
 [ "$failures" -eq 0 ] || { echo "::error title=install-channel-check::README names an install path that does not serve $PLUGIN_NAME (see report)" >&2; exit 1; }
+[ "$measured" -gt 0 ] || die "no channel was measured — nothing to report health from"
 exit 0

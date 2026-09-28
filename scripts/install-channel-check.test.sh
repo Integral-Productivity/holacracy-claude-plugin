@@ -11,6 +11,21 @@
 # to naming a marketplace that serves nothing -- which is issue #234, the defect
 # the check was written for. Section 4 replays #234 exactly.
 #
+# WHAT IT COVERS
+# --------------
+#   1  the exit-code contract: 0 healthy; 2 for usage errors (unknown option, a
+#      value-taking option with no value, malformed --self-repo, absent
+#      --fixture-dir), unreadable or malformed catalogs, nothing to measure
+#   2  catalog judgments: missing, duplicate, non-github, wrong repo/ref, pinned
+#   3  the README's Install section, read in order: each install line pairs with
+#      the channel above it (swapped pairs across blocks fail); an install line
+#      with no channel above it, a channel with no install line, a bare install,
+#      no install line at all, a second `## Install...` heading, and any
+#      unrecognised install instruction (trailing comment, inline code, the
+#      `claude plugin` CLI form, `owner/repo@ref`) each fail with a message
+#   4  #234 replayed    5  --local-only (local pairs judged, others NOT JUDGED)
+#   6  the gh read path through a stub    7  this repo as committed
+#
 # HOW IT IS HERMETIC
 # ------------------
 # Every README and catalog is synthesised under $TMP. Remote catalogs come from
@@ -112,6 +127,22 @@ out="$(bash "$SCRIPT" --bogus 2>&1)"; rc=$?
 out="$(bash "$SCRIPT" --readme "$TMP/nope.md" 2>&1)"; rc=$?
 [ "$rc" -eq 2 ] || fail "missing README should exit 2 (rc=$rc)"; pass
 
+# A value-taking option with no value is a usage error (2) with a message --
+# not `shift 2` failing under set -e into a silent 1.
+p_missing_value() { local opt o r
+  for opt in --readme --local-catalog --self-repo --fixture-dir; do
+    o="$(bash "$1" "$opt" 2>&1)"; r=$?
+    [ "$r" -eq 2 ] && echo "$o" | grep -qF -- "$opt needs a value" || return 1
+  done; }
+p_missing_value "$SCRIPT" || fail "each value-taking option with no value must exit 2 naming the option"; pass
+
+W="$(world s1g)"
+out="$(run "$SCRIPT" "$W" --self-repo noslash 2>&1)"; rc=$?
+{ [ "$rc" -eq 2 ] && echo "$out" | grep -q 'must be owner/repo'; } || fail "a --self-repo with no slash must exit 2 (rc=$rc): $out"; pass
+
+out="$(run "$SCRIPT" "$W" --fixture-dir "$TMP/absent-fixtures" 2>&1)"; rc=$?
+{ [ "$rc" -eq 2 ] && echo "$out" | grep -q 'fixture-dir is not a directory'; } || fail "a nonexistent --fixture-dir must exit 2 (rc=$rc): $out"; pass
+
 W="$(world s1b)"; printf '# t\n\n## Usage\n\n/plugin marketplace add %s\n' "$SELF" > "$W/README.md"
 out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
 [ "$rc" -eq 2 ] || fail "README without ## Install should exit 2 (rc=$rc): $out"; pass
@@ -128,6 +159,12 @@ out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
 W="$(world s1e)"; echo 'not json' > "$W/fx/Integral-Productivity__marketplace-labs.json"
 out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
 [ "$rc" -eq 2 ] || fail "a garbage catalog should exit 2 (rc=$rc): $out"; pass
+
+# Valid JSON with a string .name but a string .plugins: jq cannot iterate it, so
+# judge() fails and the script must die "could not be parsed" (2), not judge.
+W="$(world s1h)"; printf '{"name":"integral-productivity-labs","plugins":"holacracy"}\n' > "$W/fx/Integral-Productivity__marketplace-labs.json"
+out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
+{ [ "$rc" -eq 2 ] && echo "$out" | grep -q 'catalog could not be parsed'; } || fail "a catalog whose .plugins is a string must exit 2 at the parse die (rc=$rc): $out"; pass
 
 W="$(world s1f)"; rm "$W/local.json"
 out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
@@ -160,9 +197,10 @@ p_no_ref "$SCRIPT"     || fail "an entry with no ref must exit 1"; pass
 p_version "$SCRIPT"    || fail "a pinned version must exit 1 (ADR-0002)"; pass
 p_not_github "$SCRIPT" || fail "a non-github source must exit 1"; pass
 
-W="$(world s2dup)"; catalog "$W/$LABSFX" integral-productivity-labs "$(entry "$SELF" stable)" "$(entry "$SELF" stable)"
-out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
-{ [ "$rc" -eq 1 ] && echo "$out" | grep -q 'ambiguous'; } || fail "duplicate entries must exit 1 (rc=$rc): $out"; pass
+p_dup() { local d o r; d="$(world "pd-$RANDOM")"
+  catalog "$d/$LABSFX" integral-productivity-labs "$(entry "$SELF" stable)" "$(entry "$SELF" stable)"
+  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q 'ambiguous'; }
+p_dup "$SCRIPT" || fail "duplicate entries must exit 1 naming the ambiguity"; pass
 
 W="$(world s2case)"; catalog "$W/$LABSFX" integral-productivity-labs "$(entry integral-productivity/HOLACRACY-claude-plugin stable)"
 out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
@@ -176,19 +214,57 @@ p_bare_install() { local d o r; d="$(world "pb-$RANDOM")"
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q 'names no catalog'; }
 p_undeclared() { local d o r; d="$(world "pu-$RANDOM")"
   sed -i.bak 's#holacracy@integral-productivity-labs#holacracy@integral-productivity-tools#' "$d/README.md"
-  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q 'no listed channel declares a catalog named integral-productivity-tools'; }
+  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "integral-productivity-tools' follows '/plugin marketplace add $LABS', whose catalog is named integral-productivity-labs"; }
+# Swapped pairs: each name IS declared by some channel, so a set comparison
+# passes -- but every reader of either block is sent to the other's catalog.
+swap_installs() {
+  sed -i.bak -e 's#holacracy@integral-productivity-holacracy#holacracy@SWAP#' \
+             -e 's#holacracy@integral-productivity-labs#holacracy@integral-productivity-holacracy#' \
+             -e 's#holacracy@SWAP#holacracy@integral-productivity-labs#' "$1"
+}
+p_swapped() { local d o r; d="$(world "ps-$RANDOM")"; swap_installs "$d/README.md"
+  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] \
+    && echo "$o" | grep -q "integral-productivity-labs' follows '/plugin marketplace add $SELF', whose catalog is named integral-productivity-holacracy" \
+    && echo "$o" | grep -q "integral-productivity-holacracy' follows '/plugin marketplace add $LABS', whose catalog is named integral-productivity-labs"; }
+p_no_channel() { local d o r; d="$(world "pc-$RANDOM")"
+  awk '/^\*\*Anyone\*\*$/ { print; print "/plugin install holacracy@integral-productivity-holacracy"; next } { print }' "$d/README.md" > "$d/R" && mv "$d/R" "$d/README.md"
+  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "no '/plugin marketplace add' line above it"; }
+p_no_install() { local d o r; d="$(world "pi-$RANDOM")"; sed -i.bak '/^\/plugin install/d' "$d/README.md"
+  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "no '/plugin install holacracy@<catalog>' line"; }
+# add_line DIR TEXT -> TEXT inserted into the Install section, after **Anyone**
+add_line() {
+  awk -v l="$2" '/^\*\*Anyone\*\*$/ { print; print ""; print l; next } { print }' "$1/README.md" > "$1/R" && mv "$1/R" "$1/README.md"
+}
+p_unrecognised() {  # p_unrecognised SCRIPT LINE -> 0 when LINE is failed as unrecognised
+  local d o r; d="$(world "pr-$RANDOM")"; add_line "$d" "$2"
+  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -qF "unrecognised install instruction: '$2'"; }
+p_trailing_comment() { p_unrecognised "$1" '/plugin marketplace add Integral-Productivity/marketplace  # core'; }
+p_dup_heading() { local d o r; d="$(world "ph-$RANDOM")"
+  printf '\n## Installation\n\n/plugin marketplace add Integral-Productivity/marketplace\n/plugin install holacracy@integral-productivity-tools\n' >> "$d/README.md"
+  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "2 level-2 headings starting with '## Install'"; }
 p_orphan_channel() { local d o r; d="$(world "po-$RANDOM")"
   sed -i.bak '/^\/plugin install holacracy@integral-productivity-labs$/d' "$d/README.md"
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q 'catalog integral-productivity-labs is added but no'; }
 
 p_bare_install "$SCRIPT"   || fail "a bare '/plugin install holacracy' must exit 1"; pass
-p_undeclared "$SCRIPT"     || fail "an install target no channel declares must exit 1"; pass
+p_undeclared "$SCRIPT"     || fail "an install target that is not its channel's catalog must exit 1"; pass
+p_swapped "$SCRIPT"        || fail "install lines swapped across blocks must exit 1, naming each wrong pair"; pass
+p_no_channel "$SCRIPT"     || fail "an install line with no channel above it must exit 1"; pass
 p_orphan_channel "$SCRIPT" || fail "a channel with no install line must exit 1"; pass
+p_no_install "$SCRIPT"     || fail "an Install section with no install line must exit 1"; pass
+p_dup_heading "$SCRIPT"    || fail "a second '## Install...' heading must exit 1, not be silently ignored"; pass
 
-W="$(world s3none)"; sed -i.bak '/^\/plugin install/d' "$W/README.md"
-out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
-{ [ "$rc" -eq 1 ] && echo "$out" | grep -q "no '/plugin install holacracy@<catalog>' line"; } \
-  || fail "an Install section with no install line must exit 1 (rc=$rc): $out"; pass
+# Unrecognised install instructions: each was silently dropped before, and each
+# sits next to a healthy channel, so dropping it would exit 0.
+p_trailing_comment "$SCRIPT" || fail "a channel line with a trailing comment must exit 1 as unrecognised"; pass
+p_unrecognised "$SCRIPT" 'Or run `/plugin marketplace add Integral-Productivity/marketplace` then `/plugin install holacracy`.' \
+  || fail "inline-code install prose must exit 1 as unrecognised"; pass
+p_unrecognised "$SCRIPT" 'claude plugin marketplace add Integral-Productivity/marketplace' \
+  || fail "the 'claude plugin marketplace add' CLI form must exit 1 as unrecognised"; pass
+p_unrecognised "$SCRIPT" 'claude plugin install holacracy@integral-productivity-tools' \
+  || fail "the 'claude plugin install' CLI form must exit 1 as unrecognised"; pass
+p_unrecognised "$SCRIPT" "/plugin marketplace add $SELF@stable" \
+  || fail "an owner/repo@ref channel must exit 1 as unrecognised"; pass
 
 # ---------------------------------------------------------------------------
 # 4. Issue #234, replayed: the README pointed at a marketplace whose catalog was []
@@ -209,7 +285,15 @@ W="$(world s5)"; rm -r "$W/fx"
 out="$(bash "$SCRIPT" --readme "$W/README.md" --local-catalog "$W/local.json" --self-repo "$SELF" --local-only 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] || fail "--local-only must not need the remote catalog (rc=$rc): $out"
 echo "$out" | grep -q "NOT MEASURED  $LABS" || fail "--local-only must name what it skipped: $out"
+echo "$out" | grep -q "NOT JUDGED    'holacracy@integral-productivity-labs' after $LABS" \
+  || fail "--local-only must say it did not judge the unmeasured channel's pair: $out"
 pass
+
+# A pair whose channel is the LOCAL one is still judged under --local-only.
+p_local_pair_judged() { local d o r; d="$(world "plp-$RANDOM")"; swap_installs "$d/README.md"
+  o="$(run "$1" "$d" --local-only 2>&1)"; r=$?; [ "$r" -eq 1 ] \
+    && echo "$o" | grep -q "follows '/plugin marketplace add $SELF', whose catalog is named integral-productivity-holacracy"; }
+p_local_pair_judged "$SCRIPT" || fail "--local-only must still judge a pair whose channel is the local one"; pass
 
 p_local_judged() { local d o r; d="$(world "pl-$RANDOM")"
   catalog "$d/local.json" integral-productivity-holacracy "$(entry "$SELF" main)"
@@ -299,8 +383,21 @@ mutant_fails ref     '($p.source.ref // "") != $ref'                       'fals
 mutant_fails repo    '(($p.source.repo // "") | ascii_downcase) != $repo'  'false' p_wrong_repo
 mutant_fails version 'if $p | has("version")'                              'if false' p_version
 mutant_fails missing 'if ($hits | length) == 0 then'                       'if false then' p_missing
-mutant_fails undeclared '! printf '"'"'%s'"'"' "$declared_names" | grep -qxF "$target"' 'false' p_undeclared
-mutant_fails orphan  '! printf '"'"'%s'"'"' "$installed_names" | grep -qxF "$name"' 'false' p_orphan_channel
 mutant_fails measured '[ "$measured" -gt 0 ] || die'                        'true || die' p_nothing_measured
+mutant_fails not_github 'if ($p.source | type) != "object" or $p.source.source != "github"' 'if false' p_not_github
+mutant_fails dup     'elif ($hits | length) > 1 then'                       'elif false then' p_dup
+mutant_fails bare    'elif [[ $line =~ $BARE_RE ]]; then'                   'elif false; then' p_bare_install
+mutant_fails no_install 'if [ "$install_count" -eq 0 ]; then'               'if false; then' p_no_install
+mutant_fails orphan  '! printf '"'"'%s'"'"' "$paired" | grep -qxF "$(lower "$channel")"' 'false' p_orphan_channel
+# #5: unrecognised install instructions and a second Install heading
+mutant_fails unrecognised '[[ $line == *"marketplace add"* || $line == *"plugin install"* ]]' 'false' p_trailing_comment
+mutant_fails dup_heading 'if [ "$install_headings" -gt 1 ]; then'           'if false; then' p_dup_heading
+# #6: ordered pairing
+mutant_fails pair_mismatch 'elif [ "$name" != "$target" ]; then'           'elif false; then' p_swapped
+mutant_fails undeclared    'elif [ "$name" != "$target" ]; then'           'elif false; then' p_undeclared
+mutant_fails no_channel    'if [ -z "$via" ]; then'                         'if false; then' p_no_channel
+mutant_fails local_pair    'if [ "$status" != measured ]; then'             'if true; then' p_local_pair_judged
+# #7: a value-taking option with no value
+mutant_fails need_value    '[ $# -ge 2 ] || die "$1 needs a value"'         'true' p_missing_value
 
 echo "PASS: all install-channel-check tests ($cases cases)"

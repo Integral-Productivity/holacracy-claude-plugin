@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.21.1...v0.21.2) (2026-10-02)
+
+
+### Bug Fixes
+
+* **grounding:** read the macOS Keychain credential store before the stale file ([#320](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/320)) ([ab2d8da](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/ab2d8da282cb67c5c3ba1b129259bb5e5b490ceb))
+
 ## [0.21.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.21.0...v0.21.1) (2026-09-28)
 
 

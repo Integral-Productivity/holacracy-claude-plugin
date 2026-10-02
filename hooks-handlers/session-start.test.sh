@@ -97,6 +97,18 @@ MISSING_CRED="$CRED_DIR/does-not-exist.json"
 # assertions still describe the path they were written for.
 export HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED"
 
+# Since #318 the gate reads the macOS Keychain before the file. Pin it off for
+# the whole suite, for the same reason the file is pinned above: on a Mac whose
+# real Keychain holds an authenticated glassfrog entry, every "withheld" case
+# would otherwise flip. The Keychain cases (G27+) turn it on explicitly, against
+# a stub `security`, never the real one.
+export HOLACRACY_GROUNDING_KEYCHAIN=off
+
+# Likewise the escape hatch. An operator running the #318 workaround has it set
+# in their settings, every shell they spawn inherits it, and it forces every
+# "withheld" case open. G21 sets it explicitly where it is under test.
+unset HOLACRACY_GROUNDING_ASSUME_GLASSFROG
+
 # The withheld payload must be informational only: no question mark anywhere,
 # and none of the imperatives that would make it a precondition on work.
 assert_non_blocking() {  # $1 = captured output, $2 = context
@@ -400,5 +412,107 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"; rc=$?
 [ "$rc" -eq 0 ] || fail "a malformed credentials store must still exit 0"
 assert_non_blocking "$out" "malformed credentials store"
+
+# --- Keychain credential store (issue #318) ---------------------------------
+# On macOS the harness keeps the MCP OAuth store in the login Keychain, and a
+# `.credentials.json` there is a stale leftover. Reading only the file withheld
+# the directive on every Mac, including in sessions where GlassFrog worked.
+#
+# The stub stands in for `security find-generic-password -s <service> -w`. It
+# answers only for the default service name, so a hook that asked for anything
+# else would fall through to the file and fail G27. Exit 44 is what the real
+# command returns when the item does not exist.
+STUB_BIN="$TMP/stub-bin"
+mkdir -p "$STUB_BIN"
+cat > "$STUB_BIN/security" <<'SH'
+#!/usr/bin/env bash
+[ "${1:-}" = "find-generic-password" ] || exit 1
+service=""; want_secret=0
+shift
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -s) service="$2"; shift 2 ;;
+    -w) want_secret=1; shift ;;
+    *) shift ;;
+  esac
+done
+[ "$service" = "Claude Code-credentials" ] || exit 44
+[ "$want_secret" -eq 1 ] || exit 1
+[ -n "${STUB_KEYCHAIN_ITEM:-}" ] && [ -r "$STUB_KEYCHAIN_ITEM" ] || exit 44
+cat "$STUB_KEYCHAIN_ITEM"
+SH
+chmod +x "$STUB_BIN/security"
+
+# G27. The #318 case exactly: the Keychain holds an authenticated glassfrog
+#      entry, the file is the stale empty-token leftover. The directive emits.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "role-grounding directive\*\*" \
+  || fail "an authenticated glassfrog entry in the Keychain must let the directive through (#318)"
+echo "$out" | grep -q "withheld" \
+  && fail "the withheld marker must not accompany a Keychain-authenticated directive"
+
+# G28. The same world with the Keychain switched off reads only the stale file
+#      and withholds. This is G27's control: it proves G27 passes because the
+#      Keychain was read, not because something else opened the gate.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=off \
+  STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_non_blocking "$out" "Keychain off, stale file only"
+
+# G29. When the Keychain item is readable it IS the store. Its unauthenticated
+#      entry is not outvoted by a file that happens to hold a token: on a Mac
+#      that file is stale, and letting it vote would report a logged-out
+#      connector as authenticated.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  STUB_KEYCHAIN_ITEM="$EMPTY_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_non_blocking "$out" "Keychain entry unauthenticated, stale file authenticated"
+
+# G30. No Keychain item -> fall back to the file, so a Mac without the item
+#      (and every pre-#318 deployment) behaves exactly as before.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  STUB_KEYCHAIN_ITEM="$MISSING_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "role-grounding directive\*\*" \
+  || fail "a missing Keychain item must fall back to the file store"
+
+# G31. Neither store holds anything -> withheld, and the withholding is still
+#      announced. The Keychain path must not reintroduce a silent zero.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  STUB_KEYCHAIN_ITEM="$MISSING_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"; rc=$?
+[ "$rc" -eq 0 ] || fail "no Keychain item and no file must still exit 0"
+assert_non_blocking "$out" "no Keychain item and no file"
+
+# G32/G33. The production default, `auto`, decides on the platform. Every case
+#      above pins the mode explicitly, so without these an `auto` that always
+#      or never read the Keychain would pass the suite. bash resets $OSTYPE at
+#      start-up, so the platform is supplied through HOLACRACY_GROUNDING_OSTYPE.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE -u HOLACRACY_GROUNDING_KEYCHAIN \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_OSTYPE=darwin24 \
+  STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "role-grounding directive\*\*" \
+  || fail "auto on macOS must read the Keychain (#318)"
+
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE -u HOLACRACY_GROUNDING_KEYCHAIN \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_OSTYPE=linux-gnu \
+  STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_non_blocking "$out" "auto off macOS must read only the file"
 
 echo "PASS: all session-start hook tests"

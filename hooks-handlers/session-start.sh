@@ -132,6 +132,21 @@ _truthy() {
 #   * The harness's own MCP OAuth store. Local, small, and the very record the
 #     harness consults to attach a bearer token to the server. This one.
 #
+# WHERE THAT STORE LIVES (#318). On macOS the harness keeps it in the login
+# Keychain, as the generic password "Claude Code-credentials", and NOT in
+# `.credentials.json`. A `.credentials.json` found on a Mac is a leftover: on
+# the machine #318 was filed from it was two weeks stale, every token in it was
+# empty, and the gate read it and withheld the directive in a session where
+# GlassFrog answered 83 roles. So the Keychain item, when it can be read, IS
+# the store, and the file is consulted only when it cannot be. The file is not
+# a second opinion: letting a stale file vote would turn the false negative
+# #318 reports into a false positive on the day someone logs out.
+#
+# The Keychain read is one local `security` call, no network. When it fails --
+# no item, a locked keychain, no `security` binary, not macOS -- the gate falls
+# through to the file exactly as before, so Linux and every pre-#318 path is
+# unchanged.
+#
 # So: an entry under `mcpOAuth` whose server name contains "glassfrog" AND whose
 # `accessToken` is a non-empty string. The empty-string case is not theoretical
 # -- it is exactly what an OAuth flow that was started and never completed
@@ -145,32 +160,77 @@ _truthy() {
 #   1. A withheld directive announces itself in the payload (see the withheld
 #      marker below). Absence is visible in the transcript, not inferred.
 #   2. HOLACRACY_GROUNDING_ASSUME_GLASSFROG=on forces the gate open, for any
-#      deployment whose token lives somewhere this check cannot see (an OS
-#      keychain, a managed enterprise store). A false negative is then one
-#      environment variable from fixed rather than an unfixable silent zero.
+#      deployment whose token lives somewhere this check cannot see (a managed
+#      enterprise store, a keychain item under a service name it does not
+#      know). A false negative is then one environment variable from fixed
+#      rather than an unfixable silent zero.
 #
 # CONFIG:
 #   HOLACRACY_GROUNDING_ASSUME_GLASSFROG   on|off  (default off) treat the
 #       connector as authenticated without consulting the store.
+#   HOLACRACY_GROUNDING_KEYCHAIN           auto|on|off (default auto) consult
+#       the macOS Keychain first. `auto` means "on macOS". `on` forces the
+#       attempt anywhere a `security` command is on PATH, which is how the
+#       Keychain path is exercised in tests on a Linux runner; `off` reads only
+#       the file, which is how the rest of the suite stays independent of the
+#       Keychain of whoever runs it.
+#   HOLACRACY_GROUNDING_KEYCHAIN_SERVICE   <name>  (default "Claude Code-
+#       credentials") the generic-password service to read.
 #   HOLACRACY_GROUNDING_CREDENTIALS_FILE   <path>  (default
-#       ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json) which store to
-#       read. Exists so both sides of this gate are exercisable in tests.
-_glassfrog_authenticated() {
-  _truthy "${HOLACRACY_GROUNDING_ASSUME_GLASSFROG:-off}" && return 0
+#       ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json) the file store,
+#       read when the Keychain is off or yields nothing. Exists so both sides
+#       of this gate are exercisable in tests.
+_keychain_enabled() {
+  case "$(_lc "${HOLACRACY_GROUNDING_KEYCHAIN:-auto}")" in
+    on|1|true|yes) return 0 ;;
+    off|0|false|no) return 1 ;;
+    # $OSTYPE is set by bash itself at start-up, which also means a test cannot
+    # set it from outside; HOLACRACY_GROUNDING_OSTYPE exists only so the suite
+    # can exercise both sides of `auto`.
+    *) [[ "${HOLACRACY_GROUNDING_OSTYPE:-${OSTYPE:-}}" == darwin* ]] ;;
+  esac
+}
+
+# Print the harness's MCP OAuth store on stdout: the Keychain item when it can
+# be read, otherwise the file. Returns 1 when neither yields anything.
+_credential_store() {
+  local store=""
+  if _keychain_enabled && command -v security >/dev/null 2>&1; then
+    store="$(security find-generic-password \
+      -s "${HOLACRACY_GROUNDING_KEYCHAIN_SERVICE:-Claude Code-credentials}" \
+      -w 2>/dev/null)" || store=""
+    if [[ -n "$store" ]]; then
+      printf '%s' "$store"
+      return 0
+    fi
+  fi
 
   local cred="${HOLACRACY_GROUNDING_CREDENTIALS_FILE:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json}"
   [[ -r "$cred" ]] || return 1
+  cat "$cred" 2>/dev/null
+}
+
+_glassfrog_authenticated() {
+  _truthy "${HOLACRACY_GROUNDING_ASSUME_GLASSFROG:-off}" && return 0
+
+  local store
+  store="$(_credential_store)" || return 1
   # Cheap pre-filter before paying for a python3 start-up: a store that does not
-  # contain the string at all cannot contain an authenticated entry.
-  grep -qi 'glassfrog' "$cred" 2>/dev/null || return 1
+  # contain the string at all cannot contain an authenticated entry. Matched in
+  # the shell, not with `grep <<<`: bash 3.2 (macOS /bin/bash) backs a here-string
+  # with a temp file, which would put every token in the store on disk.
+  [[ "$store" == *[Gg][Ll][Aa][Ss][Ss][Ff][Rr][Oo][Gg]* ]] || return 1
   command -v python3 >/dev/null 2>&1 || return 1
 
-  python3 - "$cred" <<'PY' 2>/dev/null
+  # The store travels on stdin, never argv or the environment: it holds live
+  # tokens, and argv is visible to every process on the machine. The program is
+  # a single-quoted string, so it must never contain a single quote: one would
+  # end the string early, and the gate would fail closed on every run.
+  printf '%s' "$store" | python3 -c '
 import json, sys, time
 
 try:
-    with open(sys.argv[1]) as fh:
-        store = json.load(fh)
+    store = json.loads(sys.stdin.read())
 except Exception:
     sys.exit(1)
 
@@ -205,7 +265,7 @@ for key, entry in entries.items():
     sys.exit(0)
 
 sys.exit(1)
-PY
+' 2>/dev/null
 }
 
 # Honest proxy for "a GlassFrog connector is declared in the WORKING TREE": a

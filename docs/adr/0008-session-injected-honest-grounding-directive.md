@@ -160,3 +160,17 @@ Operator-configured suppression (the master toggle, `HOLACRACY_GROUNDING_EXCLUDE
 - **The behavior window (`resolve+announce`) closes and reopens.** Per A3/A4, the directive's *body* changed — the fallback sentence is gone — so announce rates either side of this measure two different treatments. The delivery window (`directive-fired`) survives: the marker line the readout derives is unchanged.
 - **The denominator is no longer "all sessions."** A4's closing line — *"The denominator stays 'all sessions' — A2 kept always-on"* — no longer holds. The honest denominator is now *sessions where GlassFrog was authenticated*, and comparability to the 0-of-40 pre-experiment baseline needs that restatement rather than an unqualified rate.
 - **`scripts/grounding-fire-rate-check.sh` is not yet recalibrated.** Its 0.9 floor assumes always-on; against the new behavior it will report a low rate and alarm on a working system. The withheld marker is the data a recalibration needs — the readout does not yet count it. Tracked in [#285](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/285); the check is operator-local and manually run, so nothing in CI is broken meanwhile.
+
+### A6 — 2026-10-02: on macOS the store is the Keychain, not the file (issue [#318](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/318))
+
+A5 chose "the harness's own MCP OAuth store" and named its location as `${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json`. The choice holds. The location was wrong on macOS. There the harness keeps the store in the login Keychain, as the generic password `Claude Code-credentials`. A `.credentials.json` found on a Mac is a leftover. On the machine #318 was filed from, it was last written two weeks earlier and every token in it was empty. The gate read that file and withheld the directive in a session where GlassFrog returned 83 roles. That was a false negative on every Mac. A5's escape hatch caught it, as designed: the operator set `HOLACRACY_GROUNDING_ASSUME_GLASSFROG=on` and filed the defect.
+
+The gate now reads the store from the Keychain first, and from the file only when the Keychain yields nothing:
+
+- **When the Keychain item can be read, it is the store.** The file is not a second opinion. Letting a stale file vote would turn this false negative into a false positive the day someone logs out: an unauthenticated Keychain entry outvoted by an old token.
+- **When it cannot be read, the gate falls back to the file.** That covers no item, a locked keychain, no `security` binary, and every non-macOS host. On those, behaviour is unchanged from A5.
+- **The token never reaches argv or the environment.** The store is passed to the parser on stdin.
+
+`HOLACRACY_GROUNDING_KEYCHAIN=auto|on|off` (default `auto`, meaning macOS) controls the attempt. `HOLACRACY_GROUNDING_KEYCHAIN_SERVICE` names the item. The test suite pins the Keychain off and exercises it only through a stub `security`, so its result does not depend on whose Keychain it runs against.
+
+**Unverified so far.** This fix was tested against a stub only. Two things are still unmeasured: the real item's shape, and the hot-path cost of the extra `security` exec, which A5 would want measured the way it measured the file gate (+22 ms). Both are tracked in [#319](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/319).

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.22.0...v0.22.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **hooks:** stop the Keychain gate prompting when locked and read the active profile ([#328](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/328)) ([79b6a69](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/79b6a69b1ecee9b0a5fb7f591f800b18fe4fc5b6))
+
 ## [0.22.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.21.2...v0.22.0) (2026-10-05)
 
 

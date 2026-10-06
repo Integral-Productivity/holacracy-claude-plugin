@@ -6,7 +6,7 @@ Date: 2026-07-20
 
 Accepted (experimental — the first PDCA experiment of the Continuous Organizational-Context Grounding effort; superseding/escalation is decided at that experiment's Act step)
 
-> **Amended 2026-08-04 and 2026-09-03** — see [Amendments](#amendments). The Decision and Consequences below are the record as accepted on 2026-07-20; several of their claims no longer describe the shipped system, including invariant 3's "on by default" (A5 makes emission conditional on an authenticated GlassFrog connector). Read the amendments before relying on this ADR.
+> **Amended 2026-08-04, 2026-09-03, 2026-10-02 and 2026-10-06** — see [Amendments](#amendments). The Decision and Consequences below are the record as accepted on 2026-07-20; several of their claims no longer describe the shipped system, including invariant 3's "on by default" (A5 makes emission conditional on an authenticated GlassFrog connector). Read the amendments before relying on this ADR.
 
 ## Context
 
@@ -168,9 +168,25 @@ A5 chose "the harness's own MCP OAuth store" and named its location as `${CLAUDE
 The gate now reads the store from the Keychain first, and from the file only when the Keychain yields nothing:
 
 - **When the Keychain item can be read, it is the store.** The file is not a second opinion. Letting a stale file vote would turn this false negative into a false positive the day someone logs out: an unauthenticated Keychain entry outvoted by an old token.
-- **When it cannot be read, the gate falls back to the file.** That covers no item, a locked keychain, no `security` binary, and every non-macOS host. On those, behaviour is unchanged from A5.
+- **When it cannot be read, the gate falls back to the file.** That covers no item, a locked keychain (not read at all, see below), no `security` binary, and every non-macOS host. On those, behaviour is unchanged from A5.
 - **The token never reaches argv or the environment.** The store is passed to the parser on stdin.
 
 `HOLACRACY_GROUNDING_KEYCHAIN=auto|on|off` (default `auto`, meaning macOS) controls the attempt. `HOLACRACY_GROUNDING_KEYCHAIN_SERVICE` names the item. The test suite pins the Keychain off and exercises it only through a stub `security`, so its result does not depend on whose Keychain it runs against.
 
-**Unverified so far.** This fix was tested against a stub only. Two things are still unmeasured: the real item's shape, and the hot-path cost of the extra `security` exec, which A5 would want measured the way it measured the file gate (+22 ms). Both are tracked in [#319](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/319).
+**Verified live on 2026-10-06** ([#319](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/319)), with `scripts/keychain-gate-live-check.sh` on macOS 27.2 and Claude Code 2.1.285. The fix had been tested against a stub only.
+
+- **The real item has the shape the parser expects.** Top-level keys are `claudeAiOauth`, `mcpOAuth` and `trustedDeviceToken`. Under `mcpOAuth` there were four glassfrog entries; one had a non-empty `accessToken` and a refresh token, and three were empty-token discovery records. With the file disabled, the Keychain alone let the directive through, and no Keychain authorization dialog appeared. With the Keychain off, the stale file alone withheld it.
+- **Hot-path cost.** Median of 15 interleaved runs, whole hook per session start:
+
+  | Gate path | ms |
+  |---|---|
+  | Override on (no credential read) | 55 |
+  | Keychain off, no file | 56 |
+  | Keychain off, stale file (`cat` + `python3`) | 80 |
+  | Keychain on, file disabled (`security` + `python3`) | 104 |
+  | Default, `auto` | 106 |
+
+  The Keychain read costs about **+25 ms** over the file gate A5 measured (+22 ms), so the gate as a whole costs about **+50 ms** over not checking credentials. Two caveats. A simpler two-way comparison (Keychain off vs `auto`) in the operator's own runs showed only +1.3 ms and +4.3 ms, while `security` alone took 21–41 ms in those same runs. That comparison could not separate `security` from `python3`'s start-up, so the five-way breakdown above is the figure of record. The cost is fixed rather than growing with the session, but it is paid on every macOS session start.
+- **A locked keychain prompted, so the gate no longer reads one.** With the login keychain locked, the hook took 8.5 s and macOS showed a password dialog at session start. That was a defect in A6 as first written. Probing the locked keychain, `security find-generic-password` and `security show-keychain-info` both waited on the unlock dialog until it was cancelled (exit 128). `SecKeychainGetStatus`, a status query, returned "locked" without waiting. Killing `security` mid-dialog dismissed the dialog. The gate now has two layers, both in the `python3` process that already parses the store: it asks `SecKeychainGetStatus` first and skips a locked keychain, and it kills the read and its process group after 1 s (`HOLACRACY_GROUNDING_KEYCHAIN_TIMEOUT`). Either way it falls back to the file, which on a Mac usually means the announced withheld line, not a prompt. Moving the read into `python3` and adding the status call cost **+15 ms** over the Keychain gate measured above (25 interleaved runs: 105 ms before, 120 ms after). A separate `python3` for the lock check would have cost 30–50 ms.
+- **Each profile has its own item.** With `CLAUDE_CONFIG_DIR` set, Claude Code names the item `Claude Code-credentials-` plus the first 8 hex characters of SHA-256 of the literal `CLAUDE_CONFIG_DIR` string. Observed: `/tmp/claude-alt` gives `Claude Code-credentials-04923786`. This is not documented. A6 as first written read the default item regardless, so one profile's login vouched for another's. The gate now derives the name from `CLAUDE_CONFIG_DIR`, costing one hash exec (`sha256sum`, 8 ms; `shasum` 18 ms where that is absent) only when the variable is set. `HOLACRACY_GROUNDING_KEYCHAIN_SERVICE` still overrides the derived name, as the escape hatch if Claude Code changes the scheme. The operator's Keychain held 463 such per-profile items, most likely left by throwaway config dirs; that leak is tracked in [#326](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/326).
+- **"Any authenticated glassfrog entry" is wider than "the plugin's connector".** On the verifying machine the gate passed on the user-scope `glassfrog-extended` entry, while the plugin's own `plugin:holacracy:glassfrog-extended` entry was unauthenticated. Whether A5 means either one is open in [#327](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/327).

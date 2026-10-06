@@ -103,6 +103,10 @@ export HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED"
 # would otherwise flip. The Keychain cases (G27+) turn it on explicitly, against
 # a stub `security`, never the real one.
 export HOLACRACY_GROUNDING_KEYCHAIN=off
+# ...and when a case does turn it on, the lock-state probe is pinned "unlocked"
+# rather than asking the real Security framework, so a locked keychain on the
+# machine running the suite cannot change its result (#319).
+export HOLACRACY_GROUNDING_KEYCHAIN_LOCKED=0
 
 # Likewise the escape hatch. An operator running the #318 workaround has it set
 # in their settings, every shell they spawn inherits it, and it forces every
@@ -419,14 +423,19 @@ assert_non_blocking "$out" "malformed credentials store"
 # the directive on every Mac, including in sessions where GlassFrog worked.
 #
 # The stub stands in for `security find-generic-password -s <service> -w`. It
-# answers only for the default service name, so a hook that asked for anything
-# else would fall through to the file and fail G27. Exit 44 is what the real
-# command returns when the item does not exist.
+# answers for the default service name and, when STUB_PROFILE_SUFFIX is set,
+# for one per-profile name; a hook that asked for anything else would fall
+# through to the file and fail. Exit 44 is what the real command returns when
+# the item does not exist.
 STUB_BIN="$TMP/stub-bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/security" <<'SH'
 #!/usr/bin/env bash
 [ "${1:-}" = "find-generic-password" ] || exit 1
+# Evidence that the hook ran `security` at all, and a way to make it hang the
+# way the real one does while the macOS unlock dialog is up (#319).
+[ -n "${STUB_CALLED:-}" ] && : > "$STUB_CALLED"
+[ -n "${STUB_SLEEP:-}" ] && exec sleep "$STUB_SLEEP"
 service=""; want_secret=0
 shift
 while [ $# -gt 0 ]; do
@@ -436,10 +445,16 @@ while [ $# -gt 0 ]; do
     *) shift ;;
   esac
 done
-[ "$service" = "Claude Code-credentials" ] || exit 44
 [ "$want_secret" -eq 1 ] || exit 1
-[ -n "${STUB_KEYCHAIN_ITEM:-}" ] && [ -r "$STUB_KEYCHAIN_ITEM" ] || exit 44
-cat "$STUB_KEYCHAIN_ITEM"
+case "$service" in
+  "Claude Code-credentials") item="${STUB_KEYCHAIN_ITEM:-}" ;;
+  # A per-profile item (#319): answered only for the exact name the test
+  # expects, so a hook that derived the suffix wrongly falls through.
+  "Claude Code-credentials-${STUB_PROFILE_SUFFIX:-unset}") item="${STUB_PROFILE_ITEM:-}" ;;
+  *) exit 44 ;;
+esac
+[ -n "$item" ] && [ -r "$item" ] || exit 44
+cat "$item"
 SH
 chmod +x "$STUB_BIN/security"
 
@@ -514,5 +529,93 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE -u HOLACRACY_GROUNDING_
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
 assert_non_blocking "$out" "auto off macOS must read only the file"
+
+# --- Per-profile Keychain items (issue #319) ---------------------------------
+# Claude Code names the item per config dir: with CLAUDE_CONFIG_DIR set the
+# service is "Claude Code-credentials-" + the first 8 hex of sha256(<the literal
+# CLAUDE_CONFIG_DIR string>). Observed live on 2026-10-06: /tmp/claude-alt ->
+# Claude Code-credentials-04923786. That known pair is pinned here so a wrong
+# derivation (other hash, trailing newline in the input, realpath) fails.
+PROFILE_DIR="/tmp/claude-alt"
+PROFILE_SUFFIX="04923786"
+
+# G34. Profile item authenticated, default item not -> directive. Proves the
+#      hook reads the active profile's item, not the default one.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  CLAUDE_CONFIG_DIR="$PROFILE_DIR" STUB_PROFILE_SUFFIX="$PROFILE_SUFFIX" \
+  STUB_PROFILE_ITEM="$AUTHED_CRED" STUB_KEYCHAIN_ITEM="$EMPTY_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "role-grounding directive\*\*" \
+  || fail "with CLAUDE_CONFIG_DIR set, the hook must read that profile's Keychain item (#319)"
+
+# G35. G34 inverted: default item authenticated, profile item absent ->
+#      withheld. The default profile's login must not vouch for another profile.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  CLAUDE_CONFIG_DIR="$PROFILE_DIR" STUB_PROFILE_SUFFIX="$PROFILE_SUFFIX" \
+  STUB_PROFILE_ITEM="$MISSING_CRED" STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_non_blocking "$out" "default profile authenticated, active profile not"
+
+# G36. An explicit HOLACRACY_GROUNDING_KEYCHAIN_SERVICE still wins over the
+#      derived name: it is the escape hatch if Claude Code changes the scheme.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  CLAUDE_CONFIG_DIR="$PROFILE_DIR" STUB_PROFILE_SUFFIX="$PROFILE_SUFFIX" \
+  STUB_PROFILE_ITEM="$EMPTY_CRED" STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
+  HOLACRACY_GROUNDING_KEYCHAIN_SERVICE="Claude Code-credentials" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+echo "$out" | grep -q "role-grounding directive\*\*" \
+  || fail "an explicit HOLACRACY_GROUNDING_KEYCHAIN_SERVICE must override the derived name"
+
+# --- Locked keychain (issue #319) --------------------------------------------
+# Live, a `security` read against a LOCKED login keychain raises the macOS
+# unlock dialog and blocks until someone answers it: 8.5 s and a password
+# prompt at session start. Two layers stop that: the lock state is checked
+# first (SecKeychainGetStatus, a status query that does not prompt) and a
+# locked keychain is skipped; and the read itself is killed at a time limit,
+# which was measured to dismiss its dialog.
+
+# G37. Locked -> `security` is never run, and the gate falls back to the file.
+#      The authenticated file proves the fallback, the marker proves the skip.
+rm -f "$TMP/stub-called"
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  HOLACRACY_GROUNDING_KEYCHAIN_LOCKED=1 STUB_CALLED="$TMP/stub-called" \
+  STUB_KEYCHAIN_ITEM="$EMPTY_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+[ -e "$TMP/stub-called" ] && fail "a locked keychain must not be read: the read raises the unlock dialog (#319)"
+echo "$out" | grep -q "role-grounding directive\*\*" \
+  || fail "a locked keychain must fall back to the file store"
+
+# G37b. G37's control: unlocked, the same world DOES run `security`. Without
+#       it, a hook that never read the Keychain at all would pass G37.
+rm -f "$TMP/stub-called"
+(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  HOLACRACY_GROUNDING_KEYCHAIN_LOCKED=0 STUB_CALLED="$TMP/stub-called" \
+  STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK" >/dev/null)
+[ -e "$TMP/stub-called" ] || fail "an unlocked keychain must be read"
+
+# G38. A read that hangs (the dialog case the lock probe cannot see coming) is
+#      killed at the time limit; the hook falls back to the file and finishes.
+#      The stub would sleep 20 s; the limit is 1 s; 10 s is the ceiling.
+start=$(date +%s)
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  HOLACRACY_GROUNDING_KEYCHAIN_TIMEOUT=1 STUB_SLEEP=20 \
+  STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+elapsed=$(( $(date +%s) - start ))
+[ "$elapsed" -lt 10 ] || fail "a hanging Keychain read must be cut off (took ${elapsed}s)"
+assert_non_blocking "$out" "Keychain read timed out, stale file"
 
 echo "PASS: all session-start hook tests"

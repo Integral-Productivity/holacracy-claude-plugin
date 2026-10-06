@@ -143,9 +143,10 @@ _truthy() {
 # #318 reports into a false positive on the day someone logs out.
 #
 # The Keychain read is one local `security` call, no network. When it fails --
-# no item, a locked keychain, no `security` binary, not macOS -- the gate falls
-# through to the file exactly as before, so Linux and every pre-#318 path is
-# unchanged.
+# no item, no `security` binary, not macOS -- the gate falls through to the
+# file exactly as before, so Linux and every pre-#318 path is unchanged. A
+# LOCKED keychain is not read at all: reading it raises the macOS unlock
+# dialog (#319; see _glassfrog_authenticated).
 #
 # So: an entry under `mcpOAuth` whose server name contains "glassfrog" AND whose
 # `accessToken` is a non-empty string. The empty-string case is not theoretical
@@ -174,8 +175,9 @@ _truthy() {
 #       Keychain path is exercised in tests on a Linux runner; `off` reads only
 #       the file, which is how the rest of the suite stays independent of the
 #       Keychain of whoever runs it.
-#   HOLACRACY_GROUNDING_KEYCHAIN_SERVICE   <name>  (default "Claude Code-
-#       credentials") the generic-password service to read.
+#   HOLACRACY_GROUNDING_KEYCHAIN_SERVICE   <name>  (default derived from
+#       CLAUDE_CONFIG_DIR, see _keychain_service) the generic-password service
+#       to read.
 #   HOLACRACY_GROUNDING_CREDENTIALS_FILE   <path>  (default
 #       ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json) the file store,
 #       read when the Keychain is off or yields nothing. Exists so both sides
@@ -191,50 +193,185 @@ _keychain_enabled() {
   esac
 }
 
-# Print the harness's MCP OAuth store on stdout: the Keychain item when it can
-# be read, otherwise the file. Returns 1 when neither yields anything.
-_credential_store() {
-  local store=""
+# The Keychain service name for the ACTIVE profile (#319). Claude Code names
+# the item per config dir: unset CLAUDE_CONFIG_DIR -> "Claude Code-credentials";
+# set -> "Claude Code-credentials-" + the first 8 hex of sha256(<the literal
+# CLAUDE_CONFIG_DIR string>). Observed live 2026-10-06 (/tmp/claude-alt ->
+# ...-04923786), not documented, so HOLACRACY_GROUNDING_KEYCHAIN_SERVICE stays
+# an override that wins outright. Reading the default item under another
+# profile would let one profile's login vouch for another's.
+#
+# The hash costs one exec, and only when CLAUDE_CONFIG_DIR is set. sha256sum
+# where it exists (8 ms measured), else shasum (18 ms, perl, on every macOS).
+# Returns 1 when no hash tool exists: the caller then skips the Keychain and
+# reads that profile's file, rather than guess at the default item.
+_keychain_service() {
+  if [[ -n "${HOLACRACY_GROUNDING_KEYCHAIN_SERVICE:-}" ]]; then
+    printf '%s' "$HOLACRACY_GROUNDING_KEYCHAIN_SERVICE"
+    return 0
+  fi
+  if [[ -z "${CLAUDE_CONFIG_DIR:-}" ]]; then
+    printf '%s' "Claude Code-credentials"
+    return 0
+  fi
+  local digest=""
+  if command -v sha256sum >/dev/null 2>&1; then
+    digest="$(printf '%s' "$CLAUDE_CONFIG_DIR" | sha256sum 2>/dev/null)"
+  elif command -v shasum >/dev/null 2>&1; then
+    digest="$(printf '%s' "$CLAUDE_CONFIG_DIR" | shasum -a 256 2>/dev/null)"
+  fi
+  [[ "$digest" =~ ^[0-9a-f]{8} ]] || return 1
+  printf 'Claude Code-credentials-%s' "${digest:0:8}"
+}
+
+# Is the harness's MCP OAuth store holding an authenticated glassfrog entry?
+#
+# ONE python3 process does the Keychain step and the parse (#319). Live, a
+# `security` read against a LOCKED login keychain raised the macOS unlock
+# dialog and blocked until it was answered: 8.5 s and a password prompt at
+# session start. So the Keychain step is two layers:
+#   1. The lock state is asked first, through SecKeychainGetStatus on the
+#      default keychain. That is a status query, not an item read; measured
+#      against a locked keychain it returned "locked" without waiting on any
+#      dialog. Locked, or unknowable on macOS -> the Keychain is skipped.
+#   2. The read itself runs under a time limit and is killed with its process
+#      group when it expires. Measured: killing `security` mid-dialog dismisses
+#      the dialog. This catches whatever layer 1 cannot predict.
+# Either way the gate falls back to the file, and on a Mac that usually means
+# the withheld line: announced, not silent, and not a prompt.
+#
+# Doing both in the parser's python3 keeps the cost where it was: the gate
+# always started one python3 on macOS, since the Keychain item always names
+# glassfrog. A separate python3 for the lock check would have added ~30-50 ms
+# to every session start.
+#
+# Without the Keychain step (Linux, KEYCHAIN=off, no `security`, no hash tool)
+# the shell pre-filter still spares the python3 start when the file cannot
+# contain an authenticated entry, exactly as before.
+#
+# Test-only:
+#   HOLACRACY_GROUNDING_KEYCHAIN_LOCKED   1|0  answer the lock question instead
+#       of the Security framework, so the suite does not depend on the state of
+#       the keychain of whoever runs it.
+#   HOLACRACY_GROUNDING_KEYCHAIN_TIMEOUT  <seconds> (default 1) the read's
+#       limit. A healthy read takes ~40 ms.
+_glassfrog_authenticated() {
+  _truthy "${HOLACRACY_GROUNDING_ASSUME_GLASSFROG:-off}" && return 0
+  command -v python3 >/dev/null 2>&1 || return 1
+
+  local service=""
   if _keychain_enabled && command -v security >/dev/null 2>&1; then
-    store="$(security find-generic-password \
-      -s "${HOLACRACY_GROUNDING_KEYCHAIN_SERVICE:-Claude Code-credentials}" \
-      -w 2>/dev/null)" || store=""
-    if [[ -n "$store" ]]; then
-      printf '%s' "$store"
-      return 0
-    fi
+    service="$(_keychain_service)" || service=""
   fi
 
   local cred="${HOLACRACY_GROUNDING_CREDENTIALS_FILE:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json}"
-  [[ -r "$cred" ]] || return 1
-  cat "$cred" 2>/dev/null
-}
+  local file=""
+  [[ -r "$cred" ]] && file="$(cat "$cred" 2>/dev/null)"
 
-_glassfrog_authenticated() {
-  _truthy "${HOLACRACY_GROUNDING_ASSUME_GLASSFROG:-off}" && return 0
+  if [[ -z "$service" ]]; then
+    # Cheap pre-filter before paying for a python3 start-up: a store that does
+    # not contain the string at all cannot contain an authenticated entry.
+    # Matched in the shell, not with `grep <<<`: bash 3.2 (macOS /bin/bash)
+    # backs a here-string with a temp file, which would put every token in the
+    # store on disk.
+    [[ "$file" == *[Gg][Ll][Aa][Ss][Ss][Ff][Rr][Oo][Gg]* ]] || return 1
+  fi
 
-  local store
-  store="$(_credential_store)" || return 1
-  # Cheap pre-filter before paying for a python3 start-up: a store that does not
-  # contain the string at all cannot contain an authenticated entry. Matched in
-  # the shell, not with `grep <<<`: bash 3.2 (macOS /bin/bash) backs a here-string
-  # with a temp file, which would put every token in the store on disk.
-  [[ "$store" == *[Gg][Ll][Aa][Ss][Ss][Ff][Rr][Oo][Gg]* ]] || return 1
-  command -v python3 >/dev/null 2>&1 || return 1
+  # Tokens travel on pipes only, never argv, the environment, or disk: the file
+  # store on stdin, the Keychain item on `security`'s stdout into this process.
+  # argv carries only the service NAME. The program is a single-quoted string,
+  # so it must never contain a single quote: one would end the string early,
+  # and the gate would fail closed on every run.
+  printf '%s' "$file" | python3 -c '
+import json, os, select, signal, sys, time
 
-  # The store travels on stdin, never argv or the environment: it holds live
-  # tokens, and argv is visible to every process on the machine. The program is
-  # a single-quoted string, so it must never contain a single quote: one would
-  # end the string early, and the gate would fail closed on every run.
-  printf '%s' "$store" | python3 -c '
-import json, sys, time
+
+def keychain_locked():
+    forced = os.environ.get("HOLACRACY_GROUNDING_KEYCHAIN_LOCKED", "").strip().lower()
+    if forced in ("1", "on", "true", "yes"):
+        return True
+    if forced in ("0", "off", "false", "no"):
+        return False
+    if sys.platform != "darwin":
+        # Not macOS, so there is no unlock dialog to raise. This is the Linux
+        # runner exercising a stub.
+        return False
+    try:
+        # Loaded by its fixed path: ctypes.util.find_library costs ~8 ms of
+        # imports on the hot path to discover the same string.
+        import ctypes
+        sec = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/Security.framework/Security")
+        status = ctypes.c_uint32()
+        if sec.SecKeychainGetStatus(None, ctypes.byref(status)) != 0:
+            return True
+        return not (status.value & 1)
+    except Exception:
+        # On macOS and unable to tell: do not risk the prompt.
+        return True
+
+
+def keychain_item(service):
+    if not service or keychain_locked():
+        return ""
+    try:
+        limit = float(os.environ.get("HOLACRACY_GROUNDING_KEYCHAIN_TIMEOUT") or 1)
+    except ValueError:
+        limit = 1.0
+    # posix_spawnp, select and killpg rather than subprocess: the subprocess
+    # import and its fork cost ~7 ms more on the hot path (measured, #319).
+    r, w = os.pipe()
+    null = os.open(os.devnull, os.O_RDWR)
+    try:
+        pid = os.posix_spawnp(
+            "security", ["security", "find-generic-password", "-s", service, "-w"],
+            os.environ,
+            file_actions=[(os.POSIX_SPAWN_DUP2, null, 0), (os.POSIX_SPAWN_DUP2, w, 1),
+                          (os.POSIX_SPAWN_DUP2, null, 2), (os.POSIX_SPAWN_CLOSE, r)],
+            setsid=True)
+    except OSError:
+        for fd in (r, w, null):
+            os.close(fd)
+        return ""
+    os.close(w)
+    os.close(null)
+    chunks, expired = [], False
+    deadline = time.monotonic() + limit
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0 or not select.select([r], [], [], left)[0]:
+            expired = True
+            break
+        chunk = os.read(r, 65536)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    os.close(r)
+    if expired:
+        # setsid made the child its own process group: kill all of it.
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    _, status = os.waitpid(pid, 0)
+    if expired or not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
+        return ""
+    return b"".join(chunks).decode("utf-8", "replace")
+
+
+# When the Keychain item can be read it IS the store; the file is consulted
+# only when it cannot be (ADR-0008 A6).
+raw = keychain_item(sys.argv[1] if len(sys.argv) > 1 else "")
+if not raw.strip():
+    raw = sys.stdin.read()
+if "glassfrog" not in raw.lower():
+    sys.exit(1)
 
 try:
-    store = json.loads(sys.stdin.read())
+    store = json.loads(raw)
 except Exception:
     sys.exit(1)
 
-entries = store.get("mcpOAuth")
+entries = store.get("mcpOAuth") if isinstance(store, dict) else None
 if not isinstance(entries, dict):
     sys.exit(1)
 
@@ -265,7 +402,7 @@ for key, entry in entries.items():
     sys.exit(0)
 
 sys.exit(1)
-' 2>/dev/null
+' "$service" 2>/dev/null
 }
 
 # Honest proxy for "a GlassFrog connector is declared in the WORKING TREE": a

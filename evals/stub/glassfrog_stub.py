@@ -78,11 +78,14 @@ READ_TOOLS = {
     "glassfrog_list_my_projects": "Projects on roles the actor fills. Omit status for every status. "
                                   "include_legacy_id adds legacy_id, web_url, role_projects_url.",
 }
-WORK_LIST_TOOLS = ("glassfrog_list_role_projects", "glassfrog_list_role_actions",
-                   "glassfrog_list_my_projects")
-# The live enum, read off the MCP input schema on 2026-10-08 (#357).
-WORK_STATUSES = ["archived", "cancelled", "completed", "current", "scheduled",
-                 "someday", "waiting"]
+# Tool -> the fixture collection it reads.
+WORK_LIST_TOOLS = {"glassfrog_list_role_projects": "projects",
+                   "glassfrog_list_role_actions": "actions",
+                   "glassfrog_list_my_projects": "projects"}
+# The live enum, read off the MCP input schema on 2026-10-08 (#357). Kept equal
+# to the generator's copy by scripts/evals-harness.test.sh.
+WORK_STATUSES = ("archived", "cancelled", "completed", "current", "scheduled",
+                 "someday", "waiting")
 LEGACY_FIELDS = ("legacy_id", "web_url", "role_projects_url")
 WRITE_TOOLS = {
     "glassfrog_create_tension": "Create a tension on a role. Args: role_id, body.",
@@ -178,13 +181,12 @@ def handle_tool(name, args):
         status = args.get("status")
         if status is not None and status not in WORK_STATUSES:
             return {"error": {"status": 400,
-                              "message": f"status must be one of {WORK_STATUSES}"}}
+                              "message": f"status must be one of {', '.join(WORK_STATUSES)}"}}
+        pool = FIXTURE.get(WORK_LIST_TOOLS[name], [])
         if name == "glassfrog_list_my_projects":
             mine = {r["id"] for r in FIXTURE["roles"] if r["fillers"]}
-            found = [p for p in FIXTURE.get("projects", []) if p["role_id"] in mine]
+            found = [w for w in pool if w["role_id"] in mine]
         else:
-            pool = FIXTURE.get("projects" if name == "glassfrog_list_role_projects"
-                               else "actions", [])
             found = [w for w in pool if w["role_id"] == args.get("role_id")]
         found = [w for w in found if status is None or w["status"] == status]
         if not args.get("include_legacy_id"):
@@ -251,7 +253,7 @@ def tool_list():
         if "tensions" in name:
             props["status"] = s
         if name in WORK_LIST_TOOLS:
-            props["status"] = {"type": "string", "enum": WORK_STATUSES}
+            props["status"] = {"type": "string", "enum": list(WORK_STATUSES)}
             props["include_legacy_id"] = {"type": "boolean"}
         props.update({"per_page": {"type": "integer"}, "cursor": s})
         out.append(entry(name, desc, props, required))

@@ -120,6 +120,12 @@ def build(spec: dict) -> tuple:
     for spec_tension in spec.get("tensions", []):
         check_spec_keys(spec_tension, TENSION_SPEC_KEYS,
                         f"tension '{spec_tension.get('key', '?')}'", errors)
+    for spec_project in spec.get("projects", []):
+        check_spec_keys(spec_project, PROJECT_SPEC_KEYS,
+                        f"project '{spec_project.get('key', '?')}'", errors)
+    for spec_action in spec.get("actions", []):
+        check_spec_keys(spec_action, ACTION_SPEC_KEYS,
+                        f"action '{spec_action.get('key', '?')}'", errors)
 
     actor = {
         "id": synth_id("per", scenario, "actor"),
@@ -211,37 +217,28 @@ def build(spec: dict) -> tuple:
     # Projects and actions carry the include_legacy_id fields, because the
     # captured schema was taken with the flag on. The stub strips them when a
     # call does not ask for them -- the same thing the live API does.
-    for spec_project in spec.get("projects", []):
-        check_spec_keys(spec_project, PROJECT_SPEC_KEYS,
-                        f"project '{spec_project.get('key', '?')}'", errors)
-    for spec_action in spec.get("actions", []):
-        check_spec_keys(spec_action, ACTION_SPEC_KEYS,
-                        f"action '{spec_action.get('key', '?')}'", errors)
-
     org_legacy = synth_legacy(scenario, "org")
     project_keys = _schema_keys("list_role_projects.json", "items", "[]")
     action_keys = _schema_keys("list_role_actions.json", "items", "[]")
 
-    def work_status(kind, key, status):
-        if status not in WORK_STATUSES:
-            errors.append(f"{kind} '{key}': status '{status}' is not one of {WORK_STATUSES}")
-        return status
-
-    projects, projects_by_key, has_actions = [], {}, set()
-    for spec_action in spec.get("actions", []):
-        has_actions.add(spec_action.get("project"))
+    has_actions = {a.get("project") for a in spec.get("actions", [])}
+    projects, projects_by_key = [], {}
     for spec_project in spec.get("projects", []):
         key = spec_project["key"]
         on = spec_project["on"]
         if on not in by_key:
             errors.append(f"project '{key}': unknown role '{on}'")
             continue
+        status = spec_project.get("status", "current")
+        if status not in WORK_STATUSES:
+            errors.append(f"project '{key}': status '{status}' is not one of {WORK_STATUSES}")
         legacy_id = synth_legacy(scenario, f"proj:{key}")
+        role_legacy = synth_legacy(scenario, f"role:{on}")
         project = {
             "id": synth_id("proj", scenario, f"proj:{key}"),
             "type": "project",
             "description": spec_project["description"],
-            "status": work_status("project", key, spec_project.get("status", "current")),
+            "status": status,
             "role_id": by_key[on]["id"],
             "individual_initiative": False,
             "has_sub_projects": False,
@@ -258,13 +255,13 @@ def build(spec: dict) -> tuple:
             "web_url": f"{WEB_HOST}/organizations/{org_legacy}/my/workspace/projects/"
                        f"{legacy_id}?tab=workspace_projects",
             "role_projects_url": f"{WEB_HOST}/organizations/{org_legacy}/orgnav/roles/"
-                                 f"{synth_legacy(scenario, f'role:{on}')}/projects",
+                                 f"{role_legacy}/projects",
         }
         validate(project, project_keys, f"project '{key}'", errors)
         projects.append(project)
         projects_by_key[key] = project
 
-    actions = []
+    actions, actions_by_key = [], {}
     for spec_action in spec.get("actions", []):
         key = spec_action["key"]
         on = spec_action["on"]
@@ -275,12 +272,15 @@ def build(spec: dict) -> tuple:
         if parent not in projects_by_key:
             errors.append(f"action '{key}': unknown project '{parent}'")
             continue
+        status = spec_action.get("status", "current")
+        if status not in WORK_STATUSES:
+            errors.append(f"action '{key}': status '{status}' is not one of {WORK_STATUSES}")
         legacy_id = synth_legacy(scenario, f"actn:{key}")
         action = {
             "id": synth_id("actn", scenario, f"actn:{key}"),
             "type": "action",
             "description": spec_action["description"],
-            "status": work_status("action", key, spec_action.get("status", "current")),
+            "status": status,
             "role_id": by_key[on]["id"],
             "individual_initiative": False,
             "parent_project_id": projects_by_key[parent]["id"],
@@ -293,6 +293,7 @@ def build(spec: dict) -> tuple:
         }
         validate(action, action_keys, f"action '{key}'", errors)
         actions.append(action)
+        actions_by_key[key] = action
 
     fixture = {
         "scenario": scenario,
@@ -313,10 +314,8 @@ def build(spec: dict) -> tuple:
             },
             **{f"proj:{k}": v["id"] for k, v in projects_by_key.items()},
             **{f"legacy:proj:{k}": v["legacy_id"] for k, v in projects_by_key.items()},
-            **{f"actn:{a['key']}": synth_id("actn", scenario, f"actn:{a['key']}")
-               for a in spec.get("actions", [])},
-            **{f"legacy:actn:{a['key']}": synth_legacy(scenario, f"actn:{a['key']}")
-               for a in spec.get("actions", [])},
+            **{f"actn:{k}": v["id"] for k, v in actions_by_key.items()},
+            **{f"legacy:actn:{k}": v["legacy_id"] for k, v in actions_by_key.items()},
         },
     }
     return fixture, errors

@@ -35,7 +35,9 @@ CASES=0
 pass() { CASES=$((CASES + 1)); }
 
 FIXTURE="$REPO/evals/fixtures/glassfrog/authority-already-held.json"
-key() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['key_map'][sys.argv[2]])" "$FIXTURE" "$1"; }
+key() {  # $1 key_map entry, $2 fixture (default: $FIXTURE)
+  python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['key_map'][sys.argv[2]])" "${2:-$FIXTURE}" "$1"
+}
 
 # Drive the stub with a here-doc of JSON-RPC lines; print each result payload.
 stub_call() {  # stdin = jsonrpc lines, $1 = write log path (optional)
@@ -322,8 +324,7 @@ pass
 # by listing with include_legacy_id and comparing legacy_id. Without these the
 # behavioural tier cannot exercise that step at all.
 SCAN="$REPO/evals/fixtures/glassfrog/legacy-id-scan.json"
-skey() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['key_map'][sys.argv[2]])" "$SCAN" "$1"; }
-SCAN_PRODUCT="$(skey role:product)"
+SCAN_PRODUCT="$(key role:product "$SCAN")"
 call() {  # $1 tool, $2 JSON arguments -> the tool payload as JSON
   printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"%s","arguments":%s}}\n' "$1" "$2" \
     | STUB_FIXTURE="$SCAN" stub_call \
@@ -410,6 +411,17 @@ for n in ('glassfrog_list_role_projects','glassfrog_list_role_actions','glassfro
     props=tools[n]['inputSchema']['properties']
     assert 'include_legacy_id' in props and 'status' in props, (n, props)" \
   || fail "tools/list does not advertise the project/action tools with include_legacy_id"
+# The status enum lives in two processes (the stub cannot import scripts/), so
+# hold the copies equal here rather than let one drift from the live list.
+python3 - "$STUB" "$GEN" <<'PY' || fail "the stub's and the generator's WORK_STATUSES differ"
+import ast, sys
+def enum(path):
+    for node in ast.parse(open(path).read()).body:
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "WORK_STATUSES":
+            return ast.literal_eval(node.value)
+    sys.exit(f"no WORK_STATUSES in {path}")
+sys.exit(0 if enum(sys.argv[1]) == enum(sys.argv[2]) else 1)
+PY
 pass
 
 echo "evals-harness.test.sh: $CASES cases passed"

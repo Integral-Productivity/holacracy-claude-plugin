@@ -1,0 +1,33 @@
+docs/plans/2026-10-08-1200-feat-official-glassfrog-mcp-default-plan.md
+  s_72decd023ec02b::t_72a90882fe2138 131,247-250,253,255,350-353,462
+  s_72decd023ec02b::t_7a2fbebaec661e 237-239,241-246
+  s_72decd023ec02b::t_cc8cce6c59521e 1-7,9-22,24-46,48-62,64-97,101-113,115,120-121,123-124,126-130,133-138,140,142-161,164,167-168,173-214,216-219,221-223,226-228,231-236,256-267,269-278,280,283-293,296-311,313,315-320,322-349,354-364,366-368,372-374,376,378-391,393-395,397-399,402-408,411,413-416,418-461,463-483,485,487-488,490-492,509-515,517-538,541-551
+  s_72decd023ec02b::t_fd5b168dbe0e45 23,114,116-119,122,132,139,141,215,220,224-225,229-230,240,251-252,254,268,279,281-282,294-295,314,365,369-371,375,377,392,396,400-401,409-410,417,484,486,489,493-508,516,539-540,552-554
+  s_a120cf24896eb0::t_bb4605846e27ba 47,63,125,162-163,165-166,169-172,312,321,412
+  s_72decd023ec02b::t_562c3e429ff846 8
+  s_72decd023ec02b::t_ea73766d41bff4 98-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a12c8bdfa5a43f360c259f4decce660004b4c767",
+  "prompts": {},
+  "sessions": {
+    "s_72decd023ec02b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f54bde1-fba4-4c90-b50c-483ec6590e7e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    },
+    "s_a120cf24896eb0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4ef9a377-e096-4c49-8639-f987926fe9bd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    }
+  }
+}

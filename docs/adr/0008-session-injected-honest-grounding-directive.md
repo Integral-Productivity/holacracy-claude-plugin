@@ -205,6 +205,7 @@ A5 anticipated this class: "a deployment whose token lives somewhere this check 
 
 **What it leaves open.**
 
+- **The `resolve+announce` rate now mixes two treatments.** A session that receives the conditional form is counted as not fired, but it is now asked to announce. Its announcements therefore enter the `of sessions` rate, which is read against the 0-of-40 untreated baseline, without entering `when directive fired`. Before A7 such a session received no directive and could not contribute. Read `of sessions` across this change as a different measure, the same way A5 read its denominator change.
 - **The conditional form's compliance is not yet measured.** The readout counts the unconditional directive only. How often a session that receives the conditional form finds the tool and announces is the figure [#285](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/285)'s recalibration would need. It is unmeasured until the readout learns the second marker.
 - **[#327](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/327) is unchanged on the passing path.** The gate still passes on any authenticated glassfrog entry. On the failing path the condition accepts the tool from any server on purpose, because a claude.ai connector is exactly the server the store cannot name.
 - **The tool-list condition is an instruction, not a mechanism.** Like the directive itself, it depends on the session reading its tools. That is no weaker than before: the unconditional directive already depended on the session complying.

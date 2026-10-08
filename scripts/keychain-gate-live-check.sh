@@ -24,7 +24,8 @@
 #      credentials file is pointed at /nonexistent, so a pass cannot come from
 #      the file. Plus the item's redacted structure (#319 AC4 needs it if this
 #      fails).
-#   2  HOLACRACY_GROUNDING_KEYCHAIN=off withholds (the stale file alone).
+#   2  HOLACRACY_GROUNDING_KEYCHAIN=off falls back to the conditional directive
+#      (the stale file alone; this was "withholds" before #332).
 #   3  Hot-path cost: the hook N times down five gate paths, interleaved,
 #      median per run. This is the number ADR-0008 A6 lacks.
 #   4  CLAUDE_CONFIG_DIR: a non-default config dir gets its own Keychain

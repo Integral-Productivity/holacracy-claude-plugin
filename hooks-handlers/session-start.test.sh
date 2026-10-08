@@ -661,7 +661,10 @@ echo "$out" | grep -q "claude.ai connector" \
 #      conditional form carried that line, a session with no GlassFrog tool
 #      would be counted as a delivered directive, and the PDCA-1 window would
 #      silently change meaning (ADR-0008 A3).
-readout_marker='**Holacracy plugin: role-grounding directive**'
+# Derived from the hook source the same way the readout and G16 derive it,
+# not hard-coded, so a reworded marker cannot leave this check stale.
+readout_marker="$(awk "/<<'DIRECTIVE'/{found=1; next} found{print; exit}" "$HOOK")"
+[ -n "$readout_marker" ] || fail "could not derive the readout marker from the hook"
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"

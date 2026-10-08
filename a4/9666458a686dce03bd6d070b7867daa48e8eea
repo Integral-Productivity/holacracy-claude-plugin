@@ -1,0 +1,22 @@
+commands/review-project.md
+  s_8bedafe55560b2::t_56d1d61b9d3989 28
+skills/shared/glassfrog-id-and-url-resolution.md
+  s_8bedafe55560b2::t_c0502723018ff7 9,24,26,37-42,44
+  s_8bedafe55560b2::t_498c919958605a 17,19-23,25,27-30,34,58-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a49666458a686dce03bd6d070b7867daa48e8eea",
+  "prompts": {},
+  "sessions": {
+    "s_8bedafe55560b2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2cdbff0c-8582-4489-8f01-4239e7db4fef",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    }
+  }
+}

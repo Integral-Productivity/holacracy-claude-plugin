@@ -85,7 +85,7 @@ A confirmed `advisory-route` finding is a *structural* gap -- the project is on 
 
 Assignment-fit defaults to the structural role-fit reading. Only surface the person-fit reading when the user explicitly asks -- it's a Lead Link question.
 
-An **executor-fit** finding (assignment-fit, `executor-mismatch`) routes the same way, with the tension addressed to the circle's Circle Lead: whether a human or an agent should carry the next action is a question about who fills the role, and that is theirs to answer. Front-load the topic, e.g. *"Executor-fit: [Role]'s next action on [project] needs a person for [judgment / relationship / access], and the role is filled only by agents -- ..."*. It never reassigns the role and never changes the project's status or tags.
+An **executor-fit** finding (assignment-fit, `executor-mismatch`) routes the same way: `tension-capture` files it on the sensing role's backlog as usual, and the body names the circle's Circle Lead as the role whose call this is -- whether a human or an agent should carry the next action is a question about who fills the role. If the actor fills that Circle Lead role, `tension-capture` stops at `triage-gates.md` Step 1 and reports that the role already holds it and it may just need doing; present that as the outcome, not a failure, and do not count it as a tension routed. Front-load the topic, e.g. *"Executor-fit: [Role]'s next action on [project] needs a person for [judgment / relationship / access], and the role is filled only by agents -- ..."*. It never reassigns the role and never changes the project's status or tags.
 
 ## Behaviour
 

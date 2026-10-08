@@ -77,7 +77,7 @@ Reads: `list_role_assignments`, role purposes, the project's actions, `list_subr
 
 Flags:
 - **Role-fit (default):** given the scope, another existing role would more naturally own this outcome. `drafted_fix: route-to-tension`. `advisory-route`.
-- **Executor-fit (always runs):** apply the rubric's B3 executor-fit test to the next action. On shape (a) or (b): `dimension: "B3 executor-fit"`, `state: executor-mismatch`, `severity: moderate`, `drafted_fix: route-to-tension` addressed to the circle's Circle Lead (who fills a role is their call), `advisory-route`. Word the `statement` as a question that names the need, e.g. *"The next action ('personally follow up with each applicant') needs a person for relationship -- every filler of [Role] is an agent. Who carries it?"* Never draft a reassignment, and never draft a status change or tag. If the role or circle fillers can't be read, return no executor-fit finding rather than guessing a `kind`.
+- **Executor-fit (always runs):** apply the rubric's B3 executor-fit test to the next action. On shape (a) or (b): `dimension: "B3 executor-fit"`, `state: executor-mismatch`, `severity: moderate`, `drafted_fix: route-to-tension`, `advisory-route`. The tension is filed the usual way, on the sensing role's backlog, and its body names the circle's Circle Lead as the role whose call this is (who fills a role is theirs to decide). Word the `statement` as a question that names the need, e.g. *"The next action ('personally follow up with each applicant') needs a person for relationship -- every filler of [Role] is an agent. Who carries it?"* Never draft a reassignment, and never draft a status change or tag. If the role or circle fillers can't be read, return no executor-fit finding rather than guessing a `kind`.
 - **Person-fit (opt-in only):** the current filler may not be resourced -- surface **only** when the user explicitly asks; it's a Lead Link question. Default to the structural role-fit reading.
 - Never re-assigns. This is the most judgment-heavy, most politically sensitive lens -- highest bar before flagging.
 
@@ -108,7 +108,7 @@ Flags: `drafted_fix: none` most often (it raises questions); occasionally `refra
   - `low` -- a nitpick.
 - **Floor:** drop `low` findings. They don't reach the confirmation block.
 - **Cap:** at most **6** findings per project, keeping the highest severity. (Tunable -- start at 6.)
-- **Dedupe:** same `dimension` + same project -> keep the highest-severity finding. Across lenses, if two findings recommend the same fix, merge them.
+- **Dedupe:** same `dimension` + same project -> keep the highest-severity finding. Across lenses, if two findings recommend the same fix, merge them. Two `route-to-tension` findings are the same fix only when they would file the same tension: role-fit and executor-fit raise different questions and are never merged.
 
 The floor and cap exist to stop over-critique. A wall of findings trains the user to dismiss the whole review. Fewer, sharper findings win.
 

@@ -6,10 +6,12 @@
 #
 #   1. A role-grounding directive (issue #62, Track A PDCA-1) that DEMANDS
 #      the session resolve + announce its active Holacratic role/circle before
-#      its first substantive action -- emitted ONLY when an authenticated
-#      GlassFrog connector is detected (issue #283), and gate-able besides.
-#      When the connector is not authenticated the directive is withheld and
-#      one informational line says so instead.
+#      its first substantive action -- emitted as-is when an authenticated
+#      GlassFrog connector is detected in the local store (issue #283), and
+#      gate-able besides. When none is detected, a CONDITIONAL form is emitted
+#      instead: the session grounds only if its own tool list has a
+#      glassfrog_get_me tool, because the local store cannot see a claude.ai
+#      connector (issue #332).
 #   2. A routine briefing: scheduled-task routines tagged with the `holacracy/`
 #      prefix that fire today or have anomalies (e.g., last fire failed).
 #
@@ -153,13 +155,15 @@ _truthy() {
 # -- it is exactly what an OAuth flow that was started and never completed
 # leaves behind, and it is why "an entry exists" is not the test.
 #
-# FAIL CLOSED, BUT NEVER SILENTLY. If the store is missing, unreadable, or holds
-# no authenticated glassfrog entry, the directive is withheld. That inverts the
-# default ADR-0008 A2 argued for, and A2's objection still stands: an opt-in
-# gate that misfires makes the directive silently absent, which is byte-for-byte
-# the #122 outage. Two things answer it, and neither is optional:
-#   1. A withheld directive announces itself in the payload (see the withheld
-#      marker below). Absence is visible in the transcript, not inferred.
+# A FAILED GATE IS NOT A "NO" (#332). If the store is missing, unreadable, or
+# holds no authenticated glassfrog entry, the hook does not know there is no
+# connector -- only that it cannot see one. A claude.ai connector is never in
+# this store, so until #332 this gate withheld the directive in every Cowork
+# session. It now emits the conditional form instead, and the session decides
+# from its own tool list. A2's objection to a gate that misfires into a silent
+# absence (the #122 outage) still stands, and two things still answer it:
+#   1. The failed-gate path always emits something: the conditional directive,
+#      never nothing.
 #   2. HOLACRACY_GROUNDING_ASSUME_GLASSFROG=on forces the gate open, for any
 #      deployment whose token lives somewhere this check cannot see (a managed
 #      enterprise store, a keychain item under a service name it does not
@@ -238,7 +242,7 @@ _keychain_service() {
 #      group when it expires. Measured: killing `security` mid-dialog dismisses
 #      the dialog. This catches whatever layer 1 cannot predict.
 # Either way the gate falls back to the file, and on a Mac that usually means
-# the withheld line: announced, not silent, and not a prompt.
+# the conditional directive: announced, not silent, and not a prompt.
 #
 # Doing both in the parser's python3 keeps the cost where it was: the gate
 # always started one python3 on macOS, since the Keychain item always names
@@ -435,7 +439,7 @@ _glassfrog_declared() {
 }
 
 grounding=""
-withheld=""
+conditional=""
 if _truthy "${HOLACRACY_GROUNDING_DIRECTIVE:-on}"; then
   inject=1
   if _truthy "${HOLACRACY_GROUNDING_REQUIRE_GLASSFROG:-off}"; then
@@ -455,9 +459,32 @@ if _truthy "${HOLACRACY_GROUNDING_DIRECTIVE:-on}"; then
   # capability suppression ANNOUNCES ITSELF, because a missing connector is a
   # diagnosable condition the operator may not know about, and an absence
   # nobody can see is the #122 failure shape.
+  #
+  # A failed gate no longer means "withhold" (#332). The local store cannot see
+  # a claude.ai connector -- its OAuth lives on claude.ai's side -- so in Cowork,
+  # which delivers GlassFrog only that way, the gate failed in every session
+  # while the connector answered tool calls. The hook cannot tell "no
+  # connector" from "a connector it cannot see", but the session can: it reads
+  # its own tool list. So the decision moves there. An unauthenticated local
+  # server exposes only an `authenticate` tool, not `glassfrog_get_me`, so the
+  # condition still keeps #283's property: no tool, no call, no question.
+  #
+  # The conditional form has its own first line, deliberately NOT the
+  # directive's. scripts/grounding-readout.sh counts a firing by that line, and
+  # a session with no GlassFrog tool must not be counted as one (ADR-0008 A7).
   if [[ "$inject" -eq 1 ]] && ! _glassfrog_authenticated; then
     inject=0
-    withheld="_holacracy-claude-plugin v${PLUGIN_VERSION}: role-grounding directive withheld -- no authenticated GlassFrog connector detected, so role resolution is unavailable this session._"
+    conditional=$(cat <<'CONDITIONAL'
+**Holacracy plugin: role-grounding check (conditional directive)**
+
+This hook found no authenticated GlassFrog connector in the local MCP OAuth store. That store cannot see a claude.ai connector (Cowork, claude.ai), so the hook cannot tell whether GlassFrog is connected. Your own tool list can. Check it, including deferred tools listed by name only:
+
+- If a tool whose name ends in `glassfrog_get_me` is available, from any server, this is the role-grounding directive. Before your first substantive action, resolve and announce the active Holacratic role/circle per `skills/shared/actor-and-role-resolution.md`, following its bounded Step 2 call shape: do NOT pass `include_roles: true` to `glassfrog_get_me`, and do NOT call `glassfrog_list_my_roles` unpaged. Announce the result in your opening lines (e.g. "Operating as **Role of Circle**"). Grounding has NOT yet been performed; this only requests it.
+- If no such tool is available, make no GlassFrog call and do not ask about a role. Proceed with the work.
+CONDITIONAL
+)
+    # Version stamp outside the heredoc, as for the directive below.
+    conditional="${conditional}"$'\n\n'"_Conditional directive emitted by holacracy-claude-plugin v${PLUGIN_VERSION}._"
   fi
   if [[ "$inject" -eq 1 ]]; then
     grounding=$(cat <<'DIRECTIVE'
@@ -625,12 +652,12 @@ fi
 # exit silent. When both are present the grounding directive leads, separated
 # by a horizontal rule.
 #
-# `$withheld` stands in for `$grounding` when the capability gate suppressed the
-# directive (#283). It is ONE informational line: it asks nothing, requires no
-# answer, and instructs the session to do nothing before its first substantive
-# action. That is the whole contract -- a SessionStart payload has no guarantee
-# of a human at the other end, so it must never pose a question.
-lead="${grounding:-$withheld}"
+# `$conditional` stands in for `$grounding` when the capability gate could not
+# confirm a connector (#283, #332). It asks nothing and requires no answer: its
+# no-tool branch tells the session to make no call and proceed. That is the
+# whole contract -- a SessionStart payload has no guarantee of a human at the
+# other end, so it must never pose a question.
+lead="${grounding:-$conditional}"
 if [[ -n "$lead" && -n "$briefing" ]]; then
   additional_context="${lead}"$'\n\n---\n\n'"${briefing}"
 elif [[ -n "$lead" ]]; then

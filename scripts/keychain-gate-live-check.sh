@@ -24,7 +24,8 @@
 #      credentials file is pointed at /nonexistent, so a pass cannot come from
 #      the file. Plus the item's redacted structure (#319 AC4 needs it if this
 #      fails).
-#   2  HOLACRACY_GROUNDING_KEYCHAIN=off withholds (the stale file alone).
+#   2  HOLACRACY_GROUNDING_KEYCHAIN=off falls back to the conditional directive
+#      (the stale file alone; this was "withholds" before #332).
 #   3  Hot-path cost: the hook N times down five gate paths, interleaved,
 #      median per run. This is the number ADR-0008 A6 lacks.
 #   4  CLAUDE_CONFIG_DIR: a non-default config dir gets its own Keychain
@@ -86,14 +87,15 @@ verdict() { # verdict <PASS|FAIL|INFO> <text>
 }
 
 # Run the hook with every HOLACRACY_GROUNDING_* cleared, then the given
-# assignments applied. Prints directive|withheld|none.
+# assignments applied. Prints directive|conditional|none. (`conditional` was
+# `withheld` before #332: a failed gate now emits the tool-conditional form.)
 hook_outcome() {
   local -a clear=()
   local v
   while IFS= read -r v; do clear+=(-u "$v"); done < <(compgen -e | grep '^HOLACRACY_GROUNDING_' || true)
   local out
   out="$(env ${clear[@]+"${clear[@]}"} "$@" bash "$HOOK" </dev/null 2>/dev/null)"
-  if [[ "$out" == *"role-grounding directive withheld"* ]]; then echo withheld
+  if [[ "$out" == *"role-grounding check (conditional directive)"* ]]; then echo conditional
   elif [[ "$out" == *"Holacracy plugin: role-grounding directive"* ]]; then echo directive
   else echo none
   fi
@@ -256,10 +258,10 @@ else
   rec "- file: \`${cred/#$HOME/~}\` absent"
 fi
 o="$(hook_outcome HOLACRACY_GROUNDING_KEYCHAIN=off)"
-if [[ "$o" == withheld ]]; then
-  verdict PASS "Keychain off: withheld line emitted"
+if [[ "$o" == conditional ]]; then
+  verdict PASS "Keychain off: conditional directive emitted"
 else
-  verdict FAIL "Keychain off: got \`$o\`, expected \`withheld\` (if the file is fresh and valid this is not a gate bug -- say so in the issue)"
+  verdict FAIL "Keychain off: got \`$o\`, expected \`conditional\` (if the file is fresh and valid this is not a gate bug -- say so in the issue)"
 fi
 rec ""
 
@@ -419,7 +421,7 @@ rec ""
 
 # ---- manual corroboration ----------------------------------------------------
 rec "### Manual: a real fresh session"
-rec "- [ ] With HOLACRACY_GROUNDING_ASSUME_GLASSFROG removed from settings.json, a fresh \`claude\` session in another repo opens with the role-grounding directive (not the withheld line)."
+rec "- [ ] With HOLACRACY_GROUNDING_ASSUME_GLASSFROG removed from settings.json, a fresh \`claude\` session in another repo opens with the role-grounding directive (not the conditional form)."
 rec ""
 
 say ""

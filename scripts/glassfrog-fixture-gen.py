@@ -81,10 +81,29 @@ def validate(obj: dict, expected: set, what: str, errors: list) -> None:
 # A scenario spec is hand-authored, so a typo'd key would otherwise be silently
 # dropped and the author would be left wondering why the fixture lacks the field
 # they wrote. Unknown keys are an error, not a shrug.
-SPEC_KEYS = {"scenario", "purpose", "organization", "actor", "roles", "tensions"}
+SPEC_KEYS = {"scenario", "purpose", "organization", "actor", "roles", "tensions",
+             "projects", "actions"}
 ROLE_SPEC_KEYS = {"key", "name", "purpose", "parent", "flags", "accountabilities",
                   "domains", "filled_by_actor", "original_role_id"}
 TENSION_SPEC_KEYS = {"key", "on", "status", "created_at", "updated_at", "body"}
+PROJECT_SPEC_KEYS = {"key", "on", "description", "status"}
+ACTION_SPEC_KEYS = {"key", "on", "project", "description", "status"}
+
+# The live status enum for projects and actions, read off the MCP input schema on
+# 2026-10-08 (#357). The stub rejects anything else, as the live server does.
+WORK_STATUSES = ("archived", "cancelled", "completed", "current", "scheduled",
+                 "someday", "waiting")
+
+# Web URLs carry LEGACY numeric ids. Generated ones are synthetic, derived the same
+# way as the v5 ids, so an eval case can paste a URL whose number is stable across
+# regenerations. The host and path shapes are the live ones (#353, #357); the org
+# number is never the real one -- the leak guard checks for it.
+WEB_HOST = "https://app.glassfrog.com"
+
+
+def synth_legacy(scenario: str, key: str) -> int:
+    digest = hashlib.sha256(f"legacy:{scenario}:{key}".encode()).hexdigest()
+    return 1_000_000 + int(digest[:8], 16) % 9_000_000
 
 
 def check_spec_keys(obj: dict, allowed: set, what: str, errors: list) -> None:
@@ -101,6 +120,12 @@ def build(spec: dict) -> tuple:
     for spec_tension in spec.get("tensions", []):
         check_spec_keys(spec_tension, TENSION_SPEC_KEYS,
                         f"tension '{spec_tension.get('key', '?')}'", errors)
+    for spec_project in spec.get("projects", []):
+        check_spec_keys(spec_project, PROJECT_SPEC_KEYS,
+                        f"project '{spec_project.get('key', '?')}'", errors)
+    for spec_action in spec.get("actions", []):
+        check_spec_keys(spec_action, ACTION_SPEC_KEYS,
+                        f"action '{spec_action.get('key', '?')}'", errors)
 
     actor = {
         "id": synth_id("per", scenario, "actor"),
@@ -189,6 +214,87 @@ def build(spec: dict) -> tuple:
         validate(tension, tension_keys, f"tension '{key}'", errors)
         tensions.append(tension)
 
+    # Projects and actions carry the include_legacy_id fields, because the
+    # captured schema was taken with the flag on. The stub strips them when a
+    # call does not ask for them -- the same thing the live API does.
+    org_legacy = synth_legacy(scenario, "org")
+    project_keys = _schema_keys("list_role_projects.json", "items", "[]")
+    action_keys = _schema_keys("list_role_actions.json", "items", "[]")
+
+    has_actions = {a.get("project") for a in spec.get("actions", [])}
+    projects, projects_by_key = [], {}
+    for spec_project in spec.get("projects", []):
+        key = spec_project["key"]
+        on = spec_project["on"]
+        if on not in by_key:
+            errors.append(f"project '{key}': unknown role '{on}'")
+            continue
+        status = spec_project.get("status", "current")
+        if status not in WORK_STATUSES:
+            errors.append(f"project '{key}': status '{status}' is not one of {WORK_STATUSES}")
+        legacy_id = synth_legacy(scenario, f"proj:{key}")
+        role_legacy = synth_legacy(scenario, f"role:{on}")
+        project = {
+            "id": synth_id("proj", scenario, f"proj:{key}"),
+            "type": "project",
+            "description": spec_project["description"],
+            "status": status,
+            "role_id": by_key[on]["id"],
+            "individual_initiative": False,
+            "has_sub_projects": False,
+            "has_actions": key in has_actions,
+            "parent_project_id": None,
+            "tags": [],
+            "link": None,
+            "note": None,
+            "value": None,
+            "effort": None,
+            "created_at": DEFAULT_TS,
+            "updated_at": DEFAULT_TS,
+            "legacy_id": legacy_id,
+            "web_url": f"{WEB_HOST}/organizations/{org_legacy}/my/workspace/projects/"
+                       f"{legacy_id}?tab=workspace_projects",
+            "role_projects_url": f"{WEB_HOST}/organizations/{org_legacy}/orgnav/roles/"
+                                 f"{role_legacy}/projects",
+        }
+        validate(project, project_keys, f"project '{key}'", errors)
+        projects.append(project)
+        projects_by_key[key] = project
+
+    actions, actions_by_key = [], {}
+    for spec_action in spec.get("actions", []):
+        key = spec_action["key"]
+        on = spec_action["on"]
+        parent = spec_action.get("project")
+        if on not in by_key:
+            errors.append(f"action '{key}': unknown role '{on}'")
+            continue
+        if parent not in projects_by_key:
+            errors.append(f"action '{key}': unknown project '{parent}'")
+            continue
+        status = spec_action.get("status", "current")
+        if status not in WORK_STATUSES:
+            errors.append(f"action '{key}': status '{status}' is not one of {WORK_STATUSES}")
+        legacy_id = synth_legacy(scenario, f"actn:{key}")
+        action = {
+            "id": synth_id("actn", scenario, f"actn:{key}"),
+            "type": "action",
+            "description": spec_action["description"],
+            "status": status,
+            "role_id": by_key[on]["id"],
+            "individual_initiative": False,
+            "parent_project_id": projects_by_key[parent]["id"],
+            "tags": [],
+            "created_at": DEFAULT_TS,
+            "updated_at": DEFAULT_TS,
+            "legacy_id": legacy_id,
+            "web_url": f"{WEB_HOST}/organizations/{org_legacy}/my/actions/"
+                       f"{legacy_id}/edit?card=list&tab=workspace_next_actions",
+        }
+        validate(action, action_keys, f"action '{key}'", errors)
+        actions.append(action)
+        actions_by_key[key] = action
+
     fixture = {
         "scenario": scenario,
         "note": "Synthetic. Generated by scripts/glassfrog-fixture-gen.py from "
@@ -198,12 +304,18 @@ def build(spec: dict) -> tuple:
         "organization": organization,
         "roles": roles,
         "tensions": tensions,
+        "projects": projects,
+        "actions": actions,
         "key_map": {
             **{f"role:{k}": v["id"] for k, v in by_key.items()},
             **{
                 f"ten:{t['key']}": synth_id("ten", scenario, f"ten:{t['key']}")
                 for t in spec.get("tensions", [])
             },
+            **{f"proj:{k}": v["id"] for k, v in projects_by_key.items()},
+            **{f"legacy:proj:{k}": v["legacy_id"] for k, v in projects_by_key.items()},
+            **{f"actn:{k}": v["id"] for k, v in actions_by_key.items()},
+            **{f"legacy:actn:{k}": v["legacy_id"] for k, v in actions_by_key.items()},
         },
     }
     return fixture, errors

@@ -146,6 +146,8 @@
       "updated_at": "2023-11-08T16:05:00Z"
     }
   ],
+  "projects": [],
+  "actions": [],
   "key_map": {
     "role:technology-circle": "role_aa94cc13ccc97f9281fda5c459d23d5a",
     "role:platform-ops": "role_ede0013f92413370e6d009e1e54c0ad4",

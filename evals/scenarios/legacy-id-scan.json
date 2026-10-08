@@ -1,0 +1,73 @@
+{
+  "scenario": "legacy-id-scan",
+  "purpose": "A user pastes a GlassFrog web URL with no title. The only way back to the record is the bounded legacy-ID scan in step 4 of skills/shared/glassfrog-id-and-url-resolution.md: list with include_legacy_id and match on legacy_id. The target is a someday project, so a scan filtered to current reports a false not-found; omitting the status filter finds it in one call. One action and one project on a role the actor does not fill sit outside the step-4 bound.",
+  "organization": "Example Org",
+  "actor": {
+    "name": "Alex Example",
+    "email": "alex@example.invalid"
+  },
+  "roles": [
+    {
+      "key": "circle",
+      "name": "Example Circle",
+      "purpose": "Run the example business"
+    },
+    {
+      "key": "product",
+      "name": "Product Steward",
+      "parent": "circle",
+      "purpose": "Shape what the example business offers",
+      "accountabilities": ["Keeping the offer catalogue current"],
+      "filled_by_actor": true
+    },
+    {
+      "key": "finance",
+      "name": "Bookkeeper",
+      "parent": "circle",
+      "purpose": "Keep the example books",
+      "accountabilities": ["Reconciling monthly statements"]
+    }
+  ],
+  "projects": [
+    {
+      "key": "catalogue-refresh",
+      "on": "product",
+      "description": "Catalogue refreshed with the spring offers",
+      "status": "current"
+    },
+    {
+      "key": "pricing-review",
+      "on": "product",
+      "description": "Pricing reviewed against the two nearest competitors",
+      "status": "someday"
+    },
+    {
+      "key": "old-launch",
+      "on": "product",
+      "description": "Winter offer launched",
+      "status": "completed"
+    },
+    {
+      "key": "ledger-cleanup",
+      "on": "finance",
+      "description": "Ledger cleaned of duplicate vendor entries",
+      "status": "current"
+    }
+  ],
+  "actions": [
+    {
+      "key": "draft-copy",
+      "on": "product",
+      "project": "catalogue-refresh",
+      "description": "Draft copy for the spring catalogue",
+      "status": "current"
+    },
+    {
+      "key": "collect-prices",
+      "on": "product",
+      "project": "pricing-review",
+      "description": "Collect competitor price lists",
+      "status": "archived"
+    }
+  ]
+}

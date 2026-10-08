@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: Guarding the plugin against MCP tool-name drift</title>
+<style>
+  :root{
+    --bg:#fbfaf7; --surface:#ffffff; --ink:#1c1a17; --muted:#5f5a52;
+    --line:#e6e1d8; --accent:#7a5b2e; --accent-soft:#f3ecde; --accent-text:#6a4d24;
+    --info-soft:#e7eef4; --info-text:#33546b;
+    --warn-soft:#f6ead9; --warn-text:#8a5a1d;
+    --good-soft:#e6efe4; --good-text:#3f6238;
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#17150f; --surface:#201d16; --ink:#ece7dc; --muted:#a39c8d;
+      --line:#332e24; --accent:#d8b275; --accent-text:#e3c187; --accent-soft:#2c2618;
+      --info-soft:#1d2730; --info-text:#9cc0db;
+      --warn-soft:#2e2415; --warn-text:#e0b072;
+      --good-soft:#1d2a1c; --good-text:#9fc596;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.6 ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:900px; margin-inline:auto; padding:48px 24px 80px}
+  .eyebrow{
+    font:600 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--accent-text); margin:0 0 8px
+  }
+  h1{font-size:2.05rem; line-height:1.22; margin:0 0 14px; font-weight:600}
+  h2{
+    font-size:1.32rem; margin:52px 0 14px; padding-bottom:8px;
+    border-bottom:1px solid var(--line); font-weight:600
+  }
+  h3{font-size:1.1rem; margin:0 0 10px; font-weight:600}
+  p{max-width:70ch}
+  .meta{
+    display:flex; flex-wrap:wrap; gap:8px; margin:0 0 26px;
+    font:500 12px/1 ui-sans-serif, system-ui, sans-serif;
+  }
+  .meta span{
+    background:var(--surface); border:1px solid var(--line); color:var(--muted);
+    border-radius:999px; padding:7px 13px;
+  }
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+    gap:12px; margin:28px 0 8px;
+  }
+  .stat{
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:14px 16px;
+  }
+  .stat b{display:block; font-size:1.6rem; line-height:1.1; font-weight:600}
+  .stat small{
+    display:block; margin-top:5px; color:var(--muted);
+    font:500 11px/1.35 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.05em; text-transform:uppercase;
+  }
+  .card{
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:22px 24px; margin:0 0 20px;
+  }
+  .callout{
+    background:var(--info-soft); border:1px solid var(--line);
+    border-radius:var(--radius); padding:16px 20px; margin:20px 0;
+  }
+  .callout .eyebrow{color:var(--info-text)}
+  .callout p{color:var(--info-text); margin:0}
+  .chips{display:flex; flex-wrap:wrap; gap:7px; margin:0 0 14px}
+  .chip{
+    font:600 11px/1 ui-sans-serif, system-ui, sans-serif;
+    border-radius:999px; padding:6px 11px; border:1px solid transparent;
+  }
+  .chip-id{background:var(--accent-soft); color:var(--accent-text)}
+  .chip-axis{background:var(--info-soft); color:var(--info-text)}
+  .chip-conf{background:var(--good-soft); color:var(--good-text)}
+  .chip-cx{background:var(--warn-soft); color:var(--warn-text)}
+  dl{margin:14px 0 0}
+  dt{
+    font:600 10.5px/1.4 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-top:15px;
+  }
+  dd{margin:5px 0 0; max-width:70ch}
+  code{
+    font:0.86em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background:var(--accent-soft); color:var(--accent-text);
+    padding:1px 5px; border-radius:4px;
+  }
+  .jump{
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:16px 22px; margin:0 0 26px;
+  }
+  .jump ol{margin:0; padding-left:20px; font:15px/1.9 ui-sans-serif, system-ui, sans-serif}
+  .jump a{color:var(--accent-text); text-decoration:none}
+  .jump a:hover{text-decoration:underline}
+  table{border-collapse:collapse; width:100%; margin:16px 0; font-size:.94rem}
+  th,td{border:1px solid var(--line); padding:9px 12px; text-align:left; vertical-align:top}
+  th{
+    background:var(--accent-soft); color:var(--accent-text);
+    font:600 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.08em; text-transform:uppercase;
+  }
+  figure{margin:20px 0 4px}
+  figure svg{
+    display:block; width:100%; height:auto;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  }
+  figcaption{
+    margin-top:8px; color:var(--muted);
+    font:400 13px/1.5 ui-sans-serif, system-ui, sans-serif; max-width:70ch;
+  }
+  ul.tight{max-width:70ch; padding-left:20px}
+  ul.tight li{margin:5px 0}
+  .composition-signal{
+    margin-top:56px; padding-top:18px; border-top:1px solid var(--line);
+    color:var(--muted); font:400 12.5px/1.6 ui-sans-serif, system-ui, sans-serif;
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+<header>
+  <p class="eyebrow">Ideation · repo-grounded</p>
+  <h1>Ideation: Guarding the plugin against MCP tool-name drift</h1>
+  <div class="meta">
+    <span>Date: <time datetime="2026-10-08">2026-10-08</time></span>
+    <span>Topic: mcp-tool-name-drift-guards</span>
+    <span>Mode: repo-grounded</span>
+    <span>Role: Technology Architecture of Enterprise Architecture</span>
+  </div>
+  <p><strong>Focus:</strong> this plugin relies on two different MCP servers, which are continuing to evolve and include some schema changes in terms of tool names. Consider how we might guard against tool name changes breaking the plugin or degrading performance more proactively.</p>
+  <div class="stats">
+    <div class="stat"><b>44</b><small>Raw candidates</small></div>
+    <div class="stat"><b>16 + 3</b><small>Merged + combinations</small></div>
+    <div class="stat"><b>7</b><small>Survivors</small></div>
+    <div class="stat"><b>5 / 5</b><small>Axes covered</small></div>
+  </div>
+</header>
+
+<section id="grounding-context">
+  <h2>Codebase Context</h2>
+  <ul class="tight">
+    <li><strong>Two servers, two naming schemes.</strong> <code>.mcp.json</code> bundles one server today, GlassFrog Extended (key <code>glassfrog-extended</code>, IP-owned, 101 snake_case tools such as <code>glassfrog_get_role</code>). GlassFrog's official MCP (<code>app.glassfrog.com/api/v5/mcp</code>, 36 camelCase tools such as <code>glassfrog_getRole</code>) arrives as a claude.ai or Cowork connector. #340 plans to bundle it as the default.</li>
+    <li><strong>The citation surface is large and hand-typed.</strong> Shipped markdown cites 51 distinct bare tool names about 300 times. There is no alias layer or capability indirection. #337 found seven of those names on neither server, with 69 citations between them. They are v3-era names that outlived the v5 cutover, and a one-off grep during planning found them, not a guard.</li>
+    <li><strong>The prefix is not stable.</strong> Observed prefixes: <code>mcp__plugin_holacracy_glassfrog-extended__</code>, <code>mcp__glassfrog-extended__</code> (user scope), <code>mcp__GlassFrog_Extended__</code> and <code>mcp__GlassFrog_Official__</code> (Cowork), and UUID-named claude.ai connectors. Claude Code dedupes plugin and connector servers by endpoint URL, so a user-scope server with the same URL silently changes the prefix. <code>agents/holacracy-coach.md</code> hard-codes one prefix in 107 names (#338).</li>
+    <li><strong>The eval tier cannot see a rename today.</strong> <code>evals/stub/glassfrog_stub.py:57-71</code> hard-codes 7 read and 4 write tools, so a name the stub does not advertise is simply absent. The preflight at <code>run-behavioural-eval.py:641-646</code> only fails on an empty tool list. <code>made_a_call</code> (<code>:927-935</code>) counts any <code>tool_use</code>, including a call to a dead name. <code>EVENTS_WORTH_KEEPING</code> drops tool results, and the stub's tool dicts are not in the skip-cache key.</li>
+    <li><strong>Building blocks already exist.</strong> <code>--validate-only</code> reads a session's tool list with no model turn and no API cost. Three alarms share a 0/1/2 exit contract, tracking issues that close themselves, and "exit 2 on no evidence". <code>skills-lint.sh</code> has seven mutation-checked checks; CLAUDE.md still says six. <code>glassfrog-mcp-server/src/tools/__tests__/registered-tools.test.ts</code> already keeps an <code>EXPECTED_TOOLS</code> array of Extended's registered names. The session-start hook's conditional directive (#335) already matches tools by name suffix from any server.</li>
+    <li><strong>Past learnings.</strong> Check the live MCP surface before trusting in-repo reference docs (<code>docs/solutions/tooling-decisions/glassfrog-v5-inherited-context-single-call.md</code>). A tool that reports success while silently doing less is the expensive failure: "A tool that fails loudly costs one minute; this one costs the full latency of the work you thought you dispatched." (<code>create-trigger-mcp-builds-a-weaker-routine-than-the-ui.md</code>).</li>
+    <li><strong>External context.</strong> MCP has no ratified tool versioning. The convention is that tool names are stable identifiers, and SEP-2596 proposes an Active→Deprecated→Removed lifecycle. Prior art: <code>mcp-pact</code> (consumer-driven contracts for MCP), ToolDiff and mcpdiff (classify surface changes), and ai-tool-guard (a fingerprint per tool schema).</li>
+  </ul>
+  <div class="callout">
+    <p class="eyebrow">Boundary</p>
+    <p>#337 (dead names), #338 (coach prefix) and #340 (official server as default, plan being written in another session) are existing work. The ideas below build on them or stop them recurring, and they stay out of #340's routing design.</p>
+  </div>
+</section>
+
+<section id="topic-axes">
+  <h2>Topic Axes</h2>
+  <ul class="tight">
+    <li><strong>Citation surface</strong>: how shipped markdown names tools (bare or fully qualified names, dead names, argument names).</li>
+    <li><strong>Upstream change detection</strong>: knowing what each server exposes, and noticing when it changes before users do.</li>
+    <li><strong>Runtime resolution</strong>: which server and prefix a session has, and how a capability binds to whatever tool exists.</li>
+    <li><strong>Degradation measurement</strong>: detecting silent quality loss when a tool is missing or renamed.</li>
+    <li><strong>Ownership and feedback loop</strong>: IP owns Extended and GlassFrog owns Official. Who hears about breakage, and how fixes flow both ways.</li>
+  </ul>
+</section>
+
+<section id="ranked-ideas">
+  <h2>Ranked Ideas</h2>
+  <nav class="jump" aria-label="Ranked ideas">
+    <ol>
+      <li><a href="#i1">Tool-surface lockfile with generated consumers</a></li>
+      <li><a href="#i2">Make dead-tool calls loud in the eval tier</a></li>
+      <li><a href="#i3">A fourth alarm: scheduled drift check with blast radius</a></li>
+      <li><a href="#i4">A consumer contract the Extended server's CI must satisfy</a></li>
+      <li><a href="#i5">Cite capabilities, not tool names</a></li>
+      <li><a href="#i6"><code>/holacracy:doctor</code>: an in-session binding report</a></li>
+      <li><a href="#i7">A minimum equipment list per skill</a></li>
+    </ol>
+  </nav>
+
+  <article class="card" id="i1">
+    <div class="chips"><span class="chip chip-id">I1</span><span class="chip chip-axis">Upstream change detection</span><span class="chip chip-conf">Confidence 85%</span><span class="chip chip-cx">Complexity Medium</span></div>
+    <h3>I1. Tool-surface lockfile with generated consumers</h3>
+    <dl>
+      <dt>Description</dt>
+      <dd>Commit one snapshot per server, <code>contracts/&lt;server&gt;.tools.json</code>. It holds tool names, argument schemas and a read/write class, reduced to types like <code>glassfrog-schema-capture.py</code> output so no real data enters the public repo. Extended's snapshot can come from the server repo's <code>EXPECTED_TOOLS</code> and source without OAuth. Official's comes from an operator-run authenticated <code>tools/list</code>. Four lists that are hand-maintained today are then generated from it: #337's known-names lint set, the stub's <code>READ_TOOLS</code>/<code>WRITE_TOOLS</code> (the deliberate defect overlay stays hand-written), the coach's allow and deny lists, and the preflight's expected-tools assertion. The snapshot hash joins the eval skip-cache key.</dd>
+      <dt>Basis</dt>
+      <dd><code>direct:</code> the stub's hand-written dicts (<code>evals/stub/glassfrog_stub.py:57-71</code>). The stub is outside the skip-cache key inputs. #337's acceptance asks for a check against "the eval stub's tool list or a committed snapshot", so the snapshot has no home yet. The coach's deny list has already drifted: it names 48 write tools but not Extended's newer <code>glassfrog_set_project_tags</code>/<code>glassfrog_set_action_tags</code>. <code>external:</code> lockfiles; ai-tool-guard's per-schema fingerprint.</dd>
+      <dt>Rationale</dt>
+      <dd>Four lists already drift on their own, and one has drifted. With one source, a rename is one reviewed diff, and the snapshot's git history becomes the dependency's changelog. Ideas I2, I3 and I4 all read from it, so it comes first.</dd>
+      <dt>Downsides</dt>
+      <dd>Generated files in a repo whose product is hand-written markdown. Official's snapshot stays operator-local, so it can go stale; I3's freshness gate addresses that. Overlaps #337's "committed snapshot" option; what is new here is the generated consumers.</dd>
+      <dt>Confidence</dt><dd>85%</dd>
+      <dt>Complexity</dt><dd>Medium</dd>
+    </dl>
+    <figure>
+      <svg viewBox="0 0 720 230" role="img" aria-label="One snapshot per server feeds four generated consumers">
+        <style>.t{font:13px ui-sans-serif,system-ui,sans-serif;fill:currentColor}.s{font:11px ui-sans-serif,system-ui,sans-serif;fill:currentColor;opacity:.75}.b{fill:none;stroke:currentColor;stroke-opacity:.45;stroke-width:1.2}.a{stroke:currentColor;stroke-opacity:.5;stroke-width:1.2;fill:none;marker-end:url(#ah)}</style>
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" fill-opacity=".55"/></marker></defs>
+        <rect class="b" x="20" y="30" width="180" height="50" rx="8"/><text class="t" x="110" y="52" text-anchor="middle">Extended surface</text><text class="s" x="110" y="69" text-anchor="middle">EXPECTED_TOOLS + source</text>
+        <rect class="b" x="20" y="140" width="180" height="50" rx="8"/><text class="t" x="110" y="162" text-anchor="middle">Official surface</text><text class="s" x="110" y="179" text-anchor="middle">operator tools/list</text>
+        <rect class="b" x="270" y="80" width="170" height="60" rx="8"/><text class="t" x="355" y="106" text-anchor="middle">contracts/*.tools.json</text><text class="s" x="355" y="124" text-anchor="middle">one committed lockfile</text>
+        <path class="a" d="M200,55 L268,98"/><path class="a" d="M200,165 L268,122"/>
+        <rect class="b" x="520" y="10" width="180" height="38" rx="8"/><text class="t" x="610" y="34" text-anchor="middle">lint known-names</text>
+        <rect class="b" x="520" y="64" width="180" height="38" rx="8"/><text class="t" x="610" y="88" text-anchor="middle">stub registry</text>
+        <rect class="b" x="520" y="118" width="180" height="38" rx="8"/><text class="t" x="610" y="142" text-anchor="middle">coach allow / deny</text>
+        <rect class="b" x="520" y="172" width="180" height="38" rx="8"/><text class="t" x="610" y="196" text-anchor="middle">preflight + cache key</text>
+        <path class="a" d="M440,100 L518,30"/><path class="a" d="M440,106 L518,83"/><path class="a" d="M440,114 L518,137"/><path class="a" d="M440,120 L518,190"/>
+      </svg>
+      <figcaption>Today each of the four consumers on the right is its own hand-kept list. The lockfile makes them all derived values.</figcaption>
+    </figure>
+  </article>
+
+  <article class="card" id="i2">
+    <div class="chips"><span class="chip chip-id">I2</span><span class="chip chip-axis">Degradation measurement</span><span class="chip chip-conf">Confidence 85%</span><span class="chip chip-cx">Complexity Low</span></div>
+    <h3>I2. Make dead-tool calls loud in the eval tier</h3>
+    <dl>
+      <dt>Description</dt>
+      <dd>Four changes to <code>run-behavioural-eval.py</code> and its suite. (a) Every graded leg first runs the zero-cost <code>--validate-only</code> preflight and asserts the expected tools are in the session's tool list. (b) A <code>tool_use</code> naming a tool missing from that list becomes a sixth execution-failure condition. (c) <code>tool_result</code> errors are kept in <code>events.jsonl</code>. (d) A per-PR drift drill in <code>run-behavioural-eval.test.sh</code> renames one stub tool, replays a plan through the fake executor, and asserts the run fails. The drill would fail today, and that failure is the point.</dd>
+      <dt>Basis</dt>
+      <dd><code>direct:</code> <code>made_a_call = any(block.get("type") == "tool_use" …)</code> at <code>run-behavioural-eval.py:927-935</code> counts dead-name calls as calls. The preflight's only tool check is <code>if not tools: return False, "stub advertised no tools"</code> (<code>:641-646</code>). <code>EVENTS_WORTH_KEEPING = ("system", "assistant", "result")</code> drops tool results. The tension-triage <code>no_writes</code> floor is non-discriminating, so a write that could not be built passes the same as a refusal. CLAUDE.md: "A run that did not really happen must fail every assertion, not pass the negative ones."</dd>
+      <dt>Rationale</dt>
+      <dd>This is the one verified place where the repo's own instrument reports green while a cited tool does not exist. It has the same shape as #226: a healthy transcript that measured nothing. It is free and offline, and it extends a pattern the runner already has rather than adding a new one.</dd>
+      <dt>Downsides</dt>
+      <dd>It changes what a green nightly run means, and past baselines may flip. The stub's response to an unknown tool name should be confirmed before relying on (b).</dd>
+      <dt>Confidence</dt><dd>85%</dd>
+      <dt>Complexity</dt><dd>Low</dd>
+    </dl>
+  </article>
+
+  <article class="card" id="i3">
+    <div class="chips"><span class="chip chip-id">I3</span><span class="chip chip-axis">Upstream change detection</span><span class="chip chip-conf">Confidence 75%</span><span class="chip chip-cx">Complexity Medium</span></div>
+    <h3>I3. A fourth alarm: scheduled drift check with blast radius</h3>
+    <dl>
+      <dt>Description</dt>
+      <dd><code>scripts/tool-surface-drift-check.sh</code> diffs each server's live surface against the I1 lockfile on a schedule. It follows the existing alarm contract: exit 0/1/2, a tracking issue that closes on recovery, <code>--dry-run</code>, and exit 2 when the surface could not be read. Each finding is joined to a citation index, for example "<code>glassfrog_list_metrics</code> removed; 15 citations in 3 files". A second section lists unclaimed tools: tools a server gained that no skill cites, so a skill still doing an 18-call traversal learns a single-call tool exists. Extended runs in CI from its source on GitHub. Official runs operator-local with a token, like the first two alarms. A freshness gate blocks a release when the Official snapshot is older than N days. A schema-fingerprint step that guesses "rename vs removal" is optional, because real renames usually change arguments too.</dd>
+      <dt>Basis</dt>
+      <dd><code>direct:</code> schema capture is "a one-time manual process", and the Extended changelog is read by hand (upstream-detection dossier). #337 was found by a one-off grep. CLAUDE.md: "<code>2</code> includes 'nothing to measure.'" The v5 learning records a constraints doc that missed <code>glassfrog_get_role_context</code> and <code>glassfrog_list_role_policies</code>. <code>external:</code> ToolDiff and mcpdiff classify changes as breaking, additive or neutral.</dd>
+      <dt>Rationale</dt>
+      <dd>The plugin learns about a rename the day it ships, with the affected files already listed, before any user hits it. It is detection in both directions: names that broke, and capability the plugin is not using.</dd>
+      <dt>Downsides</dt>
+      <dd>A fourth scheduled job with its own noise budget. The Official leg needs someone to own the credential, and it sees nothing on the days nobody runs it. A field readout from real session transcripts (rejected as a separate idea) would fit here as a later section.</dd>
+      <dt>Confidence</dt><dd>75%</dd>
+      <dt>Complexity</dt><dd>Medium</dd>
+    </dl>
+  </article>
+
+  <article class="card" id="i4">
+    <div class="chips"><span class="chip chip-id">I4</span><span class="chip chip-axis">Ownership and feedback loop</span><span class="chip chip-conf">Confidence 70%</span><span class="chip chip-cx">Complexity Medium</span></div>
+    <h3>I4. A consumer contract the Extended server's CI must satisfy</h3>
+    <dl>
+      <dt>Description</dt>
+      <dd>The plugin's lint derives <code>consumed-tools.json</code> from its own citations: each tool and argument it depends on, generated, never hand-written. <code>glassfrog-mcp-server</code>'s CI fetches it from the plugin's <code>stable</code> branch, and its existing <code>registered-tools.test.ts</code> fails a PR that removes or renames a consumed tool without a deprecation window. During that window the old name stays as an alias described "DEPRECATED, use X". For the Official server, which IP does not control, the same file is the concrete artifact to attach when reporting a break to GlassFrog. Today that path is <code>glassfrog-mcp-server#219</code>, "Report to GlassFrog", with no defined channel.</dd>
+      <dt>Basis</dt>
+      <dd><code>external:</code> <code>mcp-pact</code>, where agents declare the tools and arguments they depend on and CI verifies the server still provides them; Pact consumer-driven contracts; SEP-2596 deprecation lifecycle. <code>direct:</code> the owner dossier records "no formal coordination/deprecation policy with either server", and the v5 cutover "replaces v3 client wholesale", which is how #337's names were orphaned. The verifier confirmed <code>EXPECTED_TOOLS</code> exists in the server repo, which gives the contract somewhere to plug in.</dd>
+      <dt>Rationale</dt>
+      <dd>Every other idea catches drift after it ships. This one stops the drift IP causes itself, on the server with three times the tools, at the PR where the rename is written. That is the cheapest point to catch it.</dd>
+      <dt>Downsides</dt>
+      <dd>It couples two repos' release processes; the server's CI would block on the plugin's state. No leverage over Official beyond a clearer request.</dd>
+      <dt>Confidence</dt><dd>70%</dd>
+      <dt>Complexity</dt><dd>Medium</dd>
+    </dl>
+    <figure>
+      <svg viewBox="0 0 720 150" role="img" aria-label="Plugin citations generate a contract that the server's CI checks before deploy">
+        <style>.t{font:13px ui-sans-serif,system-ui,sans-serif;fill:currentColor}.s{font:11px ui-sans-serif,system-ui,sans-serif;fill:currentColor;opacity:.75}.b{fill:none;stroke:currentColor;stroke-opacity:.45;stroke-width:1.2}.a{stroke:currentColor;stroke-opacity:.5;stroke-width:1.2;fill:none;marker-end:url(#ah2)}</style>
+        <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" fill-opacity=".55"/></marker></defs>
+        <text class="s" x="110" y="20" text-anchor="middle">holacracy-claude-plugin</text>
+        <rect class="b" x="20" y="32" width="180" height="46" rx="8"/><text class="t" x="110" y="60" text-anchor="middle">skill citations</text>
+        <rect class="b" x="20" y="92" width="180" height="46" rx="8"/><text class="t" x="110" y="113" text-anchor="middle">consumed-tools.json</text><text class="s" x="110" y="129" text-anchor="middle">generated by lint</text>
+        <path class="a" d="M110,78 L110,90"/>
+        <text class="s" x="545" y="20" text-anchor="middle">glassfrog-mcp-server</text>
+        <rect class="b" x="300" y="92" width="180" height="46" rx="8"/><text class="t" x="390" y="113" text-anchor="middle">server PR</text><text class="s" x="390" y="129" text-anchor="middle">rename / removal</text>
+        <rect class="b" x="540" y="92" width="160" height="46" rx="8"/><text class="t" x="620" y="113" text-anchor="middle">contract check</text><text class="s" x="620" y="129" text-anchor="middle">fail without alias</text>
+        <path class="a" d="M480,115 L538,115"/>
+        <path class="a" d="M200,100 C 330,40 520,40 600,90"/>
+        <text class="s" x="400" y="52" text-anchor="middle">fetched from stable</text>
+      </svg>
+      <figcaption>The check runs where the rename is authored, before deploy, rather than in the plugin after users are affected.</figcaption>
+    </figure>
+  </article>
+
+  <article class="card" id="i5">
+    <div class="chips"><span class="chip chip-id">I5</span><span class="chip chip-axis">Citation surface</span><span class="chip chip-conf">Confidence 65%</span><span class="chip chip-cx">Complexity High</span></div>
+    <h3>I5. Cite capabilities, not tool names</h3>
+    <dl>
+      <dt>Description</dt>
+      <dd>Skills cite a stable capability such as <code>role.get</code> or <code>tension.create</code>. One table maps each capability to its tool name and argument differences on each server: snake_case on Extended, camelCase on Official, and <code>createTension</code>'s <code>label</code>/<code>meeting_type</code>. A new lint check fails any raw <code>glassfrog_*</code> name outside the table. There are two shapes. A markdown table in <code>skills/shared/</code>, cited by anchor, reuses check 2's citation machinery and keeps the product as markdown. A build step that renders names into shipped files is more robust but adds a build. This should go into #340's plan as an input rather than be planned separately: it gives #340's routing a home without deciding the routing.</dd>
+      <dt>Basis</dt>
+      <dd><code>direct:</code> "51 distinct bare snake_case tool names, ~300 citations … no alias layer or capability indirection" (citation dossier). <code>glassfrog_get_circle</code> alone has 20 references. STRATEGY.md describes the connector as a seam so the backend can be repointed without touching skills, an intent ADR-0005 records that is not implemented. <code>external:</code> feature detection rather than user-agent sniffing.</dd>
+      <dt>Rationale</dt>
+      <dd>Supporting two servers with different naming conventions roughly doubles the citation surface unless the names live in one place. This decides whether #340 lands as about 300 edits or 51 table rows, and every later rename after that.</dd>
+      <dt>Downsides</dt>
+      <dd>One more hop for a reader of a skill. The model may follow an indirect citation less reliably than an inline name, which needs eval evidence. High effort, and it collides with an in-flight plan.</dd>
+      <dt>Confidence</dt><dd>65%</dd>
+      <dt>Complexity</dt><dd>High</dd>
+    </dl>
+  </article>
+
+  <article class="card" id="i6">
+    <div class="chips"><span class="chip chip-id">I6</span><span class="chip chip-axis">Runtime resolution</span><span class="chip chip-conf">Confidence 65%</span><span class="chip chip-cx">Complexity Low</span></div>
+    <h3>I6. <code>/holacracy:doctor</code>: an in-session binding report</h3>
+    <dl>
+      <dt>Description</dt>
+      <dd>A command, also usable as an optional step in <code>actor-and-role-resolution.md</code>, that lists the session's <code>glassfrog_*</code> tools by name suffix and groups them by prefix form (plugin, user scope, Cowork, UUID connector). It compares them with the I1 lockfile or the I5 table. It reports which cited tools are missing, where two servers overlap, and where a user-scope server with the same URL is shadowing the plugin's. The output is a block the user can paste into an issue.</dd>
+      <dt>Basis</dt>
+      <dd><code>direct:</code> ADR-0008 A6 records the manual work needed on 2026-10-08 to find claude.ai connectors answering calls under UUID names, unseen by the local store. #332: connectors never appear in the local OAuth store. <code>hooks-handlers/session-start.sh</code> around line 482 already matches "a tool whose name ends in <code>glassfrog_get_me</code> … from any server". <code>external:</code> Claude Code dedupes servers by endpoint URL.</dd>
+      <dt>Rationale</dt>
+      <dd>It is the only detector here that reaches Cowork and claude.ai sessions, which CI and the operator-local alarms cannot read. "The plugin seems off" becomes one command, and the report to a server owner comes with evidence attached.</dd>
+      <dt>Downsides</dt>
+      <dd>It is pull, not push: it helps only when someone runs it. A model-run comparison is less exact than a script.</dd>
+      <dt>Confidence</dt><dd>65%</dd>
+      <dt>Complexity</dt><dd>Low</dd>
+    </dl>
+  </article>
+
+  <article class="card" id="i7">
+    <div class="chips"><span class="chip chip-id">I7</span><span class="chip chip-axis">Runtime resolution</span><span class="chip chip-conf">Confidence 55%</span><span class="chip chip-cx">Complexity Medium–High</span></div>
+    <h3>I7. A minimum equipment list per skill</h3>
+    <dl>
+      <dt>Description</dt>
+      <dd>This borrows from aviation's minimum equipment list. Each skill and command declares, in frontmatter, the capabilities it needs and how it behaves without each one. <code>requires-capabilities</code> marks a no-go capability: stop and tell the user. <code>enhanced-by</code> marks a go-if capability with a named, reviewed fallback, such as "work from the dispatcher payload and label the output payload-only". Lint check 3 validates the declarations against the lockfile. A shared procedure forbids any write through a guessed substitute name. An eval assertion checks that, under a stub missing a required capability, the transcript names the gap. The declarations can also generate I4's contract, so one statement feeds the build, CI, the cross-repo check and I6.</dd>
+      <dt>Basis</dt>
+      <dd><code>direct:</code> <code>agents/holacracy-coach.md:40-43</code>, "If GlassFrog is not connected, say so and work from the payload the dispatcher gave you", is an ad-hoc fallback entry for one agent. The <code>no_writes</code> floor cannot tell a failed write from a refusal. The create-trigger learning: silent degradation costs "the full latency of the work you thought you dispatched." <code>external:</code> FAA MMEL/MEL dispatch practice.</dd>
+      <dt>Rationale</dt>
+      <dd>When a tool disappears, the costly failure is a plausible substitute producing a weaker result that looks normal, not the error. This makes the fallback a reviewed design choice and makes "degraded" visible in the output. It answers what a missing tool should do, which neither #337, #338 nor #340 addresses.</dd>
+      <dt>Downsides</dt>
+      <dd>Touches every skill's frontmatter. It overlaps #340's routing and I5, so it fits best as a follow-on once those settle.</dd>
+      <dt>Confidence</dt><dd>55%</dd>
+      <dt>Complexity</dt><dd>Medium–High</dd>
+    </dl>
+  </article>
+</section>
+
+<section id="rejection-summary">
+  <h2>Rejection Summary</h2>
+  <table>
+    <thead><tr><th>#</th><th>Idea</th><th>Reason Rejected</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Citator: check cited argument names and DEPRECATED markers</td><td>Name checking is #337's own fix. Parsing arguments out of prose is brittle, and the payoff fades once names come from I1/I5.</td></tr>
+      <tr><td>2</td><td>Chaos stub and prefix-permutation matrix</td><td>Duplicates I2's per-PR drift drill and #338's allowlist verification. Cost-to-value unproven.</td></tr>
+      <tr><td>3</td><td>Field readout of tool failures from real transcripts</td><td>Sees only the operator's own sessions. Better as a later section of I3 than a fifth instrument.</td></tr>
+      <tr><td>4</td><td>Tombstone or intercept tools on Extended with hit counts</td><td>Verifier: the seven #337 names never existed in v5 on either server, so there is no install to intercept for. It adds dead tools to a 101-tool surface and needs telemetry Extended lacks.</td></tr>
+      <tr><td>5</td><td>AIRAC-style dated release cycles for Extended</td><td>Ceremony for one consumer with the same owner. I4's deprecation window gets the benefit without fixed cycles.</td></tr>
+      <tr><td>6</td><td>Move tool guidance into the server's MCP <code>instructions</code></td><td>Does not fix renames or discoverability. Extended sets no <code>instructions</code> today (verifier grep), so it is new server work, and Official is untouched.</td></tr>
+      <tr><td>7</td><td>Enforce the coach's read-only guarantee by tool class (PreToolUse hook)</td><td>Premise overstated: the <code>tools:</code> allowlist already withholds the two write tools missing from the deny list. Hook scoping to one subagent unverified. The stale deny list is a small fix, not an idea.</td></tr>
+      <tr><td>8</td><td>Route drift findings as a Holacracy tension to the server's role</td><td>I3's tracking issue already notifies. A tension needs an authenticated GlassFrog session that scheduled CI lacks. Dogfooding for its own sake.</td></tr>
+      <tr><td>9</td><td>Two-sided reconciliation (unclaimed tools)</td><td>Folded into I3 as a report section rather than standing alone.</td></tr>
+      <tr><td>10</td><td>"Field truth" combination (intercept hits plus transcript readout)</td><td>Its main data source (row 4) was rejected.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer class="composition-signal">Composed 2026-10-08T19:10Z by ce-ideate from the user prompt above, grounded in <code>Integral-Productivity/holacracy-claude-plugin</code> at <code>424cdd5</code>.</footer>
+</main>
+</body>
+</html>

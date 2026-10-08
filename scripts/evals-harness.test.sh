@@ -39,7 +39,7 @@ key() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['key_map'
 
 # Drive the stub with a here-doc of JSON-RPC lines; print each result payload.
 stub_call() {  # stdin = jsonrpc lines, $1 = write log path (optional)
-  GLASSFROG_STUB_FIXTURE="$FIXTURE" \
+  GLASSFROG_STUB_FIXTURE="${STUB_FIXTURE:-$FIXTURE}" \
   GLASSFROG_STUB_WRITE_LOG="${1:-}" \
     python3 "$STUB"
 }
@@ -113,6 +113,10 @@ for live_id in role_81f4328624e445ba8edc8812f74dec7b \
   grep -rqF "$live_id" "$REPO/evals/" 2>/dev/null \
     && fail "live GlassFrog id $live_id appears under evals/"
 done
+# The real organization's LEGACY number. Web URLs carry it (#357), and a fixture
+# web_url copied from a live response would publish it.
+grep -rqF "organizations/32215/" "$REPO/evals/" 2>/dev/null \
+  && fail "the live organization's legacy number appears in a URL under evals/"
 pass
 
 # Every committed schema is clean by its own checker.
@@ -131,8 +135,13 @@ python3 "$GEN" "$REPO/evals/scenarios/authority-already-held.json" --stdout > "$
   || fail "generator failed on the shipped scenario"
 python3 "$GEN" "$REPO/evals/scenarios/authority-already-held.json" --stdout > "$TMP/g2.json"
 diff -q "$TMP/g1.json" "$TMP/g2.json" >/dev/null || fail "generator is not deterministic"
-diff -q "$TMP/g1.json" "$FIXTURE" >/dev/null \
-  || fail "committed fixture is stale — regenerate it from its scenario"
+for spec in "$REPO"/evals/scenarios/*.json; do
+  name="$(basename "$spec")"
+  python3 "$GEN" "$spec" --stdout > "$TMP/regen.json" \
+    || fail "generator failed on the shipped scenario $name"
+  diff -q "$TMP/regen.json" "$REPO/evals/fixtures/glassfrog/$name" >/dev/null 2>&1 \
+    || fail "committed fixture $name is stale or missing — regenerate it from its scenario"
+done
 pass
 
 # A typo'd spec key must be an error. Silently dropping it would leave the author
@@ -167,6 +176,27 @@ try:
     ok = r.returncode != 0 and b"the live schema carries" in r.stderr
 finally:
     shutil.copy(f"{tmp}/backup.json", target)
+sys.exit(0 if ok else 1)
+PY
+pass
+
+# Projects and actions are validated the same way (#357). Corrupting the project
+# schema must stop the scenario that carries projects.
+python3 - "$GEN" "$REPO" "$TMP" <<'PY' || fail "generator did not validate generated projects against the captured schema"
+import json, shutil, subprocess, sys
+gen, repo, tmp = sys.argv[1], sys.argv[2], sys.argv[3]
+target = f"{repo}/evals/fixtures/schema/list_role_projects.json"
+shutil.copy(target, f"{tmp}/backup-proj.json")
+try:
+    doc = json.load(open(target))
+    doc["schema"]["items"][0]["a_field_the_api_does_not_return"] = "string"
+    json.dump(doc, open(target, "w"))
+    r = subprocess.run([sys.executable, gen,
+                        f"{repo}/evals/scenarios/legacy-id-scan.json", "--stdout"],
+                       capture_output=True)
+    ok = r.returncode != 0 and b"project 'catalogue-refresh': missing key" in r.stderr
+finally:
+    shutil.copy(f"{tmp}/backup-proj.json", target)
 sys.exit(0 if ok else 1)
 PY
 pass
@@ -283,6 +313,103 @@ for required in ('glassfrog_get_me','glassfrog_list_my_roles','glassfrog_list_su
                  'glassfrog_create_tension','glassfrog_update_tension'):
     assert required in names, (required, sorted(names))" \
   || fail "stub initialize/tools-list handshake is incomplete"
+pass
+
+# ---------------------------------------------------------------------------
+# 4g-4j. Projects, actions and include_legacy_id (#357).
+# ---------------------------------------------------------------------------
+# Step 4 of skills/shared/glassfrog-id-and-url-resolution.md matches a pasted URL
+# by listing with include_legacy_id and comparing legacy_id. Without these the
+# behavioural tier cannot exercise that step at all.
+SCAN="$REPO/evals/fixtures/glassfrog/legacy-id-scan.json"
+skey() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['key_map'][sys.argv[2]])" "$SCAN" "$1"; }
+SCAN_PRODUCT="$(skey role:product)"
+call() {  # $1 tool, $2 JSON arguments -> the tool payload as JSON
+  printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"%s","arguments":%s}}\n' "$1" "$2" \
+    | STUB_FIXTURE="$SCAN" stub_call \
+    | python3 -c "import json,sys;print(json.load(sys.stdin)['result']['content'][0]['text'])"
+}
+
+# 4g. The legacy fields appear ONLY when the flag is passed, as on the live API,
+#     and the URLs carry the same number as legacy_id. A skill that reads
+#     legacy_id without asking for it must find nothing.
+call glassfrog_list_role_projects "{\"role_id\":\"$SCAN_PRODUCT\"}" | python3 -c "
+import json,sys
+items=json.load(sys.stdin)['items']
+assert items, 'no projects returned'
+for i in items:
+    for k in ('legacy_id','web_url','role_projects_url'):
+        assert k not in i, (k, i)" \
+  || fail "stub returned legacy fields without include_legacy_id"
+call glassfrog_list_role_projects "{\"role_id\":\"$SCAN_PRODUCT\",\"include_legacy_id\":true}" \
+  | python3 -c "
+import json,sys
+fx=json.load(open('$SCAN'))
+by_id={i['id']:i for i in json.load(sys.stdin)['items']}
+p=by_id[fx['key_map']['proj:pricing-review']]
+lid=fx['key_map']['legacy:proj:pricing-review']
+assert p['legacy_id']==lid and isinstance(lid,int), (p, lid)
+assert p['web_url'].endswith(f'/my/workspace/projects/{lid}?tab=workspace_projects'), p['web_url']
+assert p['role_projects_url'].endswith('/projects'), p['role_projects_url']" \
+  || fail "stub legacy_id/web_url/role_projects_url do not match the live shape"
+call glassfrog_list_role_actions "{\"role_id\":\"$SCAN_PRODUCT\",\"include_legacy_id\":true}" \
+  | python3 -c "
+import json,sys
+fx=json.load(open('$SCAN'))
+items={i['id']:i for i in json.load(sys.stdin)['items']}
+a=items[fx['key_map']['actn:draft-copy']]
+lid=fx['key_map']['legacy:actn:draft-copy']
+assert a['legacy_id']==lid, a
+assert a['web_url'].endswith(f'/my/actions/{lid}/edit?card=list&tab=workspace_next_actions'), a['web_url']
+assert 'role_projects_url' not in a, a" \
+  || fail "stub action legacy fields do not match the live shape"
+pass
+
+# 4h. Omitting status returns EVERY status in one call (verified live 2026-10-08,
+#     #357), and a single-valued status narrows to that status. The scan's target
+#     is a someday project, so a current-only scan misses it.
+call glassfrog_list_role_projects "{\"role_id\":\"$SCAN_PRODUCT\"}" | python3 -c "
+import json,sys
+got=sorted(i['status'] for i in json.load(sys.stdin)['items'])
+assert got==['completed','current','someday'], got" \
+  || fail "omitting status did not return every status"
+call glassfrog_list_role_projects "{\"role_id\":\"$SCAN_PRODUCT\",\"status\":\"current\"}" | python3 -c "
+import json,sys
+got=[i['status'] for i in json.load(sys.stdin)['items']]
+assert got==['current'], got" \
+  || fail "a status filter did not narrow to that status"
+call glassfrog_list_role_actions "{\"role_id\":\"$SCAN_PRODUCT\"}" | python3 -c "
+import json,sys
+got=sorted(i['status'] for i in json.load(sys.stdin)['items'])
+assert got==['archived','current'], got" \
+  || fail "omitting status on actions did not return every status"
+pass
+
+# 4i. A status outside the live enum is rejected, as the live schema rejects
+#     'done'. Accepting it would let a skill pass with a filter production refuses.
+call glassfrog_list_role_projects "{\"role_id\":\"$SCAN_PRODUCT\",\"status\":\"done\"}" | python3 -c "
+import json,sys
+p=json.load(sys.stdin)
+assert p.get('error',{}).get('status')==400, p" \
+  || fail "stub accepted a status the live API rejects"
+pass
+
+# 4j. list_my_projects is bounded to roles the actor fills: the first rung of
+#     step 4. A project on someone else's role must not appear.
+call glassfrog_list_my_projects "{\"include_legacy_id\":true}" | python3 -c "
+import json,sys
+fx=json.load(open('$SCAN'))
+ids={i['id'] for i in json.load(sys.stdin)['items']}
+assert fx['key_map']['proj:pricing-review'] in ids, ids
+assert fx['key_map']['proj:ledger-cleanup'] not in ids, ids" \
+  || fail "list_my_projects was not bounded to the actor's own roles"
+printf '{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' | STUB_FIXTURE="$SCAN" stub_call | python3 -c "
+import json,sys
+tools={t['name']:t for t in json.load(sys.stdin)['result']['tools']}
+for n in ('glassfrog_list_role_projects','glassfrog_list_role_actions','glassfrog_list_my_projects'):
+    props=tools[n]['inputSchema']['properties']
+    assert 'include_legacy_id' in props and 'status' in props, (n, props)" \
+  || fail "tools/list does not advertise the project/action tools with include_legacy_id"
 pass
 
 echo "evals-harness.test.sh: $CASES cases passed"

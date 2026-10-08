@@ -39,6 +39,15 @@ One write is deliberately NOT accommodating: `update_tension` rejects
 glassfrog-mcp-server#123 comment 5149496749). A stub that accepted it would let a
 skill pass an eval by doing something that fails in production, which is worse
 than having no eval.
+
+LEGACY IDS ARE OPT-IN, AS LIVE
+------------------------------
+Projects and actions are stored in the fixture with `legacy_id` and `web_url`
+(plus `role_projects_url` on projects), because their schema was captured with
+`include_legacy_id: true`. The stub strips those fields unless a call passes the
+flag, exactly as the live API does (#353, #357). Omitting `status` returns every
+status in one call, and a status outside the live enum is rejected -- both
+verified against GlassFrog Extended on 2026-10-08.
 """
 
 import json
@@ -62,7 +71,19 @@ READ_TOOLS = {
     "glassfrog_list_role_tensions": "Tensions sensed directly on a role.",
     "glassfrog_list_subrole_tensions": "Tensions sensed on sub-roles of a role (documented recursive).",
     "glassfrog_get_tension": "Fetch one tension by id.",
+    "glassfrog_list_role_projects": "Projects on a role. Omit status for every status. "
+                                    "include_legacy_id adds legacy_id, web_url, role_projects_url.",
+    "glassfrog_list_role_actions": "Actions on a role. Omit status for every status. "
+                                   "include_legacy_id adds legacy_id, web_url.",
+    "glassfrog_list_my_projects": "Projects on roles the actor fills. Omit status for every status. "
+                                  "include_legacy_id adds legacy_id, web_url, role_projects_url.",
 }
+WORK_LIST_TOOLS = ("glassfrog_list_role_projects", "glassfrog_list_role_actions",
+                   "glassfrog_list_my_projects")
+# The live enum, read off the MCP input schema on 2026-10-08 (#357).
+WORK_STATUSES = ["archived", "cancelled", "completed", "current", "scheduled",
+                 "someday", "waiting"]
+LEGACY_FIELDS = ("legacy_id", "web_url", "role_projects_url")
 WRITE_TOOLS = {
     "glassfrog_create_tension": "Create a tension on a role. Args: role_id, body.",
     "glassfrog_update_tension": "Update a tension. Args: tension_id, and body and/or status.",
@@ -153,6 +174,23 @@ def handle_tool(name, args):
                  and (status is None or t["status"] == status)]
         return page(found, args, "ten")
 
+    if name in WORK_LIST_TOOLS:
+        status = args.get("status")
+        if status is not None and status not in WORK_STATUSES:
+            return {"error": {"status": 400,
+                              "message": f"status must be one of {WORK_STATUSES}"}}
+        if name == "glassfrog_list_my_projects":
+            mine = {r["id"] for r in FIXTURE["roles"] if r["fillers"]}
+            found = [p for p in FIXTURE.get("projects", []) if p["role_id"] in mine]
+        else:
+            pool = FIXTURE.get("projects" if name == "glassfrog_list_role_projects"
+                               else "actions", [])
+            found = [w for w in pool if w["role_id"] == args.get("role_id")]
+        found = [w for w in found if status is None or w["status"] == status]
+        if not args.get("include_legacy_id"):
+            found = [{k: v for k, v in w.items() if k not in LEGACY_FIELDS} for w in found]
+        return page(found, args, "work")
+
     if name == "glassfrog_get_tension":
         tension = TENSIONS.get(args.get("tension_id"))
         if not tension:
@@ -212,6 +250,9 @@ def tool_list():
             required = ["tension_id"]
         if "tensions" in name:
             props["status"] = s
+        if name in WORK_LIST_TOOLS:
+            props["status"] = {"type": "string", "enum": WORK_STATUSES}
+            props["include_legacy_id"] = {"type": "boolean"}
         props.update({"per_page": {"type": "integer"}, "cursor": s})
         out.append(entry(name, desc, props, required))
     for name, desc in WRITE_TOOLS.items():

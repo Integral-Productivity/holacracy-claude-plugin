@@ -209,6 +209,8 @@
       "updated_at": "2025-01-08T11:00:00Z"
     }
   ],
+  "projects": [],
+  "actions": [],
   "key_map": {
     "role:product-circle": "role_74caf8a4b31b4fe6bad11e19142b55fa",
     "role:circle-lead": "role_3d5920a1530ff65ee2becd47de1ec4e2",

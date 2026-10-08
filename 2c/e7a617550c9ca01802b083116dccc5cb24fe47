@@ -1,0 +1,23 @@
+evals/stub/glassfrog_stub.py
+  s_d2f8538b488b90::t_99fd4d16c8d695 81-88,184-185,188,256
+scripts/evals-harness.test.sh
+  s_d2f8538b488b90::t_99fd4d16c8d695 38-40,327,414-424
+scripts/glassfrog-fixture-gen.py
+  s_d2f8538b488b90::t_99fd4d16c8d695 123-128,224-225,232-234,236,241,258,264,275-277,283,296,317-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ce7a617550c9ca01802b083116dccc5cb24fe47",
+  "prompts": {},
+  "sessions": {
+    "s_d2f8538b488b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "390fb120-0f59-40b4-9b30-43095be25b84",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    }
+  }
+}

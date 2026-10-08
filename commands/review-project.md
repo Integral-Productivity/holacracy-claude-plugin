@@ -25,7 +25,7 @@ Load three shared references at the start:
    - **No argument** -> the actor's own role projects. For each role, `glassfrog_list_role_projects(role_id, status: "current", include: ["actions"])`. This is the **backlog walk** (inline critic passes).
    - **A circle name** -> that whole circle's projects: `list_role_projects` across the circle's roles + `glassfrog_list_sub_projects` for the recursive view. Still a **backlog walk** (inline passes).
    - **A named/identified project** -> resolve one project (by id `proj_<32hex>`, or by matching the name against `list_role_projects(..., q: "<name>")`; if ambiguous, ask which one) and run the **deep single-project review** (independent critic subagents -- see "Deep review" below).
-   - **A pasted GlassFrog URL** -> the legacy numeric ID in it is not resolvable via v5. Follow `skills/shared/glassfrog-id-and-url-resolution.md`: ask for the item's title, resolve by search, and confirm whether it is a project or an action before running the rubric on it.
+   - **A pasted GlassFrog URL** -> the legacy numeric ID in it has no direct lookup, and search does not index it. Follow `skills/shared/glassfrog-id-and-url-resolution.md`: ask for the item's title first and resolve that by search, fall back to that doc's legacy-ID scan on GlassFrog Extended only when the title is unavailable, and confirm whether it is a project or an action before running the rubric on it.
 
    If a target can't be resolved (no matching project, actor fills no role in the named circle), name the constraint honestly and stop.
 

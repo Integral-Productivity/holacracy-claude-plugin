@@ -1,0 +1,23 @@
+docs/adr/0008-session-injected-honest-grounding-directive.md
+  s_f9241eeb7412da::t_ead4527c3d0e7a 208
+scripts/keychain-gate-live-check.sh
+  s_f9241eeb7412da::t_ead4527c3d0e7a 27-28
+hooks-handlers/session-start.test.sh
+  s_f9241eeb7412da::t_ead4527c3d0e7a 664-667
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a6eb88438ff5361de28033921d5e04d6c5a6f20",
+  "prompts": {},
+  "sessions": {
+    "s_f9241eeb7412da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b533ee42-ccb8-4b67-9f7d-d8b215658c05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    }
+  }
+}

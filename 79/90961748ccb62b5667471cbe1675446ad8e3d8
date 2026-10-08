@@ -1,0 +1,30 @@
+README.md
+  s_f9241eeb7412da::t_a4483c69e1f324 79
+hooks-handlers/session-start.test.sh
+  s_f9241eeb7412da::t_5c25b054b92d4c 116-129,131-133,136-143,145
+  s_f9241eeb7412da::t_b631c7a7d4dca7 102,113,338-341,368-369,403,405-406,414-416,418,420-422,427,488-489,522-523,572,638-670
+  s_f9241eeb7412da::t_ad19a733bbf67d 345,353,360,436,499,510,530,549,579,637
+hooks-handlers/session-start.sh
+  s_f9241eeb7412da::t_384ae067e5146b 9-14,158-166,245,442,477,487,655-660
+  s_f9241eeb7412da::t_06221696659bd5 462-474,478-486
+scripts/keychain-gate-live-check.sh
+  s_f9241eeb7412da::t_d437c1cdb4c791 89-90,97,260-261,263,423
+docs/adr/0008-session-injected-honest-grounding-directive.md
+  s_f9241eeb7412da::t_ed555caba58516 193-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7990961748ccb62b5667471cbe1675446ad8e3d8",
+  "prompts": {},
+  "sessions": {
+    "s_f9241eeb7412da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b533ee42-ccb8-4b67-9f7d-d8b215658c05",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    }
+  }
+}

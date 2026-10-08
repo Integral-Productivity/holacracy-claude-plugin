@@ -1,0 +1,28 @@
+skills/shared/project-review-critics.md
+  s_8db4471384d2a0::t_6906c2d1bd9092 76,80
+  s_8db4471384d2a0::t_a40bd1cafc43c6 107
+skills/shared/project-well-formedness.md
+  s_8db4471384d2a0::t_1f22074f575532 56-62
+  s_8db4471384d2a0::t_15040d7dea5780 78
+agents/project-critic.md
+  s_8db4471384d2a0::t_64181f96ee891b 36
+commands/review-project.md
+  s_8db4471384d2a0::t_64181f96ee891b 72,88
+  s_8db4471384d2a0::t_262df660c844ad 89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "404db9738719307400a0943055f3593dbf5c3bfb",
+  "prompts": {},
+  "sessions": {
+    "s_8db4471384d2a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "20894086-9bda-47f1-9faf-a64a312933ef",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    }
+  }
+}

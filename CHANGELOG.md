@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.22.2...v0.23.0) (2026-10-08)
+
+
+### Features
+
+* **review-project:** flag next actions whose executor doesn't match the role's fillers ([#355](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/355)) ([936eeee](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/936eeee8c232dc454538e8cd661ff5a711202052))
+
 ## [0.22.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.22.1...v0.22.2) (2026-10-08)
 
 

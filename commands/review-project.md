@@ -69,7 +69,7 @@ Load three shared references at the start:
 
 When the argument resolves to one project, run the panel as **independent adversarial critics** for genuine independence:
 
-1. Gather the project data once: the project record, its actions (`include: ["actions"]`), the owning role's context (`glassfrog_get_role_context`), goals (`list_role_goals`), and domains (`list_role_domains`).
+1. Gather the project data once: the project record, its actions (`include: ["actions"]`), the owning role's context (`glassfrog_get_role_context`), goals (`list_role_goals`), domains (`list_role_domains`), and fillers (`glassfrog_list_role_assignments` -- each carries `actor.kind`, which the assignment-fit lens's executor-fit check needs).
 2. Dispatch five `project-critic` subagents in parallel (`agents/project-critic.md`), one per lens, each seeded with that shared data + its lens name. Each returns findings in the schema.
 3. Merge, dedupe, rank, cap (step 4 above), then present the expanded findings block (step 6) and apply per step 7.
 
@@ -84,6 +84,8 @@ A confirmed `advisory-route` finding is a *structural* gap -- the project is on 
 - Reason about scope-authority from `skills/shared/authority-boundaries.md`, exactly as `/holacracy:check-authority` does.
 
 Assignment-fit defaults to the structural role-fit reading. Only surface the person-fit reading when the user explicitly asks -- it's a Lead Link question.
+
+An **executor-fit** finding (assignment-fit, `executor-mismatch`) routes the same way: `tension-capture` files it on the sensing role's backlog as usual, and the body names the circle's Circle Lead as the role whose call this is -- whether a human or an agent should carry the next action is a question about who fills the role. If the actor fills that Circle Lead role, `tension-capture` stops at `triage-gates.md` Step 1 and reports that the role already holds it and it may just need doing; present that as the outcome, not a failure, and do not count it as a tension routed. Front-load the topic, e.g. *"Executor-fit: [Role]'s next action on [project] needs a person for [judgment / relationship / access], and the role is filled only by agents -- ..."*. It never reassigns the role and never changes the project's status or tags.
 
 ## Behaviour
 

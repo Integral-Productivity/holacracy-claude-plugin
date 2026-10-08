@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.23.0...v0.24.0) (2026-10-08)
+
+
+### Features
+
+* **evals:** make the legacy-ID URL scan testable in the eval stub ([#362](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/362)) ([1e4f8b5](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/1e4f8b526d1064aac37ca0013f4513ffa4477a37))
+
 ## [0.23.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.22.2...v0.23.0) (2026-10-08)
 
 

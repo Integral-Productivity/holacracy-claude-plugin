@@ -46,8 +46,10 @@ Projects and actions are stored in the fixture with `legacy_id` and `web_url`
 (plus `role_projects_url` on projects), because their schema was captured with
 `include_legacy_id: true`. The stub strips those fields unless a call passes the
 flag, exactly as the live API does (#353, #357). Omitting `status` returns every
-status in one call, and a status outside the live enum is rejected -- both
-verified against GlassFrog Extended on 2026-10-08.
+status in one call, and a status outside the live enum is rejected. Verified
+against GlassFrog Extended on 2026-10-08: unfiltered calls returned mixed statuses
+on all three tools (completed was observed on projects only; no completed action
+was on hand).
 """
 
 import json

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.22.1...v0.22.2) (2026-10-08)
+
+
+### Bug Fixes
+
+* **hooks:** ground Cowork sessions through a tool-conditional directive ([#335](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/335)) ([0c065c0](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/0c065c03f22b1f818365eb6b9332bdaf3d5be053))
+
 ## [0.22.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.22.0...v0.22.1) (2026-10-06)
 
 

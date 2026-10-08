@@ -1,0 +1,19 @@
+docs/ideation/2026-10-08-mcp-tool-name-drift-guards-ideation.html
+  s_a120cf24896eb0::t_ac41fd1cb83dc4 1-364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "55d81b9546b2ae733b00f523fece208eac9282a6",
+  "prompts": {},
+  "sessions": {
+    "s_a120cf24896eb0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4ef9a377-e096-4c49-8639-f987926fe9bd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    }
+  }
+}

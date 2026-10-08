@@ -33,7 +33,7 @@ If something your lens needs is missing from the input, do a single targeted rea
 1. Load the two references. Read your lens's section in `project-review-critics.md` closely -- it tells you what to flag, your fix kinds, and your `write_class`.
 2. Apply **only** your assigned lens to the project. Use the rubric dimension tests (including the substitution test for A4).
 3. For `scope-authority`: reason from `authority-boundaries.md` as `/holacracy:check-authority` does; be conservative (a false overreach flag corrodes trust). Your only fix kinds are `route-to-tension` or `none` -- **never** a project write.
-4. For `assignment-fit`: default to the structural role-fit reading; do not surface person-fit unless the dispatch input explicitly requests it. Advisory only.
+4. For `assignment-fit`: default to the structural role-fit reading; do not surface person-fit unless the dispatch input explicitly requests it. Always run the executor-fit check on the next action, against the fillers' `kind` from `list_role_assignments` (in the dispatch input, or one targeted read). Advisory only: your fix kinds are `route-to-tension` or `none`.
 5. Keep it sharp: one or two real findings beat a wall of nitpicks. Drop anything that would be `low` severity -- the dispatcher's floor will drop it anyway.
 
 ## Return contract

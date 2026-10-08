@@ -53,6 +53,13 @@ Run the dimensions in order. A project is **well-formed** when the first family 
 **B3. Best-fit owner.** Given the scope, is this the right role -- and is its filler resourced?
 
 > *Test (structural, default):* would another existing role more naturally own this outcome? If yes, that's a role-fit gap. *Test (person-fit, opt-in only):* is the current filler resourced for it? -- surface only when the user explicitly asks; it's a Lead Link question. Advisory only; never re-assign.
+>
+> *Test (executor-fit):* ask it of the project's **next action** (its first `current` action), not the outcome. Can an AI agent carry that action out without further human judgment, or does it need a person -- and if so, for which of **judgment**, **relationship**, or **access**? Then compare with the kind of each filler: `glassfrog_list_role_assignments(role_id)` returns each assignment's `actor.kind` (`human` | `agent`); if an assignment lacks the embedded actor, read it with `glassfrog_get_actor(actor_id)`. Two shapes are a gap:
+>
+> - **(a)** the next action needs a person, and every filler of the role is an agent;
+> - **(b)** the next action is wholly agent-executable, every filler is human, **and** an agent already fills some role in the same circle (`glassfrog_list_subrole_actors(<the role's parent circle>)`). Without that last condition, (b) fits almost every human-filled role and is noise.
+>
+> A role with mixed fillers, an unfilled role, or a project with no next action (that is A2's finding) produces no executor-fit finding. Word it as a question, never a defect, and never re-assign: who fills a role is the Circle Lead's call. Executor-fit is a review verdict only -- it is never written onto the project. When the honest answer is "this can't move until a person is available," GlassFrog's native project status (`waiting`, `someday`) already says so; do not add a note convention or a hand-applied tag alongside it.
 
 ---
 
@@ -68,6 +75,7 @@ A project's verdict is one state. When several apply, the verdict is the state o
 | `needs-owner` | Owner role unclear (A3) | A | review-project, capture-project |
 | `needs-goal` | Serves no goal/target (B1) | B | review-project |
 | `out-of-authority` | Scope exceeds role authority (B2/B3) | B | review-project |
+| `executor-mismatch` | Next action's executor need (human or agent) doesn't match the role's fillers (B3 executor-fit) | B | review-project |
 | `stale` | No movement over time | -- | **sweep (#76) only** |
 | `blocked` | Waiting on an external dependency | -- | **sweep (#76) only** |
 

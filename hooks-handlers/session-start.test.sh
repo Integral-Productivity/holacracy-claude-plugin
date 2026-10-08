@@ -99,7 +99,7 @@ export HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED"
 
 # Since #318 the gate reads the macOS Keychain before the file. Pin it off for
 # the whole suite, for the same reason the file is pinned above: on a Mac whose
-# real Keychain holds an authenticated glassfrog entry, every "withheld" case
+# real Keychain holds an authenticated glassfrog entry, every "conditional" case
 # would otherwise flip. The Keychain cases (G27+) turn it on explicitly, against
 # a stub `security`, never the real one.
 export HOLACRACY_GROUNDING_KEYCHAIN=off
@@ -110,22 +110,39 @@ export HOLACRACY_GROUNDING_KEYCHAIN_LOCKED=0
 
 # Likewise the escape hatch. An operator running the #318 workaround has it set
 # in their settings, every shell they spawn inherits it, and it forces every
-# "withheld" case open. G21 sets it explicitly where it is under test.
+# "conditional" case open. G21 sets it explicitly where it is under test.
 unset HOLACRACY_GROUNDING_ASSUME_GLASSFROG
 
-# The withheld payload must be informational only: no question mark anywhere,
-# and none of the imperatives that would make it a precondition on work.
-assert_non_blocking() {  # $1 = captured output, $2 = context
-  echo "$1" | grep -q "role-grounding directive withheld" \
-    || fail "$2: expected the withheld marker, got: $1"
+# When the local store shows no authenticated glassfrog entry, the hook cannot
+# tell "no connector" from "a connector it cannot see" -- a claude.ai connector
+# (Cowork, claude.ai) never appears in that store (#332). So it emits the
+# CONDITIONAL form: the session checks its own tool list and grounds only when
+# a glassfrog_get_me tool is there. Before #332 this path emitted a "withheld"
+# line, which was wrong in every Cowork session.
+#
+# The conditional form must keep #283's property: with no GlassFrog tool,
+# nothing asks a question and nothing calls glassfrog_get_me. So: no question
+# mark anywhere, an explicit no-tool branch that makes no call, and not the
+# unconditional directive (whose first line is the readout's firing marker).
+assert_conditional() {  # $1 = captured output, $2 = context
+  echo "$1" | grep -q "role-grounding check (conditional directive)" \
+    || fail "$2: expected the conditional directive, got: $1"
   echo "$1" | grep -q "role-grounding directive\*\*" \
-    && fail "$2: the directive itself must not be emitted when withheld"
+    && fail "$2: the unconditional directive must not be emitted"
+  echo "$1" | grep -q "withheld" \
+    && fail "$2: the pre-#332 withheld line must not be emitted"
   echo "$1" | grep -q "?" \
     && fail "$2: SessionStart output must never pose a question"
-  echo "$1" | grep -qi "before your first substantive action" \
-    && fail "$2: withheld output must not gate the first substantive action"
+  echo "$1" | grep -q "glassfrog_get_me" \
+    || fail "$2: the condition must name the tool the session looks for"
+  echo "$1" | grep -q "any server" \
+    || fail "$2: the condition must accept the tool from any server, claude.ai connectors included (#332)"
+  echo "$1" | grep -qi "make no GlassFrog call" \
+    || fail "$2: the no-tool branch must make no GlassFrog call (#283)"
+  echo "$1" | grep -q "include_roles" \
+    || fail "$2: the conditional form must keep the bounded call shape (#148)"
   echo "$1" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' \
-    || fail "$2: withheld envelope is not valid JSON"
+    || fail "$2: conditional envelope is not valid JSON"
 }
 
 # 1. A windowed entry whose packet_summary contains a triple-quote and a
@@ -318,13 +335,14 @@ marker="$(awk "/<<'DIRECTIVE'/{found=1; next} found{print; exit}" "$HOOK")"
 # first substantive action. Without an authenticated connector that instruction
 # cannot be carried out, so it must not be given.
 
-# G17. No credentials store at all -> directive withheld, and the withholding
-#      is VISIBLE. Fail-closed is the decision; fail-closed-and-silent is not,
-#      because a silent absence is the #122 outage wearing a new hat.
+# G17. No credentials store at all -> the conditional directive, not silence.
+#      The hook cannot see whether a connector exists, so the session decides
+#      from its own tool list (#332). A silent absence here would be the #122
+#      outage wearing a new hat.
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-assert_non_blocking "$out" "no credentials store"
+assert_conditional "$out" "no credentials store"
 
 # G18. A glassfrog record whose accessToken is the empty string is the
 #      unauthenticated state, not the authenticated one. This is the exact
@@ -332,14 +350,14 @@ assert_non_blocking "$out" "no credentials store"
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-assert_non_blocking "$out" "glassfrog record with an empty access token"
+assert_conditional "$out" "glassfrog record with an empty access token"
 
 # G19. Another server's valid token is not glassfrog's. Guards against a check
 #      that matches on "the store has some token in it".
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$OTHER_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-assert_non_blocking "$out" "a different server holding a valid token"
+assert_conditional "$out" "a different server holding a valid token"
 
 # G20. An authenticated glassfrog record -> the directive emits, unchanged.
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
@@ -347,8 +365,8 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
 echo "$out" | grep -q "role-grounding directive\*\*" \
   || fail "an authenticated glassfrog connector must let the directive through"
-echo "$out" | grep -q "withheld" \
-  && fail "the withheld marker must not accompany an emitted directive"
+echo "$out" | grep -q "conditional directive" \
+  && fail "the conditional form must not accompany an emitted directive"
 
 # G21. The escape hatch. A deployment whose token lives where this check cannot
 #      see it (an OS keychain, a managed store) must have a way back to the
@@ -382,10 +400,10 @@ echo "$out" | grep -qi "ask which role" \
 out="$(cd "$TMP" && HOLACRACY_GROUNDING_DIRECTIVE=off \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-assert_quiet "$out" "master toggle off must not emit the withheld marker"
+assert_quiet "$out" "master toggle off must not emit the conditional directive"
 
-# G24. Withheld directive + a routine briefing combine into one valid envelope,
-#      briefing intact. The withheld line must not swallow the other half.
+# G24. Conditional directive + a routine briefing combine into one valid
+#      envelope, briefing intact. Neither half may swallow the other.
 cat > "$TMP/g24.jsonl" <<JSONL
 {"id":"g24","title":"holacracy/secretary/pre-tactical-prep/ops","next_fire":"${FIRE_TODAY}","last_status":"ok"}
 JSONL
@@ -393,20 +411,20 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$TMP/g24.jsonl" bash "$HOOK")"
 echo "$out" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' \
-  || fail "withheld + briefing envelope is not valid JSON"
-echo "$out" | grep -q "role-grounding directive withheld" \
-  || fail "withheld marker missing when a briefing is also present"
+  || fail "conditional + briefing envelope is not valid JSON"
+echo "$out" | grep -q "role-grounding check (conditional directive)" \
+  || fail "conditional directive missing when a briefing is also present"
 echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/ops" \
-  || fail "briefing lost when the directive was withheld"
+  || fail "briefing lost alongside the conditional directive"
 
-# G25. The withheld marker carries the running version, for the same reason
-#      every other payload does (issue #122): a transcript must be able to say
-#      which copy of the plugin decided to withhold.
+# G25. The conditional directive carries the running version, for the same
+#      reason every other payload does (issue #122): a transcript must be able
+#      to say which copy of the plugin made the directive conditional.
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
 echo "$out" | grep -q "v${expected_version}" \
-  || fail "withheld marker does not carry version ${expected_version}"
+  || fail "conditional directive does not carry version ${expected_version}"
 
 # G26. A malformed credentials store fails CLOSED, not open, and does not crash
 #      the hook. Exit 0 always: a broken store must never block a session.
@@ -415,7 +433,7 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$CRED_DIR/malformed.json" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"; rc=$?
 [ "$rc" -eq 0 ] || fail "a malformed credentials store must still exit 0"
-assert_non_blocking "$out" "malformed credentials store"
+assert_conditional "$out" "malformed credentials store"
 
 # --- Keychain credential store (issue #318) ---------------------------------
 # On macOS the harness keeps the MCP OAuth store in the login Keychain, and a
@@ -467,8 +485,8 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
 echo "$out" | grep -q "role-grounding directive\*\*" \
   || fail "an authenticated glassfrog entry in the Keychain must let the directive through (#318)"
-echo "$out" | grep -q "withheld" \
-  && fail "the withheld marker must not accompany a Keychain-authenticated directive"
+echo "$out" | grep -q "conditional directive" \
+  && fail "the conditional form must not accompany a Keychain-authenticated directive"
 
 # G28. The same world with the Keychain switched off reads only the stale file
 #      and withholds. This is G27's control: it proves G27 passes because the
@@ -478,7 +496,7 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-assert_non_blocking "$out" "Keychain off, stale file only"
+assert_conditional "$out" "Keychain off, stale file only"
 
 # G29. When the Keychain item is readable it IS the store. Its unauthenticated
 #      entry is not outvoted by a file that happens to hold a token: on a Mac
@@ -489,7 +507,7 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   STUB_KEYCHAIN_ITEM="$EMPTY_CRED" \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$AUTHED_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-assert_non_blocking "$out" "Keychain entry unauthenticated, stale file authenticated"
+assert_conditional "$out" "Keychain entry unauthenticated, stale file authenticated"
 
 # G30. No Keychain item -> fall back to the file, so a Mac without the item
 #      (and every pre-#318 deployment) behaves exactly as before.
@@ -501,15 +519,15 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
 echo "$out" | grep -q "role-grounding directive\*\*" \
   || fail "a missing Keychain item must fall back to the file store"
 
-# G31. Neither store holds anything -> withheld, and the withholding is still
-#      announced. The Keychain path must not reintroduce a silent zero.
+# G31. Neither store holds anything -> the conditional directive, still
+#      emitted. The Keychain path must not reintroduce a silent zero.
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
   STUB_KEYCHAIN_ITEM="$MISSING_CRED" \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"; rc=$?
 [ "$rc" -eq 0 ] || fail "no Keychain item and no file must still exit 0"
-assert_non_blocking "$out" "no Keychain item and no file"
+assert_conditional "$out" "no Keychain item and no file"
 
 # G32/G33. The production default, `auto`, decides on the platform. Every case
 #      above pins the mode explicitly, so without these an `auto` that always
@@ -528,7 +546,7 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE -u HOLACRACY_GROUNDING_
   STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-assert_non_blocking "$out" "auto off macOS must read only the file"
+assert_conditional "$out" "auto off macOS must read only the file"
 
 # --- Per-profile Keychain items (issue #319) ---------------------------------
 # Claude Code names the item per config dir: with CLAUDE_CONFIG_DIR set the
@@ -551,14 +569,14 @@ echo "$out" | grep -q "role-grounding directive\*\*" \
   || fail "with CLAUDE_CONFIG_DIR set, the hook must read that profile's Keychain item (#319)"
 
 # G35. G34 inverted: default item authenticated, profile item absent ->
-#      withheld. The default profile's login must not vouch for another profile.
+#      conditional. The default profile's login must not vouch for another profile.
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
   CLAUDE_CONFIG_DIR="$PROFILE_DIR" STUB_PROFILE_SUFFIX="$PROFILE_SUFFIX" \
   STUB_PROFILE_ITEM="$MISSING_CRED" STUB_KEYCHAIN_ITEM="$AUTHED_CRED" \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$EMPTY_CRED" \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
-assert_non_blocking "$out" "default profile authenticated, active profile not"
+assert_conditional "$out" "default profile authenticated, active profile not"
 
 # G36. An explicit HOLACRACY_GROUNDING_KEYCHAIN_SERVICE still wins over the
 #      derived name: it is the escape hatch if Claude Code changes the scheme.
@@ -616,6 +634,39 @@ out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
 elapsed=$(( $(date +%s) - start ))
 [ "$elapsed" -lt 10 ] || fail "a hanging Keychain read must be cut off (took ${elapsed}s)"
-assert_non_blocking "$out" "Keychain read timed out, stale file"
+assert_conditional "$out" "Keychain read timed out, stale file"
+
+# --- claude.ai connectors (issue #332) --------------------------------------
+# A claude.ai connector's OAuth lives on claude.ai's side, so it never appears
+# in the local store. Cowork delivers GlassFrog only that way and runs with no
+# login Keychain. Measured 2026-10-08: the Keychain held only the local
+# glassfrog entries; both claude.ai GlassFrog connectors were absent from it
+# while answering tool calls in the same session.
+
+# G39. The Cowork shape: the Keychain is consulted and holds no item, and no
+#      credentials file exists. The pre-#332 hook withheld the directive here in
+#      every Cowork session. It must now hand the decision to the session, which
+#      can see its own tools, and say why it could not decide itself.
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  PATH="$STUB_BIN:$PATH" HOLACRACY_GROUNDING_KEYCHAIN=on \
+  STUB_KEYCHAIN_ITEM="$MISSING_CRED" \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+assert_conditional "$out" "claude.ai connector only (Cowork)"
+echo "$out" | grep -q "claude.ai connector" \
+  || fail "the conditional directive must say why the hook could not see the connector (#332)"
+
+# G40. The conditional form is not a firing in the readout's terms. The readout
+#      counts the unconditional directive by its first line (G16); if the
+#      conditional form carried that line, a session with no GlassFrog tool
+#      would be counted as a delivered directive, and the PDCA-1 window would
+#      silently change meaning (ADR-0008 A3).
+readout_marker='**Holacracy plugin: role-grounding directive**'
+out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
+  HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
+  HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"
+case "$out" in
+  *"$readout_marker"*) fail "the conditional directive must not carry the readout's firing marker" ;;
+esac
 
 echo "PASS: all session-start hook tests"

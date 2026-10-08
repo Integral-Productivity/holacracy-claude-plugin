@@ -86,14 +86,15 @@ verdict() { # verdict <PASS|FAIL|INFO> <text>
 }
 
 # Run the hook with every HOLACRACY_GROUNDING_* cleared, then the given
-# assignments applied. Prints directive|withheld|none.
+# assignments applied. Prints directive|conditional|none. (`conditional` was
+# `withheld` before #332: a failed gate now emits the tool-conditional form.)
 hook_outcome() {
   local -a clear=()
   local v
   while IFS= read -r v; do clear+=(-u "$v"); done < <(compgen -e | grep '^HOLACRACY_GROUNDING_' || true)
   local out
   out="$(env ${clear[@]+"${clear[@]}"} "$@" bash "$HOOK" </dev/null 2>/dev/null)"
-  if [[ "$out" == *"role-grounding directive withheld"* ]]; then echo withheld
+  if [[ "$out" == *"role-grounding check (conditional directive)"* ]]; then echo conditional
   elif [[ "$out" == *"Holacracy plugin: role-grounding directive"* ]]; then echo directive
   else echo none
   fi
@@ -256,10 +257,10 @@ else
   rec "- file: \`${cred/#$HOME/~}\` absent"
 fi
 o="$(hook_outcome HOLACRACY_GROUNDING_KEYCHAIN=off)"
-if [[ "$o" == withheld ]]; then
-  verdict PASS "Keychain off: withheld line emitted"
+if [[ "$o" == conditional ]]; then
+  verdict PASS "Keychain off: conditional directive emitted"
 else
-  verdict FAIL "Keychain off: got \`$o\`, expected \`withheld\` (if the file is fresh and valid this is not a gate bug -- say so in the issue)"
+  verdict FAIL "Keychain off: got \`$o\`, expected \`conditional\` (if the file is fresh and valid this is not a gate bug -- say so in the issue)"
 fi
 rec ""
 
@@ -419,7 +420,7 @@ rec ""
 
 # ---- manual corroboration ----------------------------------------------------
 rec "### Manual: a real fresh session"
-rec "- [ ] With HOLACRACY_GROUNDING_ASSUME_GLASSFROG removed from settings.json, a fresh \`claude\` session in another repo opens with the role-grounding directive (not the withheld line)."
+rec "- [ ] With HOLACRACY_GROUNDING_ASSUME_GLASSFROG removed from settings.json, a fresh \`claude\` session in another repo opens with the role-grounding directive (not the conditional form)."
 rec ""
 
 say ""

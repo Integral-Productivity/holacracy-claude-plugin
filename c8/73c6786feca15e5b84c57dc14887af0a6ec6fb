@@ -1,0 +1,20 @@
+docs/spikes/2026-10-09-skill-broker-spike.md
+  s_082e5710c3059c::t_bbdc7274ed60e3 1-24,26,28-29,31-33,35-41
+  s_082e5710c3059c::t_d2333303f33b08 25,27,30,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c873c6786feca15e5b84c57dc14887af0a6ec6fb",
+  "prompts": {},
+  "sessions": {
+    "s_082e5710c3059c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "afd93c35-4d22-4adc-8156-b7c183f6ba75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kraig Parkinson <kraigparkinson@integralproductivity.com>"
+    }
+  }
+}

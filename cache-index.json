@@ -1,25 +1,25 @@
 {
   "_run_summary": {
-    "generated_at": "2026-10-10T07:08:28.385193+00:00",
-    "hits": 0,
+    "generated_at": "2026-10-11T07:09:36.709279+00:00",
+    "hits": 4,
     "legs": [
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "person-tension-refused-and-routed-to-idr",
         "config": "with_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "person-tension-refused-and-routed-to-idr",
         "config": "without_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "authority-gate-fires-before-venue-routing",
         "config": "with_skill"
       },
       {
-        "cache_hit": false,
+        "cache_hit": true,
         "case": "authority-gate-fires-before-venue-routing",
         "config": "without_skill"
       },
@@ -44,7 +44,7 @@
         "config": "without_skill"
       }
     ],
-    "misses": 8
+    "misses": 4
   },
   "leg_00a5fbe25f079fe79c2ebb80f90f2aa4": {
     "case": "successor-written-before-archive",
@@ -8132,12 +8132,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.67,
-        "total_duration_seconds": 1.71,
+        "executor_duration_seconds": 1.92,
+        "total_duration_seconds": 1.94,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-10-10T07:08:28.385193+00:00",
+    "last_executed": "2026-10-11T07:09:36.709279+00:00",
     "successful": false
   },
   "leg_5ada680790a1074f558bf676c102b2c0": {
@@ -13473,12 +13473,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.63,
-        "total_duration_seconds": 1.66,
+        "executor_duration_seconds": 1.77,
+        "total_duration_seconds": 1.8,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-10-10T07:08:28.385193+00:00",
+    "last_executed": "2026-10-11T07:09:36.709279+00:00",
     "successful": false
   },
   "leg_933013fb3582535479466f3d27087f0d": {
@@ -16036,12 +16036,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.77,
-        "total_duration_seconds": 1.81,
+        "executor_duration_seconds": 2.91,
+        "total_duration_seconds": 2.93,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-10-10T07:08:28.385193+00:00",
+    "last_executed": "2026-10-11T07:09:36.709279+00:00",
     "successful": false
   },
   "leg_acc9750c9b05cfd90634727f0c6dcb59": {
@@ -19695,12 +19695,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.69,
-        "total_duration_seconds": 1.72,
+        "executor_duration_seconds": 1.87,
+        "total_duration_seconds": 1.89,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-10-10T07:08:28.385193+00:00",
+    "last_executed": "2026-10-11T07:09:36.709279+00:00",
     "successful": false
   },
   "leg_d05bf67b5c229c94c65b4ed41bdbae5c": {

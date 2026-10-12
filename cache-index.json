@@ -1,6 +1,6 @@
 {
   "_run_summary": {
-    "generated_at": "2026-10-11T07:09:36.709279+00:00",
+    "generated_at": "2026-10-12T07:28:21.322628+00:00",
     "hits": 4,
     "legs": [
       {
@@ -8132,12 +8132,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.92,
-        "total_duration_seconds": 1.94,
+        "executor_duration_seconds": 1.71,
+        "total_duration_seconds": 1.74,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-10-11T07:09:36.709279+00:00",
+    "last_executed": "2026-10-12T07:28:21.322628+00:00",
     "successful": false
   },
   "leg_5ada680790a1074f558bf676c102b2c0": {
@@ -13473,12 +13473,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.77,
-        "total_duration_seconds": 1.8,
+        "executor_duration_seconds": 1.74,
+        "total_duration_seconds": 1.77,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-10-11T07:09:36.709279+00:00",
+    "last_executed": "2026-10-12T07:28:21.322628+00:00",
     "successful": false
   },
   "leg_933013fb3582535479466f3d27087f0d": {
@@ -16036,12 +16036,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 2.91,
-        "total_duration_seconds": 2.93,
+        "executor_duration_seconds": 2.14,
+        "total_duration_seconds": 2.17,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-10-11T07:09:36.709279+00:00",
+    "last_executed": "2026-10-12T07:28:21.322628+00:00",
     "successful": false
   },
   "leg_acc9750c9b05cfd90634727f0c6dcb59": {
@@ -19695,12 +19695,12 @@
         "total": 5
       },
       "timing": {
-        "executor_duration_seconds": 1.87,
-        "total_duration_seconds": 1.89,
+        "executor_duration_seconds": 1.67,
+        "total_duration_seconds": 1.7,
         "total_tokens": 0
       }
     },
-    "last_executed": "2026-10-11T07:09:36.709279+00:00",
+    "last_executed": "2026-10-12T07:28:21.322628+00:00",
     "successful": false
   },
   "leg_d05bf67b5c229c94c65b4ed41bdbae5c": {

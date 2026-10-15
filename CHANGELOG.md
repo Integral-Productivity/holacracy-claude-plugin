@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.24.0...v0.24.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* keep plugin and skill descriptions inside Claude's upload limits ([#377](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/377)) ([35ff189](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/35ff189e41c4f9ac964d068cc86b6b3c348c45f0))
+
 ## [0.24.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.23.0...v0.24.0) (2026-10-08)
 
 

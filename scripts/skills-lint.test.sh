@@ -313,6 +313,20 @@ printf '{"name":"demo","description":"%s"}\n' "$(printf 'x%.0s' $(seq 1 501))" >
 git -C "$TMP/c8b" add -A && git -C "$TMP/c8b" commit -qm c8b
 _assert_load_bearing 8 "$TMP/c8b" "plugin.json description over 500"
 
+# 8d. Wrapping a plain scalar across lines is valid YAML and does not change
+#     its value. Measuring only the first line reads it as a few characters.
+_fixture "$TMP/c8d"
+wrapped="$(printf '  word word word word word word word word word word\\n%.0s' $(seq 1 25))"
+sedi "s/^description: A demo skill\\.\$/description: Start\\n$wrapped/" "$TMP/c8d/skills/demo/SKILL.md"
+git -C "$TMP/c8d" add -A && git -C "$TMP/c8d" commit -qm c8d
+_assert_load_bearing 8 "$TMP/c8d" "wrapped plain description over 1024"
+
+# 8e. A description the parser cannot read is a finding, not length zero.
+_fixture "$TMP/c8e"
+printf 'Caf\351\n' >> "$TMP/c8e/skills/demo/SKILL.md"
+git -C "$TMP/c8e" add -A && git -C "$TMP/c8e" commit -qm c8e
+_assert_load_bearing 8 "$TMP/c8e" "unreadable SKILL.md"
+
 # 8c. At the limit is fine. An off-by-one here would fail a manifest the
 #     validator accepts, and the fix would be to trim a correct description.
 _fixture "$TMP/c8c"

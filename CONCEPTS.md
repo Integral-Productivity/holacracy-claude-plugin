@@ -7,14 +7,19 @@ Shared domain vocabulary for this project — entities, named processes, and sta
 ## Release channel
 
 ### Stable channel
-The published release channel installed users actually receive — a long-lived branch every install channel's catalog follows by ref rather than by pinned version, so whatever commit the channel points at *is* the current release. Distinct from the default branch, which carries in-flight work that has not been released.
+The published release channel installed users actually receive — a long-lived branch every install channel's catalog follows by ref rather than by pinned version, so whatever commit the channel points at *is* the current release for those installs. Distinct from the default branch, which carries in-flight work that has not been released, and from the Org synced copy, which is fed from this channel but does not follow it automatically.
 
 The channel only ever moves forward, and only onto a commit that has been tagged with a release version matching the plugin manifest's declared version; a mismatch aborts the move rather than publishing. Advancement is a fast-forward and is never forced, so a non-fast-forward attempt fails loudly instead of rewinding the channel. Because the channel is advanced by a separate automated step rather than by merging, the default branch can sit arbitrarily far ahead of it — a release can be tagged and announced while the channel, and therefore every installed user, stays on the previous version.
 
 ### Promotion
 The act of advancing the Stable channel onto a tagged release commit. Promotion is what makes a release reach users; tagging alone does not. It is triggered by the release tag, not by the merge that produced it, and it verifies the version match before moving the channel.
 
-Pre-release versions deliberately do not trigger promotion, so a pre-release can be tagged without publishing to installed users. Because promotion is a distinct step from tagging, "the release shipped" and "users can get it" are separate claims — confirming a release means confirming the channel moved, not that the tag exists.
+Pre-release versions deliberately do not trigger promotion, so a pre-release can be tagged without publishing to installed users. Because promotion is a distinct step from tagging, "the release shipped" and "users can get it" are separate claims — confirming a release means confirming the channel moved, not that the tag exists. Promotion is not the last gate for every session: those that load the Org synced copy get the release only after that copy accepts it.
+
+### Org synced copy
+The organization-hosted copy of the plugin that Claude's hosted surfaces (Cowork, scheduled tasks, and cloud sessions) load, as distinct from a copy a person installs from a catalog. It is refreshed from the release channel by an upload that Claude's plugin validator must accept, so it can sit on an older version while the Stable channel moves on.
+
+A rejected upload gives no signal back to the repository: the copy simply keeps the last version it accepted. The validator enforces limits that the local manifest check does not, such as a maximum length for the plugin and skill descriptions, so a release can pass every repository check and still never reach these sessions. The only reliable evidence of what the copy holds comes from inside a session that loads it.
 
 ## Agentic routines
 

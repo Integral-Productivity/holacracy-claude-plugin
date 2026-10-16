@@ -297,7 +297,47 @@ SKILLS_LINT_ROOT="$TMP/c7c" bash "$LINT" >/dev/null 2>&1 \
   || { SKILLS_LINT_ROOT="$TMP/c7c" bash "$LINT"; fail "check 7 flagged a frontmatter tools: grant" ; }
 CASES=$((CASES + 1))
 
-# 8. The real repository is clean. Fixtures prove the checks work; this proves
+# 8. A description over Claude's upload limit. The upload validator rejects it
+#    silently from our side, and the org copy stays on the last accepted
+#    version -- 0.22.0 for a week in #368. Folded (`>`) because that is how
+#    five of the six real skills are written, so the parser is tested on it.
+_fixture "$TMP/c8"
+long="$(printf 'word %.0s' $(seq 1 210))"
+sedi "s/^description: A demo skill\\.\$/description: >\\n  $long/" "$TMP/c8/skills/demo/SKILL.md"
+git -C "$TMP/c8" add -A && git -C "$TMP/c8" commit -qm c8
+_assert_load_bearing 8 "$TMP/c8" "skill description over 1024"
+
+_fixture "$TMP/c8b"
+mkdir -p "$TMP/c8b/.claude-plugin"
+printf '{"name":"demo","description":"%s"}\n' "$(printf 'x%.0s' $(seq 1 501))" > "$TMP/c8b/.claude-plugin/plugin.json"
+git -C "$TMP/c8b" add -A && git -C "$TMP/c8b" commit -qm c8b
+_assert_load_bearing 8 "$TMP/c8b" "plugin.json description over 500"
+
+# 8d. Wrapping a plain scalar across lines is valid YAML and does not change
+#     its value. Measuring only the first line reads it as a few characters.
+_fixture "$TMP/c8d"
+wrapped="$(printf '  word word word word word word word word word word\\n%.0s' $(seq 1 25))"
+sedi "s/^description: A demo skill\\.\$/description: Start\\n$wrapped/" "$TMP/c8d/skills/demo/SKILL.md"
+git -C "$TMP/c8d" add -A && git -C "$TMP/c8d" commit -qm c8d
+_assert_load_bearing 8 "$TMP/c8d" "wrapped plain description over 1024"
+
+# 8e. A description the parser cannot read is a finding, not length zero.
+_fixture "$TMP/c8e"
+printf 'Caf\351\n' >> "$TMP/c8e/skills/demo/SKILL.md"
+git -C "$TMP/c8e" add -A && git -C "$TMP/c8e" commit -qm c8e
+_assert_load_bearing 8 "$TMP/c8e" "unreadable SKILL.md"
+
+# 8c. At the limit is fine. An off-by-one here would fail a manifest the
+#     validator accepts, and the fix would be to trim a correct description.
+_fixture "$TMP/c8c"
+mkdir -p "$TMP/c8c/.claude-plugin"
+printf '{"name":"demo","description":"%s"}\n' "$(printf 'x%.0s' $(seq 1 500))" > "$TMP/c8c/.claude-plugin/plugin.json"
+git -C "$TMP/c8c" add -A && git -C "$TMP/c8c" commit -qm c8c
+SKILLS_LINT_ROOT="$TMP/c8c" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c8c" bash "$LINT"; fail "check 8 flagged a 500-character plugin description"; }
+CASES=$((CASES + 1))
+
+# 9. The real repository is clean. Fixtures prove the checks work; this proves
 #    they are actually pointed at the plugin.
 bash "$LINT" >/dev/null 2>&1 || { bash "$LINT"; fail "the live repository does not pass its own lint"; }
 CASES=$((CASES + 1))

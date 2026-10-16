@@ -438,6 +438,74 @@ check_roster_delegation() {
   done <<< "$(_live_md)"
 }
 
+# ---------------------------------------------------------------------------
+# Check 8 -- descriptions fit Claude's plugin upload limits.
+#
+# Claude's upload validator rejects a plugin.json `description` over 500
+# characters and a SKILL.md `description` over 1024, even though
+# `claude plugin validate` passes both. A rejected upload is silent from here:
+# the org's claude.ai copy -- the one Cowork and cloud sessions load -- just
+# keeps the last version it accepted. Every release through 0.24.0 carried a
+# 1282-character plugin description; the org copy stopped at 0.22.0, and
+# scheduled Cowork runs kept loading it for a week after #335 shipped (#368).
+#
+# No PyYAML: the runner image does not promise it. The parser below reads
+# the shapes a description takes -- plain or quoted (wrapped or not) and
+# `>` / `|` block scalars. A file it cannot read is a finding, never length 0.
+# ---------------------------------------------------------------------------
+_description_length() {  # $1 = markdown file with YAML frontmatter
+  python3 - "$1" <<'PY'
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().split("\n")
+if not lines or lines[0].strip() != "---":
+    sys.exit(0)
+fm = []
+for line in lines[1:]:
+    if line.strip() == "---":
+        break
+    fm.append(line)
+length = 0
+for i, line in enumerate(fm):
+    if not line.startswith("description:"):
+        continue
+    value = line[len("description:"):].strip()
+    body = []
+    for nxt in fm[i + 1:]:
+        if nxt and not nxt[0].isspace():
+            break
+        body.append(nxt.strip())
+    if value[:1] in (">", "|"):
+        joiner = " " if value[0] == ">" else "\n"
+        value = joiner.join(body).strip()
+    else:
+        value = " ".join([value] + body).strip()
+        if value[:1] in ("'", '"') and value[-1:] == value[:1]:
+            value = value[1:-1]
+    length = len(value)
+    break
+print(length)
+PY
+}
+
+check_upload_limits() {
+  skipped 8 && return 0
+  local f n
+  if [ -f "$ROOT/.claude-plugin/plugin.json" ]; then
+    n="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1])).get("description","")))' \
+          "$ROOT/.claude-plugin/plugin.json" 2>/dev/null)" \
+      || { finding 8 ".claude-plugin/plugin.json" "could not read description"; n=0; }
+    [ "${n:-0}" -le 500 ] \
+      || finding 8 ".claude-plugin/plugin.json" "description is $n characters; Claude's upload limit is 500"
+  fi
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    n="$(_description_length "$ROOT/$f" 2>/dev/null)" && [ -n "$n" ] \
+      || { finding 8 "$f" "could not read description"; continue; }
+    [ "$n" -le 1024 ] \
+      || finding 8 "$f" "description is $n characters; Claude's upload limit is 1024"
+  done < <(git -C "$ROOT" ls-files 'skills/*/SKILL.md')
+}
+
 check_links
 check_step_citations
 check_frontmatter
@@ -445,5 +513,6 @@ check_version_bump
 check_command_refs
 check_orphans
 check_roster_delegation
+check_upload_limits
 
 check_common_summarize "skills-lint"

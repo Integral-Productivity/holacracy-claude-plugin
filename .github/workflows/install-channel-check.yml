@@ -87,7 +87,7 @@ jobs:
 
       - name: Read ip-org-auditor App PEM from 1Password
         id: pem
-        uses: Integral-Productivity/reusable-workflows/.github/actions/read-pem-from-1p@b0caf389303ff150b6c99d618ca7730c5ce6f589 # v1.3.0
+        uses: Integral-Productivity/reusable-workflows/.github/actions/read-pem-from-1p@4be842a9ffc6e36b7f5c7e4cda0d2119e65b90dd # v1.4.0
         with:
           op-service-account-token: ${{ secrets.OP_AUDITOR_PUBLIC_TOKEN }}
           item-path: op://ip-org-auditor-public/ip-org-auditor/private_key

@@ -19,11 +19,11 @@ permissions:
 
 jobs:
   validate:
-    uses: Integral-Productivity/reusable-workflows/.github/workflows/validate-plugin-manifest.yml@b0caf389303ff150b6c99d618ca7730c5ce6f589 # v1.3.0
+    uses: Integral-Productivity/reusable-workflows/.github/workflows/validate-plugin-manifest.yml@4be842a9ffc6e36b7f5c7e4cda0d2119e65b90dd # v1.4.0
 
   # The repo also serves itself as a one-plugin marketplace (ADR-0016), so its
   # catalog gets the same schema gate as its manifest.
   validate-marketplace:
-    uses: Integral-Productivity/reusable-workflows/.github/workflows/validate-plugin-manifest.yml@b0caf389303ff150b6c99d618ca7730c5ce6f589 # v1.3.0
+    uses: Integral-Productivity/reusable-workflows/.github/workflows/validate-plugin-manifest.yml@4be842a9ffc6e36b7f5c7e4cda0d2119e65b90dd # v1.4.0
     with:
       manifest-path: .claude-plugin/marketplace.json

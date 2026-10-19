@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.24.1...v0.25.0) (2026-10-19)
+
+
+### Features
+
+* **governance:** adopt devops-excellence standard ([#380](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/380)) ([abff6fd](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/abff6fdf73035e1acd97d567b6e976fad10bf45a))
+
 ## [0.24.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.24.0...v0.24.1) (2026-10-15)
 
 

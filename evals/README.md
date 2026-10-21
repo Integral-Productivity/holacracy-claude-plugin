@@ -116,9 +116,9 @@ known-correct disposition that a human reached and recorded on
 
 | Case | Fixture | Asserts |
 |---|---|---|
-| Authority gate fires first | `ten_03c044b3`, ◎Product Architecture holds the Productboard domain | Output is *convert*, **not** *route to governance*. The tension waited 21 months for a meeting that was never required. |
-| Blended tension partitioned | `ten_00fc5815` | The body is **partitioned**, not refused (loses the structural half) and not left fused (unresolvable — it sat that way 15 months). |
-| Successor before archive | `ten_343f2946`, `ten_564abcab`, superseded by ◎Information Security Officer | The successor is written **before** the archive. Archiving alone drops a live, material exposure. |
+| Authority gate fires first | `ten_c25e7e16`, ◎Offer Design holds the Productboard domain | Output is *convert*, **not** *route to governance*. The tension waited 21 months for a meeting that was never required. |
+| Blended tension partitioned | `ten_22537203` | The body is **partitioned**, not refused (loses the structural half) and not left fused (unresolvable — it sat that way 15 months). |
+| Successor before archive | `ten_5c9a90ba`, `ten_c615496d`, superseded by ◎Data Steward | The successor is written **before** the archive. Archiving alone drops a live, material exposure. |
 | Person tension refused | synthetic | No `create_tension` is drafted; the IDR route is surfaced. |
 | Circle sweep completeness | 47 tensions across 18 circles; a root call returns 21 | All 47 surface. This is [glassfrog-mcp-server#122](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/122) caught from the consumer side. |
 

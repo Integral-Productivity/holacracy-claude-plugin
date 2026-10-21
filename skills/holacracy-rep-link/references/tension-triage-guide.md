@@ -22,7 +22,7 @@ Use this in sequence. Stop at the first answer that resolves the question.
 
 The Rep Link carries role tensions. A role tension is a gap between what a role is currently able to do and what it could do -- a structural or operational gap that governance can address. A person tension is about how an individual is showing up in their role -- their behavior, reliability, communication, or performance.
 
-**Role tension example:** "The Technology Architecture role has no clear accountability for approving vendor integrations, so when Platform roles ask for approval, there's no one to ask."
+**Role tension example:** "The Systems Design role has no clear accountability for approving vendor integrations, so when Platform roles ask for approval, there's no one to ask."
 
 **Person tension example:** "The person filling the Lead Link role isn't following through on things they agree to in tactical meetings."
 

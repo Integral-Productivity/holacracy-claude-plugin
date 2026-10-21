@@ -55,7 +55,7 @@ Read **live at first need** in the session. Do not assume domains from memory or
 
 For each domain `description`, determine the system of record it names, trying these layers in order and stopping at the first that fires. **The domain names its own system** — the recognizer *extracts* that name; it does not match against a closed list of pre-known systems, so a system the plugin has never seen still routes correctly.
 
-- **Layer 1 — Inline URL host (strongest, self-describing).** If the domain string contains a URL, the host names the system. `https://integralproductivity.productboard.com` → **Productboard**. The host *is* the system identity; no prior knowledge needed. Use the registrable domain (e.g., `productboard.com` → Productboard, `app.hubspot.com` → HubSpot), ignoring the org-specific subdomain.
+- **Layer 1 — Inline URL host (strongest, self-describing).** If the domain string contains a URL, the host names the system. `https://example.productboard.com` → **Productboard**. The host *is* the system identity; no prior knowledge needed. Use the registrable domain (e.g., `productboard.com` → Productboard, `app.hubspot.com` → HubSpot), ignoring the org-specific subdomain.
 
 - **Layer 2 — Named system in the domain text.** If no URL, extract the system named in the text — typically a parenthetical `(Strategyzer)`, `(Productboard)`, or a leading proper-noun product name: `QuickBooks Online account — …` → **QuickBooks**; `HubSpot CRM Platform` → **HubSpot**; `Smaply Configuration and Content` → **Smaply**; `GlassFrog Admin` → **GlassFrog**. The extracted proper noun *is* the target substrate label; the plugin need not have heard of it before.
 
@@ -65,11 +65,11 @@ For each domain `description`, determine the system of record it names, trying t
 
 ### Step 4 — Resolve to a target (multi-domain precedence)
 
-A role often holds **several** system-of-record domains (e.g., a Product Architecture role holding three Productboard domains plus a Strategyzer domain plus a Smaply domain). Return the **set** of recognized substrates, then:
+A role often holds **several** system-of-record domains (e.g., an Offer Design role holding three Productboard domains plus a Strategyzer domain plus a Smaply domain). Return the **set** of recognized substrates, then:
 
-- **One substrate recognized** → route there. Name it: "This is Product Architecture work; its domain names Productboard as the system of record — I'll prepare this for Productboard."
+- **One substrate recognized** → route there. Name it: "This is Offer Design work; its domain names Productboard as the system of record — I'll prepare this for Productboard."
 - **Several substrates, and the artifact's nature clearly fits one** → **prefer the obvious match** and say why. A product feature or roadmap item → the Productboard domains; a value-proposition/business-model canvas → the Strategyzer domain; a service blueprint/journey map → the Smaply domain. Name the chosen substrate *and* the fact that others were held but didn't fit the artifact.
-- **Several substrates and two-or-more plausibly fit** → **surface the ambiguity and ask.** Do not silently pick. "Product Architecture holds domains in Productboard and Strategyzer, and this could land in either. Which system of record should this go to?"
+- **Several substrates and two-or-more plausibly fit** → **surface the ambiguity and ask.** Do not silently pick. "Offer Design holds domains in Productboard and Strategyzer, and this could land in either. Which system of record should this go to?"
 
 This is honest by construction (ADR-0007 §Decision.4): the resolver reasons only from domains actually read this session and, when the signal is ambiguous, surfaces the ambiguity rather than guessing.
 
@@ -77,7 +77,7 @@ This is honest by construction (ADR-0007 §Decision.4): the resolver reasons onl
 
 Whenever routing determines where an artifact lands, name it in the response, tied to the governance evidence:
 
-- "Routing this to **Productboard** — it's Product Architecture's system of record for products and features (domain read live from GlassFrog)."
+- "Routing this to **Productboard** — it's Offer Design's system of record for products and features (domain read live from GlassFrog)."
 - "This is a governance record, so it belongs in **GlassFrog** — the Circle's governance-records domain."
 - "I couldn't resolve a system of record from live governance for this — where should it land?" (disconnect / miss path)
 
@@ -119,15 +119,15 @@ Probed live via `glassfrog_list_role_domains` / `glassfrog_search` to confirm th
 
 | Owning role (live) | Domain read live | Recognizer layer | → System of record |
 |---|---|---|---|
-| Product Architecture | `[Product Hierarchy (Productboard)](https://integralproductivity.productboard.com)` | L1 URL host → `productboard.com` | **Productboard** |
-| Product Architecture | `[Products and Features (Productboard)](https://…productboard.com)` | L1 URL host | **Productboard** |
-| Product Architecture | `[Product Insights (Productboard)](https://…productboard.com)` | L1 URL host | **Productboard** |
-| Product Architecture | `Value Propositions (Strategyzer)` | L2 named system | **Strategyzer** |
-| Product Architecture | `Smaply Configuration and Content` | L2 named system (proper noun) | **Smaply** |
+| Offer Design | `[Product Hierarchy (Productboard)](https://example.productboard.com)` | L1 URL host → `productboard.com` | **Productboard** |
+| Offer Design | `[Products and Features (Productboard)](https://…productboard.com)` | L1 URL host | **Productboard** |
+| Offer Design | `[Product Insights (Productboard)](https://…productboard.com)` | L1 URL host | **Productboard** |
+| Offer Design | `Value Propositions (Strategyzer)` | L2 named system | **Strategyzer** |
+| Offer Design | `Smaply Configuration and Content` | L2 named system (proper noun) | **Smaply** |
 | (finance role) | `QuickBooks Online account — chart of accounts, transaction records, reports` | L2 named system | **QuickBooks** |
 | (any circle's governance) | `All governance records of the Circle` (+ "GlassFrog Usage" policy) | L3 semantic governance | **GlassFrog** |
 
-**Multi-domain resolution (Step 4) in action:** Product Architecture holds five domains naming three systems (Productboard ×3, Strategyzer, Smaply). The resolver returns `{Productboard, Strategyzer, Smaply}`; a roadmap/feature artifact prefers Productboard (named, and others don't fit); a value-proposition canvas prefers Strategyzer; if an artifact plausibly fits two, it asks.
+**Multi-domain resolution (Step 4) in action:** Offer Design holds five domains naming three systems (Productboard ×3, Strategyzer, Smaply). The resolver returns `{Productboard, Strategyzer, Smaply}`; a roadmap/feature artifact prefers Productboard (named, and others don't fit); a value-proposition canvas prefers Strategyzer; if an artifact plausibly fits two, it asks.
 
 ---
 

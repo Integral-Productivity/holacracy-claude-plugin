@@ -16,7 +16,7 @@ Two existing facts make a live-derived approach the better fit:
 
 - **The governance-data seam already exists.** [ADR-0005](0005-holacracy-identity-glassfrog-as-first-connector-behind-a-seam.md) established that practice logic targets a named governance-data boundary (resolve actor, list roles/domains/authority) with GlassFrog as the first connector behind it. Routing reads are a natural consumer of that same seam — `list_role_domains` / `list_role_policies` — not a new dependency.
 - **Domains already encode the routing signal — verified against the live org (2026-07-20).** A probe of the actual GlassFrog org tree found that roles' **domains directly name their system of record**, several with the system URL inline:
-  - The **Product Architecture** role holds domains `[Product Hierarchy (Productboard)](https://integralproductivity.productboard.com)`, `[Products and Features (Productboard)]`, `[Product Insights (Productboard)]`, and `Value Propositions (Strategyzer)`.
+  - The **Offer Design** role holds domains `[Product Hierarchy (Productboard)](https://example.productboard.com)`, `[Products and Features (Productboard)]`, `[Product Insights (Productboard)]`, and `Value Propositions (Strategyzer)`.
   - Governance decisions map to the `All governance records of the Circle` domain and the `GlassFrog Admin` domain → GlassFrog.
   - Finance → QuickBooks domains (`QuickBooks Online account — chart of accounts, transaction records, reports`).
   - Sales/marketing → HubSpot domains (`HubSpot CRM Platform`, `HubSpot Sales/Marketing/Content Hub Configuration`).

@@ -203,7 +203,7 @@ Route by **live governance, not assumption**: a role's **domains** already name 
 2. Read its domains live via `glassfrog_list_role_domains` (and `glassfrog_list_role_policies` to corroborate). Live-then-session-cache: read at first need, cache for the session, re-read on a major pivot.
 3. Recognize each domain's system of record -- inline URL host, then the named system in the text, then the semantic governance fallback (governance-records → GlassFrog). The domain names its own system; extract it.
 4. If one substrate is named, route there; if several are held and one clearly fits the artifact, prefer it and say why; if two plausibly fit, **surface the ambiguity and ask** -- never silently pick.
-5. **Announce the routing**, tied to the governance evidence: "Routing this to Productboard -- Product Architecture's system of record for features (domain read live from GlassFrog)."
+5. **Announce the routing**, tied to the governance evidence: "Routing this to Productboard -- Offer Design's system of record for features (domain read live from GlassFrog)."
 
 If GlassFrog is not connected, **name the limit and ask** -- do not silently default to the engineering substrate. This is the same honest-by-construction discipline as role resolution: reason only from domains actually read this session; a vague domain that can't say where its work lands is a governance tension worth surfacing, not a guess to paper over.
 

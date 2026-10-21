@@ -11,7 +11,7 @@ This sits in `skills/shared/` rather than inside one skill's `references/` becau
 A GlassFrog web URL identifies a record by a **legacy numeric ID**:
 
 ```
-https://app.glassfrog.com/organizations/32215/my/workspace/projects/1966547
+https://app.glassfrog.com/organizations/<org-number>/my/workspace/projects/<record-number>
 ```
 
 The v5 API identifies records only by prefixed IDs -- `proj_<32hex>`, `actn_<32hex>`, `role_<32hex>`, `ten_<32hex>`, `goal_<32hex>`, and so on. What you can do with the legacy number depends on which connector the session has. There are two:
@@ -21,8 +21,8 @@ The v5 API identifies records only by prefixed IDs -- `proj_<32hex>`, `actn_<32h
 
 Verified live on 2026-10-08 (#353):
 
-- **Forward (v5 ID to web URL) works on GlassFrog Extended only.** Pass `include_legacy_id: true` and the record comes back with `legacy_id` and `web_url` (plus `role_projects_url` for projects). Hand the user the returned `web_url` verbatim; **never construct a URL from `legacy_id`** or from a number the user pasted. `glassfrog_get_project(proj_..., include_legacy_id: true)` returned `legacy_id: 1821228` and a `web_url` ending `/my/workspace/projects/1821228?tab=workspace_projects`. The flag is accepted by `glassfrog_get_project`, `glassfrog_list_role_projects`, `glassfrog_list_role_actions`, `glassfrog_get_action`, `glassfrog_list_my_projects`, and `glassfrog_get_me`.
-- **Reverse (pasted URL to record) has no lookup on either connector.** No tool takes a legacy ID as input, the v5 OpenAPI spec has no legacy parameter, and `glassfrog_search("1821228")` returns nothing on both Extended and Official -- search does not index the number. On Extended the number can be *matched* by scanning lists with the flag on; it cannot be *looked up*.
+- **Forward (v5 ID to web URL) works on GlassFrog Extended only.** Pass `include_legacy_id: true` and the record comes back with `legacy_id` and `web_url` (plus `role_projects_url` for projects). Hand the user the returned `web_url` verbatim; **never construct a URL from `legacy_id`** or from a number the user pasted. `glassfrog_get_project(proj_..., include_legacy_id: true)` returned `legacy_id: <record-number>` and a `web_url` ending `/my/workspace/projects/<record-number>?tab=workspace_projects`. The flag is accepted by `glassfrog_get_project`, `glassfrog_list_role_projects`, `glassfrog_list_role_actions`, `glassfrog_get_action`, `glassfrog_list_my_projects`, and `glassfrog_get_me`.
+- **Reverse (pasted URL to record) has no lookup on either connector.** No tool takes a legacy ID as input, the v5 OpenAPI spec has no legacy parameter, and `glassfrog_search("<record-number>")` returns nothing on both Extended and Official -- search does not index the number. On Extended the number can be *matched* by scanning lists with the flag on; it cannot be *looked up*.
 - **The Official GlassFrog MCP supports neither direction.** `glassfrog_getProject` returns no `legacy_id`, `web_url`, or `role_projects_url`, and the v5 spec's Project schema has no such field. Once #340 makes Official the default connector, an Official-only session is back to the old constraint: resolve by title only, and offer no links.
 
 **All of the Extended behaviour is transitional.** The tool documents that `include_legacy_id` retires when the v3 API retires. Do not build anything that assumes it lasts.

@@ -14,14 +14,14 @@ Proposed
 
 That deferral is the only place the word "inventory" appears in the ADR. The horizontal question — *what does this circle's full set of routines look like, and do any of them duplicate each other* — was never decided.
 
-A live case makes the gap concrete. A circle (Market Applied Innovation, read 2026-08-10) carries **five** scheduled tasks that each scan part of the same circle at four different times on different days, none aware of the others:
+A live case makes the gap concrete. A circle (Market Circle, read 2026-08-10) carries **five** scheduled tasks that each scan part of the same circle at four different times on different days, none aware of the others:
 
 | Task | Cadence | Territory |
 | --- | --- | --- |
-| `Platform Engineering circle pull` | Mon 07:30 | Platform Engineering sub-circle |
+| `Tooling Steward circle pull` | Mon 07:30 | Tooling Steward sub-circle |
 | `Product delivery watch` | Mon 08:00 | Product role |
 | `Customer Success scan` | Tue 08:00 | Customer Success role |
-| `Launch readiness scan` | Fri 08:00 | GTM Catalyst role |
+| `Launch readiness scan` | Fri 08:00 | Launch Coordinator role |
 | `Company goals status` | monthly, 1st | Circle Lead |
 
 Four of the five are pre-tactical work in all but name. Together they do, badly and four times over, what one registered `holacracy/secretary/pre-tactical-prep/<circle>` routine does once.

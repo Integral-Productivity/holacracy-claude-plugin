@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.3](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.25.2...v0.25.3) (2026-10-21)
+
+
+### Bug Fixes
+
+* cite only real GlassFrog tools, and give the coach reads on every surface ([#337](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/337), [#338](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/338), [#342](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/342)) ([#391](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/391)) ([b6c750b](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/b6c750b6419e991d08e56a5fdcfc23f477655fd6))
+
 ## [0.25.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.25.1...v0.25.2) (2026-10-21)
 
 

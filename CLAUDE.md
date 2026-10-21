@@ -58,10 +58,16 @@ bash scripts/skills-lint.sh              # static integrity, ~1s, offline
 bash scripts/skills-lint.test.sh         # the lint's own mutation-checked suite
 ```
 
-`skills-lint.sh` runs six checks over every shipped markdown file: path
-resolution, `Step N` citation integrity, frontmatter contract, skill-version
-bumped when content changed, referenced-command existence, and orphaned shared
-references. CI runs both on every PR via `scripts-test.yml`, plus
+`skills-lint.sh` checks every shipped markdown file for: path resolution,
+`Step N` citation integrity, frontmatter contract, skill-version bumped when
+content changed, referenced-command existence, orphaned shared references,
+role-roster delegation, and descriptions inside Claude's upload limits (500
+characters for `plugin.json`, 1024 for a skill). The last one exists because a
+rejected upload is silent: the org's claude.ai copy, which Cowork and scheduled
+cloud sessions load, keeps the last version it accepted and every later release
+misses those sessions ([#368](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/368)).
+`claude plugin validate` does not check these limits. CI runs both on every PR
+via `scripts-test.yml`, plus
 `--base origin/<base>` so the version-bump check has something to diff against.
 
 CI also runs `shellcheck` over `scripts/*.sh`, and **it is pinned** — version and

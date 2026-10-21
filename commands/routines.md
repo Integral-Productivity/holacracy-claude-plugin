@@ -17,7 +17,7 @@ Parse `$ARGUMENTS`:
 
 - **`register pre-tactical-prep <circle>`** — **turn the routine on for a circle.**
   1. Resolve the acting Secretary agent and the target circle via `skills/shared/actor-and-role-resolution.md` (`glassfrog_get_me`, `glassfrog_list_my_roles`). If the actor doesn't fill Secretary in `<circle>`, name the mismatch and stop. Announce the resolved scope.
-  2. Determine the cadence: derive from the circle's `glassfrog_list_frequencies`, or ask the Secretary to declare it. Translate to a cron expression in local time.
+  2. Determine the cadence: derive from the `frequency` field (Weekly, Monthly, Quarterly) on the circle's checklist items and metrics, or ask the Secretary to declare it. Translate to a cron expression in local time.
   3. Build the routine prompt from `skills/holacracy-secretary/references/pre-tactical-prep-routine.md`, with the canonical scheduled-work preamble from `skills/shared/actor-and-role-resolution.md` filled in (acting agent + GlassFrog ids, circle, accountability, output channel, **"Draft only"**).
   4. Create the scheduled task: `mcp__scheduled-tasks__create_scheduled_task` with `taskId` / title `holacracy/secretary/pre-tactical-prep/<circle-slug>`, the prompt from step 3, and the cron from step 2. The `holacracy/` prefix is required so the session-start hook can find it.
   5. Confirm: name the registered routine, its cadence, and that it drafts only — the human still runs the meeting.

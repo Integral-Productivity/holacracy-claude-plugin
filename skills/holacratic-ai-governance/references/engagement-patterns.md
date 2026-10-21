@@ -33,8 +33,8 @@ If the person's identity is already known (e.g., from memory or prior conversati
 
 **Step 2 -- Load their role portfolio**
 ```
-Call: glassfrog_list_circles
-Purpose: Get all circles in the organization
+Call: glassfrog_list_roles(has_sub_roles: true)
+Purpose: Get all circles in the organization (in v5 a circle is a role with sub-roles)
 
 Call: glassfrog_list_roles (for each relevant circle, or without filter for all)
 Purpose: Find roles assigned to the person
@@ -53,8 +53,11 @@ This question itself models good Holacratic practice -- the habit of clarifying 
 Call: glassfrog_get_role(role_id)
 Purpose: Get purpose, all accountabilities, all domains, and assigned people
 
-Call: glassfrog_get_circle(parent_circle_id)
-Purpose: Get circle strategy, all sister roles, and circle-level policies
+Call: glassfrog_get_role(parent_circle_id, include: ["sub_roles", "policies"])
+Purpose: Get all sister roles and circle-level policies
+
+Call: glassfrog_get_role_strategy(parent_circle_id)
+Purpose: Get the circle strategy
 ```
 
 **Step 5 -- Anchor the response**
@@ -98,8 +101,8 @@ Call: glassfrog_list_roles (all)
 Then: glassfrog_get_role for each role the person fills
 
 For a cross-organizational question:
-Call: glassfrog_list_circles
-Then: glassfrog_get_circle for each relevant circle
+Call: glassfrog_list_roles(has_sub_roles: true)
+Then: glassfrog_get_role(circle_id, include: ["sub_roles", "policies"]) for each relevant circle
 ```
 
 **Step 2 -- Build the perspective map**
@@ -150,15 +153,16 @@ Systematically scan governance and operational data to surface potential tension
 
 **Step 1 -- Load operational data**
 ```
-Call: glassfrog_list_checklist_items (optionally filtered by circle)
-Call: glassfrog_list_metrics (optionally filtered by circle)
-Call: glassfrog_list_projects (optionally filtered by circle)
+Call: glassfrog_list_roles(parent_role_id: circle_id) to get the circle's roles
+Call: glassfrog_list_role_checklist_items(role_id) for each role
+Call: glassfrog_list_role_metrics(role_id) for each role
+Call: glassfrog_list_subrole_projects(role_id: circle_id)
 ```
 
 **Step 2 -- Load governance structure for cross-reference**
 ```
 Call: glassfrog_list_roles (for the same circle, or all)
-Call: glassfrog_list_frequencies (to know valid cadences)
+Note: valid cadences are the closed `frequency` enum on each checklist item and metric (Weekly, Monthly, Quarterly); there is no separate frequencies tool
 ```
 
 **Step 3 -- Run the tension detection scan**

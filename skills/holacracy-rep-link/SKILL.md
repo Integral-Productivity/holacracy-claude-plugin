@@ -1,7 +1,7 @@
 ---
 name: holacracy-rep-link
 status: draft
-version: 1.1.3
+version: 1.1.4
 description: >
   AI co-Rep Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Rep Link role in a Holacracy organization, wants help surfacing tensions to the enclosing circle, needs to prepare for an enclosing circle tactical or governance meeting, wants to triage which member tensions belong in the enclosing circle vs. staying local, needs help identifying or drafting proposals to remove constraints the broader organization is imposing on their sub-circle, or says things like "help me prep for the enclosing circle meeting," "should I escalate this tension?", "help me remove this constraint," or "what tensions should I carry?" Also trigger when someone asks what a Rep Link does, how to energize the Rep Link role, or wants to understand what crosses the circle boundary. Load GlassFrog context before beginning Rep Link work when the GlassFrog MCP is available.
 ---
@@ -38,9 +38,9 @@ When GlassFrog MCP tools are available, load live governance data before beginni
 
 | Task | GlassFrog tools to call first |
 |---|---|
-| Tension identification | `glassfrog_list_projects`, `glassfrog_list_metrics`, `glassfrog_list_checklist_items` for the sub-circle |
-| Meeting preparation | All of the above, plus `glassfrog_get_circle` for both sub-circle and enclosing circle |
-| Constraint identification | `glassfrog_list_roles` for the enclosing circle; `glassfrog_get_circle` for policies |
+| Tension identification | `glassfrog_list_subrole_projects` for the sub-circle; `glassfrog_list_role_metrics` and `glassfrog_list_role_checklist_items` for each of its roles |
+| Meeting preparation | All of the above, plus `glassfrog_get_role` (with `include: ["sub_roles", "policies"]`) for both sub-circle and enclosing circle |
+| Constraint identification | `glassfrog_list_roles` for the enclosing circle; `glassfrog_list_role_policies` for its policies |
 | Triage support | `glassfrog_list_roles` for both circles to check accountability scope |
 | General context | `glassfrog_list_people` to confirm who fills what role |
 
@@ -165,7 +165,7 @@ Prepare the following before each enclosing circle governance meeting:
 
 1. **Structural tensions to process** -- from Domain 2 triage, any tensions that require governance change.
 2. **Draft proposals** (if appropriate to have one ready) -- use the format in `references/constitutional-duties.md`. Note: proposals should be the minimum change that resolves the tension, not a comprehensive redesign.
-3. **Current governance to reference** -- load `glassfrog_get_circle` and `glassfrog_list_roles` for the enclosing circle so you know current role definitions before proposing changes.
+3. **Current governance to reference** -- load `glassfrog_get_role` (with `include: ["sub_roles", "policies"]`) and `glassfrog_list_roles` for the enclosing circle so you know current role definitions before proposing changes.
 4. **Anticipated reactions** -- for each proposal, briefly note questions or objections that are likely and how to address them.
 
 **Meeting prep output template:**

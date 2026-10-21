@@ -100,6 +100,10 @@ See `skills/shared/thing.md` and `commands/demo-cmd.md`.
 EOF
   printf '# allowlist\n' > "$d/evals/lint-allow-paths.txt"
   printf '# forward references\n' > "$d/evals/forward-references.txt"
+  printf '# inventory\nglassfrog_get_me\tread\nglassfrog_list_my_roles\tread\nglassfrog_get_role\tread\nglassfrog_create_tension\twrite\nglassfrog_set_project_tags\twrite\n' \
+    > "$d/evals/glassfrog-tools.tsv"
+  printf '# prefixes\nmcp__plugin_holacracy_glassfrog-extended__  plugin\nmcp__GlassFrog_Extended__  cowork\n' \
+    > "$d/evals/glassfrog-server-prefixes.txt"
   git -C "$d" init -q 2>/dev/null
   git -C "$d" config user.email t@t.t; git -C "$d" config user.name t
   git -C "$d" add -A && git -C "$d" commit -qm init
@@ -337,7 +341,79 @@ SKILLS_LINT_ROOT="$TMP/c8c" bash "$LINT" >/dev/null 2>&1 \
   || { SKILLS_LINT_ROOT="$TMP/c8c" bash "$LINT"; fail "check 8 flagged a 500-character plugin description"; }
 CASES=$((CASES + 1))
 
-# 9. The real repository is clean. Fixtures prove the checks work; this proves
+# 9. A skill cites a GlassFrog tool that exists on no server. Seven such names,
+#    69 citations, shipped in the role skills until #337.
+_fixture "$TMP/c9"
+printf '\nLoad the circle with `glassfrog_get_circle(circle_id)`.\n' >> "$TMP/c9/skills/demo/SKILL.md"
+git -C "$TMP/c9" add -A && git -C "$TMP/c9" commit -qm c9
+_assert_load_bearing 9 "$TMP/c9" "nonexistent GlassFrog tool name"
+
+# 9b. Names are cited but the inventory is gone. That is a finding, never a
+#     silent pass: an absent inventory would otherwise make every name valid.
+_fixture "$TMP/c9b"
+printf '\nLoad the role with `glassfrog_get_role(role_id)`.\n' >> "$TMP/c9b/skills/demo/SKILL.md"
+git -C "$TMP/c9b" rm -q evals/glassfrog-tools.tsv
+git -C "$TMP/c9b" add -A && git -C "$TMP/c9b" commit -qm c9b
+_assert_load_bearing 9 "$TMP/c9b" "inventory missing"
+
+# 9c. A real tool name is fine.
+_fixture "$TMP/c9c"
+printf '\nLoad the role with `glassfrog_get_role(role_id)`.\n' >> "$TMP/c9c/skills/demo/SKILL.md"
+git -C "$TMP/c9c" add -A && git -C "$TMP/c9c" commit -qm c9c
+SKILLS_LINT_ROOT="$TMP/c9c" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c9c" bash "$LINT"; fail "check 9 flagged a tool that is in the inventory"; }
+CASES=$((CASES + 1))
+
+# 10. The coach's tool lines. The fixture gets a coach whose lines are exactly
+#     what the generator prints; each case below breaks them one way.
+_coach_fixture() {  # $1 = destination dir
+  _fixture "$1"
+  { printf -- '---\nname: holacracy-coach\ndescription: coach\nmodel: inherit\n'
+    GLASSFROG_INVENTORY_ROOT="$1" python3 "$HERE/glassfrog-tool-inventory.py" coach-frontmatter \
+      || fail "coach fixture: generator failed"
+    printf -- '---\nBody.\n'
+  } > "$1/agents/holacracy-coach.md"
+  git -C "$1" add -A && git -C "$1" commit -qm coach
+}
+
+# 10a. A generated coach is clean, and its allowlist holds no write tool.
+_coach_fixture "$TMP/c10a"
+SKILLS_LINT_ROOT="$TMP/c10a" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c10a" bash "$LINT"; fail "check 10 flagged a coach generated from the inventory"; }
+grep '^tools:' "$TMP/c10a/agents/holacracy-coach.md" | grep -q 'create_tension\|set_project_tags' \
+  && fail "the generator put a write tool in the coach's allowlist"
+grep '^tools:' "$TMP/c10a/agents/holacracy-coach.md" | grep -q 'mcp__GlassFrog_Extended__glassfrog_get_role' \
+  || fail "the generator did not list reads under every prefix"
+CASES=$((CASES + 1))
+
+# 10b. A write tool added to the allowlist -- the one edit that breaks the
+#      coach's read-only guarantee.
+_coach_fixture "$TMP/c10b"
+sedi 's/^tools: Read,/tools: Read, mcp__plugin_holacracy_glassfrog-extended__glassfrog_create_tension,/' "$TMP/c10b/agents/holacracy-coach.md"
+git -C "$TMP/c10b" add -A && git -C "$TMP/c10b" commit -qm c10b
+_assert_load_bearing 10 "$TMP/c10b" "write tool in the coach allowlist"
+
+# 10c. The deny list misses a write. This is #342: two tag writes were added to
+#      the server and never to the hand-kept list.
+_coach_fixture "$TMP/c10c"
+sedi 's/, mcp__GlassFrog_Extended__glassfrog_set_project_tags//' "$TMP/c10c/agents/holacracy-coach.md"
+git -C "$TMP/c10c" add -A && git -C "$TMP/c10c" commit -qm c10c
+_assert_load_bearing 10 "$TMP/c10c" "write tool missing from the coach deny list"
+
+# 10d. A skill body names a tool by one server's prefix. That name is wrong on
+#      every other surface (#338).
+_fixture "$TMP/c10d"
+printf '\nCall `mcp__plugin_holacracy_glassfrog-extended__glassfrog_create_tension`.\n' >> "$TMP/c10d/skills/demo/SKILL.md"
+git -C "$TMP/c10d" add -A && git -C "$TMP/c10d" commit -qm c10d
+_assert_load_bearing 10 "$TMP/c10d" "fully-qualified tool name in prose"
+
+# 10e. An agent grants a tool under a prefix nobody has observed.
+_fixture "$TMP/c10e"
+sedi 's/^model: inherit$/model: inherit\ntools: Read, mcp__made-up__glassfrog_get_role/' "$TMP/c10e/agents/demo-agent.md"
+git -C "$TMP/c10e" add -A && git -C "$TMP/c10e" commit -qm c10e
+_assert_load_bearing 10 "$TMP/c10e" "unknown server prefix in a tools: line"
+
+# 11. The real repository is clean. Fixtures prove the checks work; this proves
 #    they are actually pointed at the plugin.
 bash "$LINT" >/dev/null 2>&1 || { bash "$LINT"; fail "the live repository does not pass its own lint"; }
 CASES=$((CASES + 1))

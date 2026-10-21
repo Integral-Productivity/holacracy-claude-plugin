@@ -33,7 +33,7 @@ Load this reference when:
 Before making any recommendation, check whether the project already exists in GlassFrog.
 
 ```
-Call: glassfrog_list_projects (circle_id for the most plausible candidate circle, or all)
+Call: glassfrog_list_subrole_projects(role_id: circle_id) for the most plausible candidate circle
 Purpose: Determine if the project is already tracked and already rooted
 ```
 
@@ -46,7 +46,8 @@ If the project does not exist: proceed to Step 2. The task becomes *recommendati
 Identify which circle(s) are plausible candidates for the project. Start with the circle most obviously related to the project's domain (technology, product, operations, coaching, etc.). Load its full structure.
 
 ```
-Call: glassfrog_get_circle(circle_id)
+Call: glassfrog_get_role(circle_id, include: ["sub_roles"])
+Call: glassfrog_get_role_strategy(circle_id)
 Purpose: Get all roles and the circle's strategy
 ```
 

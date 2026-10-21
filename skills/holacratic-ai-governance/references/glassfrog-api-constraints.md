@@ -22,15 +22,18 @@ A standard GlassFrog MCP server exposes tools across these categories.
 
 > **API version note (verified 2026-06-16).** The connected server tracks GlassFrog **API v5**: IDs are prefixed (`role_<32hex>`, `per_…`, `org_…`, `pol_…`, `dom_…`) and roles relate by `parent_role_id` (the older `parent_circle_id` / `sub_circle_id` / `is_circle` language below is v3-era). v5 adds the inherited-context read tools listed in the second table; prefer them over walking the hierarchy by hand.
 
-### Read-Only Structure (v3-era tools)
+### Read-Only Structure
+In v5 a circle is a role with sub-roles. There is no separate circle tool.
+
 | Tool | Input | Returns |
 |---|---|---|
-| `list_circles` | (none) | All circles with IDs, names, strategies, role_ids, people_ids |
-| `get_circle` | circle_id | Full circle detail: strategy, all roles with purpose/accountabilities/domains, all people |
-| `list_roles` | circle_id (optional), person_id (optional) | Role summaries: id, name, purpose, is_circle, is_core_role |
-| `get_role` | role_id | Full role detail; v5 supports `include` of `parent_role`, `policies`, `sub_roles`, `assignments`, `notes`, `skills` |
-| `list_people` | circle_id (optional), role (optional: lead_link\|rep_link\|facilitator\|secretary) | All people: id, name, email |
-| `get_person` | person_id | Single person: id, name, email, external_id |
+| `glassfrog_list_roles` | parent_role_id?, person_id?, has_sub_roles?, tag?, q? | Role summaries. `has_sub_roles: true` lists circles; `parent_role_id` lists the roles in one circle |
+| `glassfrog_list_sub_roles` | parent_role_id | The direct sub-roles of one role |
+| `glassfrog_get_role` | role_id, include? | Full role detail. `include` takes any of `assignments`, `sub_roles`, `parent_role`, `policies`, `notes`, `skills` |
+| `glassfrog_list_role_assignments` | role_id | Current assignments: id, actor, focus, elected_until |
+| `glassfrog_list_people` | role_id?, q? | People: id, name, email |
+| `glassfrog_get_person` | person_id | One person |
+| `glassfrog_list_agents` / `glassfrog_list_actors` | (filters) | AI agents, or people and agents together |
 
 ### Read-Only Inherited Context (v5 tools — verified live 2026-06-16)
 | Tool | Input | Returns |
@@ -42,60 +45,54 @@ A standard GlassFrog MCP server exposes tools across these categories.
 | `glassfrog_get_role_tree` | role_id | The role's **descendant** tree |
 | `glassfrog_get_org_tree` | (none) | Whole org from the Anchor role **down** |
 
-### Read-Only Operations (3 tools)
+### Read-Only Operations
+All three are per role. For a whole circle, list its roles with `glassfrog_list_roles(parent_role_id: circle_id)` and call each tool per role, except projects, which have a recursive circle-level tool.
+
 | Tool | Input | Returns |
 |---|---|---|
-| `list_checklist_items` | circle_id (optional), global (optional boolean) | Items: id, description, frequency, global, role_id, circle_id |
-| `list_metrics` | circle_id (optional), global (optional boolean) | Metrics: id, description, frequency, global, role_id, circle_id |
-| `list_projects` | circle_id (optional) | Projects: id, description, status (closed enum -- see Write Capabilities → Important Distinctions), value, effort, roi, private, created_at, role_id, circle_id, person_id |
+| `glassfrog_list_role_checklist_items` | role_id, q? | Items: id, description, frequency, link, global, role_id |
+| `glassfrog_list_role_metrics` | role_id, q? | Metrics: id, description, frequency, link, global, role_id |
+| `glassfrog_list_role_projects` | role_id, status? | Projects owned directly by the role. `status` is a closed enum -- see Write Capabilities → Important Distinctions |
+| `glassfrog_list_subrole_projects` | role_id, status? | Projects owned by every sub-role of a circle (recursive) |
 
-### Definition Update Operations (4 tools)
+There is no frequencies tool. `frequency` on a checklist item or metric is a closed enum: `Weekly`, `Monthly`, `Quarterly`.
+
+### Definition Update Operations
 | Tool | Input | Modifies |
 |---|---|---|
-| `update_checklist_item` | item_id, description?, frequency? | Checklist item definition (not completion status) |
-| `update_metric` | metric_id, description?, frequency? | Metric definition (not reported values) |
-| `update_project` | project_id, description?, status?, value?, effort?, roi?, private? | Project metadata (`status` is a closed enum -- see Important Distinctions) |
-| `update_person` | person_id, name?, email?, external_id? | Person name, email, or external ID |
+| `glassfrog_update_checklist_item` | checklist_item_id, description?, frequency?, link?, view? | Checklist item definition (not completion status) |
+| `glassfrog_update_metric` | metric_id, description?, frequency?, link?, view? | Metric definition (not reported values) |
+| `glassfrog_update_project` | project_id, description?, status?, ... | Project metadata (`status` is a closed enum -- see Important Distinctions) |
 
-### Item Creation Operations (3 tools)
+### Item Creation Operations
 | Tool | Input | Creates |
 |---|---|---|
-| `create_checklist_item` | description, frequency, circle_id, role_id | New checklist item tied to a role in a circle |
-| `create_metric` | description, frequency, circle_id, role_id | New metric tied to a role in a circle |
-| `create_project` | description, circle_id, role_id | New project tied to a role in a circle |
+| `glassfrog_create_checklist_item` | role_id, description, frequency?, link?, view? | New checklist item on a role |
+| `glassfrog_create_metric` | role_id, description, frequency?, link?, view? | New metric on a role |
+| `glassfrog_create_role_project` | role_id, description, status, ... | New project on a role |
 
-### Tension, Role Project, and Action Creation (3 tools)
+### Tension and Action Creation
 | Tool | Input | Creates |
 |---|---|---|
 | `glassfrog_create_tension` | role_id, body | New tension on a role's backlog (durable; survives meeting timeouts) |
-| `glassfrog_create_role_project` | role_id, ... | New project tied to a role (parallel to `create_project` but role-scoped) |
-| `glassfrog_create_action` | ... | New next-action |
+| `glassfrog_create_action` | role_id, description, parent_project_id?, status | New next-action |
 
 See **Write Capabilities → Tensions, Role Projects, and Actions** below for current call shapes and constraints.
 
-### Item Deletion Operations (3 tools)
+### Item Deletion Operations
 | Tool | Input | Deletes |
 |---|---|---|
-| `delete_checklist_item` | item_id | Permanently removes a checklist item |
-| `delete_metric` | metric_id | Permanently removes a metric |
-| `delete_project` | project_id | Permanently removes a project |
+| `glassfrog_delete_checklist_item` | checklist_item_id | Permanently removes a checklist item |
+| `glassfrog_delete_metric` | metric_id | Permanently removes a metric |
+| `glassfrog_delete_project` | project_id | Permanently removes a project |
 
-### People Management Operations (2 tools)
+### Role Assignment Operations
 | Tool | Input | Action |
 |---|---|---|
-| `create_person` | name, email, external_id? | Adds a new member to the organization (triggers welcome email) |
-| `delete_person` | person_id | Permanently removes a person from the organization |
+| `glassfrog_assign_actor_to_role` | role_id, actor_id (`per_` or `agt_`) | Assigns a person or AI agent to a role (replaces the current filler for Lead Link roles) |
+| `glassfrog_delete_assignment` | assignment_id | Removes an assignment. Find the id with `glassfrog_list_role_assignments` first |
 
-### Role Assignment Operations (2 tools)
-| Tool | Input | Action |
-|---|---|---|
-| `assign_person_to_role` | role_id, person_id | Assigns a person to a role (replaces current filler for Lead Link roles) |
-| `unassign_person_from_role` | role_id, person_id | Removes a person from a role |
-
-### Reference (1 tool)
-| Tool | Input | Returns |
-|---|---|---|
-| `list_frequencies` | (none) | Array of frequency strings. May omit custom frequencies not yet assigned to any item -- see Known Data Quirks. |
+People cannot be created, updated, or deleted through GlassFrog Extended. Do that in the GlassFrog UI.
 
 ---
 
@@ -263,12 +260,10 @@ Some checklist items and metrics may have null or empty frequency values. This t
 - A governance gap (the frequency was never explicitly decided)
 - The intended frequency is a custom frequency (e.g., "Daily") that was never actually assigned to the item
 
-Handle by flagging these during tension scanning and, if the user wants, using the update tools to set an appropriate frequency. When items appear to be daily operational indicators (real-time dashboards, daily task lists), ask the user whether a custom frequency like "Daily" is configured in their GlassFrog admin before assuming it does not exist.
+Handle by flagging these during tension scanning and, if the user wants, using the update tools to set one of the three valid frequencies (see the next quirk). When items appear to be daily operational indicators (real-time dashboards, daily task lists), none of the three fits; ask the user how they want the cadence recorded.
 
-### Invisible Custom Frequencies
-`list_frequencies` only returns frequencies that are currently assigned to at least one checklist item or metric. If a GlassFrog administrator has configured a custom frequency (e.g., "Daily", "Fortnightly", "Annual") but no items currently use it, the frequency will not appear in tool results. This creates a blind spot: the AI cannot discover frequencies that exist but are unused.
-
-**Workaround**: If the user confirms a custom frequency exists, use it directly in `update_checklist_item` or `update_metric` calls -- the API will accept it even though `list_frequencies` did not return it.
+### Frequency Is a Closed Enum
+In API v5, `frequency` on a checklist item or metric accepts only `Weekly`, `Monthly`, or `Quarterly`. There is no tool that lists frequencies. A custom cadence such as "Daily" cannot be set through `glassfrog_update_checklist_item` or `glassfrog_update_metric`; the server rejects it. If a circle needs another cadence, record it in the item's description, and ask the user whether their GlassFrog admin settings offer it.
 
 ### Orphaned Role Assignments
 Checklist items, metrics, or projects may reference role_ids that no longer exist in the current governance structure. This occurs when a role is removed or restructured in governance but the operational items are not cleaned up.

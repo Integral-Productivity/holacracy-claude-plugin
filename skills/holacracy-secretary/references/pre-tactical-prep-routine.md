@@ -10,10 +10,10 @@ The registered prompt opens with the canonical scheduled-work preamble from `../
 
 1. **Resolve scope.** Confirm the acting Secretary agent and the target circle per `../../shared/actor-and-role-resolution.md` Steps 1-2, scoped to the one circle. Never bulk-load the roster (see `docs/solutions/tooling-decisions/glassfrog-v5-inherited-context-single-call.md`).
 2. **Read circle state** (the readable tools only):
-   - `glassfrog_list_checklist_items` — items and their status.
-   - `glassfrog_list_metrics` — metrics due or out of range.
+   - `glassfrog_list_role_checklist_items` (for each role in the circle) — items and their status.
+   - `glassfrog_list_role_metrics` (for each role in the circle) — metrics due or out of range.
    - `glassfrog_list_role_tensions` — unprocessed tensions on the circle's roles, as candidate agenda items.
-   - `glassfrog_list_frequencies` — to derive the expected Tactical cadence.
+   - The `frequency` field on those items and metrics (Weekly, Monthly, Quarterly) — to derive the expected Tactical cadence.
 3. **Derive cadence, never assert occurrence.** Compute expected cadence from frequencies, or use a Secretary-declared cadence. GlassFrog exposes no meeting-occurrence data, so state "Tactical expected `<cadence>`; last occurrence unknown" — never invent a last-meeting date (AE1). If no cadence can be derived, ask the Secretary to declare one rather than guessing (AE2).
 4. **Compose the draft packet** with these sections: checklist status, metrics due/out-of-range, and unprocessed tensions as candidate agenda items. Connector-gated elements — "projects lacking recent updates" and "overdue/next actions" — are out of v1 (no read tool / no update timestamp); omit them without error.
 5. **Teach on the judgment calls (R11).** Where prep judgment is non-obvious, annotate *why* a candidate belongs — the source signal plus the role or constitutional reason (e.g. why an unprocessed tension is agenda-worthy). Do not annotate self-evident items (a checklist item that is simply due). This is what makes the packet developmental rather than a finished hand-off.

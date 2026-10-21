@@ -102,7 +102,7 @@ If applying the strategy consistently produces wrong answers, the problem is wit
 
 Once the strategy is finalized:
 
-1. **Record it in GlassFrog**: Strategy is stored in the circle's governance record. The Lead Link cannot update it via API -- update it in the GlassFrog UI. Confirm the current state first: `glassfrog_get_circle(circle_id)` to read the existing strategy field.
+1. **Record it in GlassFrog**: Strategy is stored in the circle's governance record. The Lead Link cannot update it via API -- update it in the GlassFrog UI. Confirm the current state first: `glassfrog_get_role_strategy(circle_id)` to read the existing strategy.
 2. **Communicate it to circle members**: A strategy no one knows about is not a strategy. Produce a brief communication explaining:
    - What the strategy is
    - What it means in practice (two or three examples)

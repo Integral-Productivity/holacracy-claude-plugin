@@ -56,10 +56,10 @@ Before assigning someone to a role:
 ### Assignment GlassFrog Mechanics
 
 ```
-glassfrog_assign_person_to_role(person_id, role_id)
+glassfrog_assign_actor_to_role(role_id, actor_id)
 ```
 
-`person_id` is obtained from `glassfrog_list_people`. Note: in some GlassFrog API configurations, this field may need to be sourced from `glassfrog_list_projects` or role-specific queries if `list_people` returns limited data.
+`actor_id` is the person's `per_` id from `glassfrog_list_people`, or an AI agent's `agt_` id from `glassfrog_list_agents`. For a Lead Link role, this replaces the current filler rather than adding one.
 
 After assignment, verify: `glassfrog_get_role(role_id)` should show the new assignment.
 
@@ -82,9 +82,9 @@ Key Accountabilities:
 
 Domains (exclusive authority): [list, if any]
 
-Current active projects in this role: [from glassfrog_list_projects]
-Checklist items owned by this role: [from glassfrog_list_checklist_items]
-Metrics owned by this role: [from glassfrog_list_metrics]
+Current active projects in this role: [from glassfrog_list_role_projects]
+Checklist items owned by this role: [from glassfrog_list_role_checklist_items]
+Metrics owned by this role: [from glassfrog_list_role_metrics]
 
 Lead Link context: [brief note on current circle strategy and what this role contributes to it]
 
@@ -109,9 +109,9 @@ Fit is not static -- it can improve or deteriorate over time as the person grows
 
 **GlassFrog-based fit monitoring**:
 ```
-glassfrog_list_projects(circle_id) -> filter by role; look for stale status, no recent updates
-glassfrog_list_checklist_items(circle_id) -> look for recurring non-completion patterns
-glassfrog_list_metrics(circle_id) -> look for metrics with no updates or concerning trends
+glassfrog_list_role_projects(role_id) -> look for stale status, no recent updates
+glassfrog_list_role_checklist_items(role_id) -> look for recurring non-completion patterns
+glassfrog_list_role_metrics(role_id) -> look for metrics with no updates or concerning trends
 ```
 
 **Caution**: Stale GlassFrog data may reflect administrative neglect (not updating the system) rather than actual work neglect. Always confirm interpretation with the role-filler before drawing fit conclusions from data alone.
@@ -189,7 +189,8 @@ When fit has deteriorated and support has not resolved it, re-assignment is the 
 
 **5. Execute in GlassFrog**
 ```
-glassfrog_unassign_person_from_role(person_id, role_id)
+glassfrog_list_role_assignments(role_id) -> find this person's assignment_id
+glassfrog_delete_assignment(assignment_id)
 ```
 Do this after the conversation, not before -- the person should hear it from you first.
 

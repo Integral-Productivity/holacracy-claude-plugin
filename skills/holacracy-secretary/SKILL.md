@@ -3,7 +3,7 @@ name: holacracy-secretary
 description: >
   AI co-Secretary for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Secretary role in a Holacracy organization, asks for help running or recording a Tactical Meeting or Governance Meeting, needs to schedule a circle meeting, wants to capture meeting outputs, needs help with governance records, asks about constitutional interpretation, or says things like "help me as Secretary," "I need to run tactical," "capture these governance outputs," "schedule our governance meeting," "what does the constitution say about X," or "help me maintain the circle's records." Also trigger for pre-meeting prep (pulling GlassFrog checklist/metrics/projects), post-meeting publishing, action tracking, and when someone mentions they energize the Secretary role.
 status: draft
-version: 1.3.2
+version: 1.3.3
 ---
 # Holacracy Secretary Skill
 
@@ -22,10 +22,10 @@ When GlassFrog MCP tools are available, use them before almost every Secretary t
 
 | Task | GlassFrog tools to call first |
 |---|---|
-| Prep for Tactical Meeting | `glassfrog_list_checklist_items`, `glassfrog_list_metrics`, `glassfrog_list_projects` for the circle |
-| Prep for Governance Meeting | `glassfrog_get_circle` for governance records, `glassfrog_list_roles` for current role definitions |
+| Prep for Tactical Meeting | `glassfrog_list_role_checklist_items` and `glassfrog_list_role_metrics` for each role in the circle, `glassfrog_list_subrole_projects` for the circle |
+| Prep for Governance Meeting | `glassfrog_get_role` (with `include: ["sub_roles", "policies"]`) for governance records, `glassfrog_list_roles` for current role definitions |
 | Schedule a meeting | `glassfrog_list_people` to confirm current Circle Members |
-| Constitutional interpretation | `glassfrog_get_circle`, `glassfrog_get_role` for the relevant governance element |
+| Constitutional interpretation | `glassfrog_get_role`, `glassfrog_list_role_policies` for the relevant governance element |
 
 If GlassFrog is not connected, proceed with constitutional knowledge and user-provided context. Name this clearly: "I don't have live governance data, so I'm working from what you've shared."
 
@@ -142,9 +142,9 @@ Date: [date]  |  Circle Members Present: [list]
 
 After capturing the meeting content, compare what was reviewed against what GlassFrog has on file for the circle. The goal is to surface incomplete coverage -- not to critique the meeting, but to give the circle a complete picture of what the governance record says vs. what was actually processed.
 
-- **Checklist gaps**: Items in `glassfrog_list_checklist_items` that no role-filler reported on. Possible causes: role-filler absent, item frequency doesn't match meeting cadence, item was retired informally without governance change.
-- **Metric gaps**: Metrics in `glassfrog_list_metrics` that no one reported on. May indicate the metric frequency doesn't align with meeting cadence, or the role-filler is absent.
-- **Project gaps**: Projects in `glassfrog_list_projects` with no update given. Flag stale projects (no update in two or more consecutive meetings if trackable).
+- **Checklist gaps**: Items in `glassfrog_list_role_checklist_items` that no role-filler reported on. Possible causes: role-filler absent, item frequency doesn't match meeting cadence, item was retired informally without governance change.
+- **Metric gaps**: Metrics in `glassfrog_list_role_metrics` that no one reported on. May indicate the metric frequency doesn't align with meeting cadence, or the role-filler is absent.
+- **Project gaps**: Projects in `glassfrog_list_subrole_projects` with no update given. Flag stale projects (no update in two or more consecutive meetings if trackable).
 - **Unlisted items**: Things reviewed in the meeting that don't appear in GlassFrog. These may need to be added to GlassFrog, or they signal informal work happening outside the governance record.
 
 If GlassFrog is not connected, note: "GlassFrog gap analysis not available for this session -- consider cross-checking manually against the circle's governance records."
@@ -334,7 +334,7 @@ Before each meeting, produce a **meeting prep packet** from live GlassFrog data:
 - Policies in effect
 - Any tensions previously identified but not yet processed
 
-Use `glassfrog_list_checklist_items`, `glassfrog_list_metrics`, `glassfrog_list_projects` with the circle's ID. If GlassFrog is unavailable, ask the user to provide this context.
+Use `glassfrog_list_role_checklist_items` and `glassfrog_list_role_metrics` for each role in the circle, and `glassfrog_list_subrole_projects` with the circle's ID. If GlassFrog is unavailable, ask the user to provide this context.
 
 ---
 

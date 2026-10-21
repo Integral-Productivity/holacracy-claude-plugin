@@ -2,7 +2,7 @@
 name: holacracy-lead-link
 description: AI co-Lead Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Lead Link role, needs to set or refine circle strategy, wants to assign or reassess role assignments, needs to allocate circle capacity or resources across Projects and Roles, wants to draft governance proposals to address structural gaps, or says things like "help me think through my Lead Link work," "what should this circle prioritize," "who should fill this role," "help me set strategy," "we have a capacity problem," "I need to draft a governance proposal," or "what tensions should I bring to governance." Also trigger when managing role-person fit, deciding circle focus, or surfacing organizational tensions for governance. In solo-operator contexts, trigger when a single person filling multiple roles needs to reason about which role's work takes priority or how to allocate their own capacity.
 status: draft
-version: 1.1.2
+version: 1.1.3
 ---
 # Holacracy Lead Link Skill
 
@@ -53,12 +53,12 @@ When GlassFrog MCP tools are available, use them as the ground truth for every L
 
 | Category | Tools | Used For |
 |---|---|---|
-| **Structure** | `glassfrog_list_circles`, `glassfrog_get_circle`, `glassfrog_list_roles`, `glassfrog_get_role` | Load circle structure, accountabilities, domains, strategy |
+| **Structure** | `glassfrog_list_roles` (`has_sub_roles: true` lists circles), `glassfrog_get_role`, `glassfrog_get_role_strategy` | Load circle structure, accountabilities, domains, strategy |
 | **People** | `glassfrog_list_people`, `glassfrog_get_person` | Identify who fills which roles, load Partner portfolios |
-| **Operations** | `glassfrog_list_projects`, `glassfrog_list_metrics`, `glassfrog_list_checklist_items` | Assess current workload and capacity signals |
-| **Assignments** | `glassfrog_assign_person_to_role`, `glassfrog_unassign_person_from_role` | Execute role assignment decisions |
+| **Operations** | `glassfrog_list_subrole_projects` (per circle), `glassfrog_list_role_metrics`, `glassfrog_list_role_checklist_items` (per role) | Assess current workload and capacity signals |
+| **Assignments** | `glassfrog_assign_actor_to_role`, `glassfrog_list_role_assignments` + `glassfrog_delete_assignment` | Execute role assignment decisions |
 | **Maintenance** | `glassfrog_update_project`, `glassfrog_update_metric` | Update operational tracking after decisions |
-| **Reference** | `glassfrog_list_frequencies` | Confirm metric and checklist cadences |
+| **Reference** | the `frequency` field on each metric and checklist item | Confirm metric and checklist cadences (Weekly, Monthly, Quarterly) |
 
 **What GlassFrog cannot do for Lead Link work**: Create, modify, or remove roles, accountabilities, domains, or policies. All governance changes require human governance meeting process. The Lead Link can *draft* proposals; only the governance meeting can adopt them.
 
@@ -82,8 +82,9 @@ For scheduled routines, the routine's prompt declares the acting AI agent and ci
 **Step 1 -- Identify the circle**
 If actor resolution settled on a single circle, this is already done. Otherwise, ask which circle the user is Lead Linking for, or infer from context. In GlassFrog-connected mode:
 ```
-glassfrog_list_circles -> find the circle
-glassfrog_get_circle(circle_id) -> load strategy, policies, purpose, sub-circles
+glassfrog_list_roles(has_sub_roles: true) -> find the circle
+glassfrog_get_role(circle_id, include: ["sub_roles", "policies"]) -> load purpose, policies, sub-roles
+glassfrog_get_role_strategy(circle_id) -> load strategy
 ```
 
 **Step 2 -- Load role portfolio**
@@ -115,7 +116,7 @@ Setting circle strategy is the Lead Link's most consequential organizational aut
 
 **When GlassFrog is connected**, load the current strategy:
 ```
-glassfrog_get_circle(circle_id) -> read the strategy field
+glassfrog_get_role_strategy(circle_id) -> read the strategy
 ```
 If the strategy field is empty, treat that as a tension: "The circle has no strategy on record. Any prioritization decisions are being made without shared guidance -- that's worth addressing."
 
@@ -128,14 +129,14 @@ When the user wants to develop or refine circle strategy:
 3. **Identify the real choices**: Each meaningful strategy statement names something the circle will emphasize *at the expense of something else*. Help the user articulate those real choices rather than produce aspirational language.
 4. **Draft candidate strategy statements**: Offer two or three candidate strategy statements in the "Emphasize X, even at the expense of Y" format. Let the user react -- strategy is the Lead Link's call, but articulating it clearly requires iteration.
 5. **Test against current work**: Once a candidate strategy is chosen, test it: "Given this strategy, how would we handle [current scenario]?" If it produces wrong answers, refine the statement.
-6. **Record and communicate**: Once finalized, update the circle's strategy in GlassFrog via `glassfrog_get_circle` to verify current state, then advise the user to update it in the GlassFrog UI (governance records are not API-writable). Produce a communication to circle members explaining the strategy and its implications.
+6. **Record and communicate**: Once finalized, update the circle's strategy in GlassFrog via `glassfrog_get_role_strategy` to verify current state, then advise the user to update it in the GlassFrog UI (governance records are not API-writable). Produce a communication to circle members explaining the strategy and its implications.
 
 ### Priority Setting
 
 Strategy guides priorities, but the Lead Link also sets day-to-day and near-term prioritization guidance.
 
 **When asked "what should we focus on?"**:
-1. Load current projects: `glassfrog_list_projects(circle_id)`
+1. Load current projects: `glassfrog_list_subrole_projects(role_id: circle_id)`
 2. Cross-reference against circle strategy
 3. Identify which projects are most strategy-aligned and which are drifting
 4. Produce a priority ranking with brief rationale for each placement, keyed to the strategy statement
@@ -159,7 +160,7 @@ Role assignment is the Lead Link's Domain -- only the Lead Link can assign Partn
 2. Load the person's current role portfolio: scan `glassfrog_list_roles` for their existing assignments
 3. Assess capacity: is this person already filling roles with significant accountability weight? Adding more may not serve the circle
 4. Confirm the proposed person has been asked and accepted (the Lead Link assigns; Holacracy does not require consent, but the constitutional authority to assign does not mean it is good practice to assign without conversation)
-5. Execute: `glassfrog_assign_person_to_role(person_id, role_id)`
+5. Execute: `glassfrog_assign_actor_to_role(role_id, actor_id)` (`actor_id` is the person's `per_` id, or an agent's `agt_` id)
 6. Confirm the assignment was created and note any follow-up (e.g., orienting the new role-filler to the role's context)
 
 **Caution on role stacking**: In multi-person circles, flag when a single person is accumulating many roles with overlapping accountability surfaces. This creates implicit conflicts of interest and is a structural tension worth addressing in governance.
@@ -184,7 +185,7 @@ Re-assignment is legitimate organizational management. The Lead Link is not obli
 1. Have a direct conversation with the person before making the change in GlassFrog
 2. Frame it as an organizational decision, not a performance judgment -- unless it is a performance issue, in which case name that clearly
 3. Ensure the role is not left vacant in a way that creates operational risk
-4. Execute: `glassfrog_unassign_person_from_role(person_id, role_id)`
+4. Execute: find the assignment with `glassfrog_list_role_assignments(role_id)`, then `glassfrog_delete_assignment(assignment_id)`
 
 ---
 
@@ -200,7 +201,7 @@ Resource allocation is where strategy becomes operational. Every allocation deci
 
 **When asked to help with resource allocation**:
 
-1. Load current projects: `glassfrog_list_projects(circle_id)` -- note which role owns each project
+1. Load current projects: `glassfrog_list_subrole_projects(role_id: circle_id)` -- note which role owns each project
 2. Load current roles: `glassfrog_list_roles(circle_id)` -- note accountability weight per role
 3. Load current people assignments: identify who fills which roles and how many roles each person fills
 4. Map capacity by person: "Person A fills Roles X, Y, Z. Their current projects are [list]. Their estimated capacity allocation is [rough estimate based on project count and accountability weight]."
@@ -259,8 +260,8 @@ Before drafting a proposal, identify the precise tension. A tension in Holacracy
 **Tension sensing from GlassFrog data**:
 ```
 glassfrog_list_roles(circle_id) -> scan for orphaned roles (no accountability text), roles with no filler, overlapping accountability language
-glassfrog_list_projects(circle_id) -> scan for projects with no clear role home
-glassfrog_list_metrics(circle_id) -> scan for metrics not connected to an accountability
+glassfrog_list_subrole_projects(role_id: circle_id) -> scan for projects with no clear role home
+glassfrog_list_role_metrics(role_id) -> for each role, scan for metrics not connected to an accountability
 ```
 
 ### Governance Proposal Drafting

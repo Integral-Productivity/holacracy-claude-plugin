@@ -44,8 +44,8 @@ This document inventories every constitutional duty of the Facilitator role and 
 
 **AI support for auditing**:
 ```
-glassfrog_list_circles -> identify all sub-circles of the current circle
-glassfrog_get_circle(sub_circle_id) -> check for Facilitator and Secretary assignments
+glassfrog_list_roles(parent_role_id: circle_id, has_sub_roles: true) -> identify all sub-circles of the current circle
+glassfrog_get_role(sub_circle_id, include: ["sub_roles", "assignments"]) -> check for Facilitator and Secretary assignments
 glassfrog_list_roles(sub_circle_id) -> verify core roles are filled
 ```
 

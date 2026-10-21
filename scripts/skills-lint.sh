@@ -506,6 +506,87 @@ check_upload_limits() {
   done < <(git -C "$ROOT" ls-files 'skills/*/SKILL.md')
 }
 
+# ---------------------------------------------------------------------------
+# Check 9 -- every GlassFrog tool a shipped file names exists on the server.
+#
+# Seven names in the four role skills, two references and one command --
+# `glassfrog_get_circle`, `glassfrog_list_metrics`, `glassfrog_list_frequencies`
+# and others, 69 citations -- existed on neither GlassFrog server (#337). They
+# were v3-era names that outlived the v5 cutover, and nothing compared a cited
+# name against a tool list. A model that follows the prose calls a tool that
+# is not there and has to guess.
+#
+# The inventory is evals/glassfrog-tools.tsv, generated from the server's
+# source by scripts/glassfrog-tool-inventory.py. The pattern needs at least one
+# underscore after `glassfrog_`, so prose like `glassfrog-extended` and the
+# official server's camelCase names do not match.
+# ---------------------------------------------------------------------------
+_glassfrog_files() {
+  git -C "$ROOT" ls-files 'skills/*.md' 'skills/**/*.md' 'agents/*.md' 'commands/*.md' 'hooks/*' | sort -u
+}
+
+check_tool_names() {
+  skipped 9 && return 0
+  local inv="$ROOT/evals/glassfrog-tools.tsv" known hits
+  hits="$(cd "$ROOT" && _glassfrog_files | xargs -r grep -noE 'glassfrog_[a-z]+(_[a-z]+)+' 2>/dev/null)"
+  [ -n "$hits" ] || return 0
+  [ -f "$inv" ] || { finding 9 "evals/glassfrog-tools.tsv" "missing, but shipped files name GlassFrog tools"; return 0; }
+  known="$(grep -v '^#' "$inv" | cut -f1)"
+  while IFS=: read -r f n name; do
+    [ -n "$name" ] || continue
+    grep -qxF "$name" <<< "$known" \
+      || finding 9 "$f:$n" "$name is not a GlassFrog Extended tool (evals/glassfrog-tools.tsv)"
+  done <<< "$hits"
+}
+
+# ---------------------------------------------------------------------------
+# Check 10 -- GlassFrog tool grants are generated, and only under known prefixes.
+#
+# A subagent's tool entries match literally: a mid-name wildcard such as
+# `mcp__*__glassfrog_get_*` matches nothing (verified against Claude Code
+# 2.1.306, see scripts/glassfrog-tool-inventory.py). So the coach must list
+# every read tool under every server prefix GlassFrog arrives under. When it
+# listed one prefix, it had no GlassFrog tools in Cowork (#338); when its deny
+# list was kept by hand, it missed the two newest writes (#342).
+#
+# Two rules. (a) agents/holacracy-coach.md carries exactly the `tools:` and
+# `disallowedTools:` lines the generator prints, so its allowlist holds no
+# write and its deny list holds every write. (b) A fully-qualified
+# `mcp__<server>__glassfrog_*` name appears only on an agent's `tools:` or
+# `disallowedTools:` line, and only under a prefix in
+# evals/glassfrog-server-prefixes.txt. Prose that names one server's prefix
+# is wrong on every other surface.
+# ---------------------------------------------------------------------------
+check_tool_grants() {
+  skipped 10 && return 0
+  local coach="agents/holacracy-coach.md" prefixes="$ROOT/evals/glassfrog-server-prefixes.txt"
+  local want got f n line name prefix known_prefixes=""
+  [ -f "$prefixes" ] && known_prefixes="$(grep -v '^#' "$prefixes" | awk 'NF {print $1}')"
+
+  if [ -f "$ROOT/$coach" ]; then
+    want="$(GLASSFROG_INVENTORY_ROOT="$ROOT" python3 "$SCRIPT_DIR/glassfrog-tool-inventory.py" coach-frontmatter 2>&1)" \
+      || { finding 10 "$coach" "cannot generate the expected tool lines: $want"; want=""; }
+    if [ -n "$want" ]; then
+      got="$(sed -n '/^---$/,/^---$/p' "$ROOT/$coach" | grep -E '^(tools|disallowedTools):')"
+      [ "$got" = "$want" ] \
+        || finding 10 "$coach" "tools:/disallowedTools: differ from the inventory -- regenerate with: python3 scripts/glassfrog-tool-inventory.py coach-frontmatter"
+    fi
+  fi
+
+  while IFS=: read -r f n line; do
+    [ -n "$f" ] || continue
+    case "$f:$line" in
+      agents/*:tools:*|agents/*:disallowedTools:*)
+        while IFS= read -r name; do
+          prefix="${name%%glassfrog_*}"
+          grep -qxF "$prefix" <<< "$known_prefixes" \
+            || finding 10 "$f:$n" "$name uses server prefix $prefix, which is not in evals/glassfrog-server-prefixes.txt"
+        done < <(grep -oE 'mcp__[A-Za-z0-9_-]+__glassfrog_[a-z_]+' <<< "$line") ;;
+      *) finding 10 "$f:$n" "names a GlassFrog tool by one server's prefix; cite the bare glassfrog_* name, which is the same on every surface" ;;
+    esac
+  done <<< "$(cd "$ROOT" && _glassfrog_files | xargs -r grep -nE 'mcp__[A-Za-z0-9_-]+__glassfrog_' 2>/dev/null)"
+}
+
 check_links
 check_step_citations
 check_frontmatter
@@ -514,5 +595,7 @@ check_command_refs
 check_orphans
 check_roster_delegation
 check_upload_limits
+check_tool_names
+check_tool_grants
 
 check_common_summarize "skills-lint"

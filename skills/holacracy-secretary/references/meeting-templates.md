@@ -222,16 +222,16 @@ Used when the Governance Meeting includes an Integrative Election:
 ## Pre-Meeting Prep Checklist
 
 ### Before Tactical
-- [ ] Load checklist items from GlassFrog (`glassfrog_list_checklist_items`)
-- [ ] Load metrics from GlassFrog (`glassfrog_list_metrics`)
-- [ ] Load projects from GlassFrog (`glassfrog_list_projects`)
+- [ ] Load checklist items from GlassFrog (`glassfrog_list_role_checklist_items`, for each role)
+- [ ] Load metrics from GlassFrog (`glassfrog_list_role_metrics`, for each role)
+- [ ] Load projects from GlassFrog (`glassfrog_list_subrole_projects`, for the circle)
 - [ ] Populate Tactical Meeting template with items from above
 - [ ] Confirm meeting time and attendees
 - [ ] Send prep packet to Circle Members (optional but recommended)
 
 ### Before Governance
 - [ ] Load current role definitions (`glassfrog_list_roles`, `glassfrog_get_role` for detail)
-- [ ] Load current policies (`glassfrog_get_circle`)
+- [ ] Load current policies (`glassfrog_list_role_policies`)
 - [ ] Note any previously-identified tensions that may surface as proposals
 - [ ] Confirm meeting time and attendees
 - [ ] Prepare governance output template

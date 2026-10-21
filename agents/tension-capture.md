@@ -83,7 +83,7 @@ Wait for the user's response.
 
 ### Step 7 -- File the tension
 
-Single call: `glassfrog_create_tension(role_id, body)`. The signature is body-only; `label` and `meeting_type` are not part of the stable schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). The suggested venue from Step 5 is a user-facing annotation, not an API parameter.
+Single call: `glassfrog_create_tension(role_id, body)`. If that tool is not in the session, do not reach this step; see "When `glassfrog_create_tension` is not available" below. The signature is body-only; `label` and `meeting_type` are not part of the stable schema ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). The suggested venue from Step 5 is a user-facing annotation, not an API parameter.
 
 Capture the returned tension ID into the session-tension cache (the in-conversation record `/holacracy:supersession-sweep` reads in its default `session` scope). The cache entry: `{ tension_id, role_id, role_name, circle_name, body, suggested_venue, filed_at }`.
 
@@ -104,9 +104,11 @@ Suggested venue: [governance | tactical | either]   (annotation only, not stored
 
 Do **not** continue any other work. The dispatcher resumes the user's original conversation.
 
-## When GlassFrog is not connected
+## When `glassfrog_create_tension` is not available
 
-Name it. Do not attempt to draft a fake `role_id`. Tell the dispatcher: *"GlassFrog isn't connected -- I can draft the tension text for the user to file manually, but I can't call `create_tension`. Want me to draft for manual entry?"* If yes, produce a plain-text draft formatted for manual entry into the GlassFrog UI, with the resolved sensing role and suggested meeting venue labelled. Return that to the dispatcher.
+This covers two cases: GlassFrog is not connected at all, or a GlassFrog server is connected but does not offer `glassfrog_create_tension` (GlassFrog's hosted v5 MCP, for example, offers `glassfrog_createTension` instead and no tension reads). Check the session's tool list before Step 7, not by trying the call. A server that lacks the tool is a known state, not a failed call, so the Step 7 rule against a silent fallback does not apply here.
+
+Name it. Do not attempt to draft a fake `role_id`. Tell the dispatcher which case applies: *"GlassFrog isn't connected"* or *"The connected GlassFrog server doesn't offer `glassfrog_create_tension`"*, then *"-- I can draft the tension text for the user to file manually, but I can't file it. Want me to draft for manual entry?"* If yes, produce a plain-text draft formatted for manual entry into the GlassFrog UI, with the sensing role (resolved, or as the user declared it) and suggested meeting venue labelled. Return that to the dispatcher with no tension ID, and do not add it to the session-tension cache.
 
 ## Boundaries you do not cross
 

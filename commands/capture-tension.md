@@ -26,7 +26,7 @@ This is the **cross-role, out-of-meeting** capture surface. For in-tactical-meet
 
 - This command captures **one tension per invocation**. If the user wants to capture multiple, run it multiple times.
 - If the role-vs-person triage gate refuses to file (person tension), this command reports the refusal and the suggested IDR route — it does not silently swallow the request.
-- If GlassFrog is not connected, the subagent will offer to draft a plain-text version for manual entry. This command honours that fallback.
+- If GlassFrog is not connected, or the connected server does not offer `glassfrog_create_tension`, the subagent will offer to draft a plain-text version for manual entry. This command honours that fallback.
 - The constitutional safeguard from `skills/shared/tension-capture-flow.md` applies: no file without explicit per-tension confirmation.
 - The subagent does not attempt to verify via `glassfrog_list_role_tensions` — same-session list-back is unreliable. The `create_tension` response ID is the only reliable confirmation.
 

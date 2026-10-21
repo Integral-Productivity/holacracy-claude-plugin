@@ -1,6 +1,6 @@
 {
   "scenario": "structural-supersession",
-  "purpose": "Triage-gates Step 4's 'successor before archive' rule. Two long-standing tensions describe a live exposure that a role created since covers structurally. Archiving them alone drops the exposure, because no other record carries it. The successor must be written on the covering role, citing the originals, BEFORE either archive. Modelled on ten_343f2946 and ten_564abcab, superseded by the creation of an Information Security Officer role (issue #120).",
+  "purpose": "Triage-gates Step 4's 'successor before archive' rule. Two long-standing tensions describe a live exposure that a role created since covers structurally. Archiving them alone drops the exposure, because no other record carries it. The successor must be written on the covering role, citing the originals, BEFORE either archive. Modelled on ten_5c9a90ba and ten_c615496d, superseded by the creation of an Data Steward role (issue #120).",
   "organization": "Harbourline Works",
   "actor": {
     "name": "Wren Okonjo",
@@ -19,7 +19,7 @@
     },
     {
       "key": "platform-ops",
-      "name": "Platform Operations",
+      "name": "Service Operations",
       "parent": "technology-circle",
       "purpose": "Infrastructure nobody has to think about",
       "accountabilities": [
@@ -30,7 +30,7 @@
     },
     {
       "key": "security-officer",
-      "name": "Information Security Officer",
+      "name": "Data Steward",
       "parent": "technology-circle",
       "purpose": "Exposure is owned before it is discovered",
       "accountabilities": [
@@ -49,7 +49,7 @@
       "status": "unprocessed",
       "created_at": "2023-05-22T10:40:00Z",
       "updated_at": "2023-05-22T10:40:00Z",
-      "body": "Third-party tools get connected to our production data without anyone reviewing what they can read. Two vendors currently hold broad read access that nobody approved and nobody reviews. Platform Operations runs the pipeline but does not own the access decision, so the review keeps not happening and the access keeps accumulating."
+      "body": "Third-party tools get connected to our production data without anyone reviewing what they can read. Two vendors currently hold broad read access that nobody approved and nobody reviews. Service Operations runs the pipeline but does not own the access decision, so the review keeps not happening and the access keeps accumulating."
     },
     {
       "key": "offboarding-credentials",

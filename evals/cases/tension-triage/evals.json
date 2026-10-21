@@ -9,10 +9,10 @@
       "eval_name": "authority-gate-fires-before-venue-routing",
       "fixture": "evals/fixtures/glassfrog/authority-already-held.json",
       "prompt": "Triage the unprocessed tensions on my roles in the Product Circle. Walk me through what you find for each one.",
-      "ground_truth": "The tension on Product Architecture about representing customer problems in the roadmap tool is already the role's own work: it holds the accountability 'Deciding how product intent is represented in the roadmap tool' and the Product Taxonomy domain covering the customer-problem-to-area mapping. A role-filler may take any action to enact their accountabilities so long as it does not impact a domain another role controls, and no other role holds a roadmap-tooling domain here — so this needs no meeting and no proposal, it needs the work done. Note the authority is carried by an ACCOUNTABILITY plus an adjacent domain, not by a domain named for the tool; that is deliberate per #202, because a tool-named domain made the answer reachable by string match and the case then measured nothing. Modelled on ten_03c044b3, which waited 21 months for a meeting that was never required (issue #120, comment 5172936811). The Circle Lead tension about who decides scope-versus-date is the genuinely governable one and SHOULD reach venue routing.",
+      "ground_truth": "The tension on Offer Design about representing customer problems in the roadmap tool is already the role's own work: it holds the accountability 'Deciding how product intent is represented in the roadmap tool' and the Product Taxonomy domain covering the customer-problem-to-area mapping. A role-filler may take any action to enact their accountabilities so long as it does not impact a domain another role controls, and no other role holds a roadmap-tooling domain here — so this needs no meeting and no proposal, it needs the work done. Note the authority is carried by an ACCOUNTABILITY plus an adjacent domain, not by a domain named for the tool; that is deliberate per #202, because a tool-named domain made the answer reachable by string match and the case then measured nothing. Modelled on ten_c25e7e16, which waited 21 months for a meeting that was never required (issue #120, comment 5172936811). The Circle Lead tension about who decides scope-versus-date is the genuinely governable one and SHOULD reach venue routing.",
       "assertions": [
         {
-          "text": "For the roadmap-tooling tension, the response identifies the authority Product Architecture already holds — its accountability for deciding how product intent is represented in the roadmap tool, or its Product Taxonomy domain — before it proposes any meeting venue for that tension. Naming a domain called 'Roadmap Tooling Configuration' does not satisfy this: no such domain exists in the fixture, so citing one is a fabrication rather than a reading",
+          "text": "For the roadmap-tooling tension, the response identifies the authority Offer Design already holds — its accountability for deciding how product intent is represented in the roadmap tool, or its Product Taxonomy domain — before it proposes any meeting venue for that tension. Naming a domain called 'Roadmap Tooling Configuration' does not satisfy this: no such domain exists in the fixture, so citing one is a fabrication rather than a reading",
           "discriminating": true
         },
         {
@@ -40,7 +40,7 @@
       "eval_name": "blended-tension-partitioned",
       "fixture": "evals/fixtures/glassfrog/blended-tension.json",
       "prompt": "Triage the unprocessed tensions on my roles. Where a body no longer scans well, show me the edit you would make to it.",
-      "ground_truth": "The Circle Lead tension is genuinely blended. Applying the substitution test — would the same problem exist if a different person filled the role — splits it: the absence of any mechanism making priority order visible survives a change of filler and is governable; moving to novel work before finishing committed work travels with the person and is not. Correct move is to keep the tension and PARTITION the body, marking the behavioural half explicitly out of scope for proposals, then carry only the structural half into venue routing. Refusing loses the structural half; leaving it fused makes it unresolvable — ten_00fc5815 sat that way for 15 months. The Delivery Coordination tension is wholly structural and must NOT be partitioned.",
+      "ground_truth": "The Circle Lead tension is genuinely blended. Applying the substitution test — would the same problem exist if a different person filled the role — splits it: the absence of any mechanism making priority order visible survives a change of filler and is governable; moving to novel work before finishing committed work travels with the person and is not. Correct move is to keep the tension and PARTITION the body, marking the behavioural half explicitly out of scope for proposals, then carry only the structural half into venue routing. Refusing loses the structural half; leaving it fused makes it unresolvable — ten_22537203 sat that way for 15 months. The Delivery Coordination tension is wholly structural and must NOT be partitioned.",
       "assertions": [
         {
           "text": "The Circle Lead tension is partitioned into a structural half and a personal half — it is neither refused outright nor left as a single fused body",
@@ -70,8 +70,8 @@
       "eval_id": 2,
       "eval_name": "successor-written-before-archive",
       "fixture": "evals/fixtures/glassfrog/structural-supersession.json",
-      "prompt": "Triage the unprocessed tensions on my roles in the Technology Circle. I created the Information Security Officer role after both of the Platform Operations tensions were filed, and I want the backlog cleaned up in this pass — you have my go-ahead to make the GlassFrog changes as you work through them rather than checking back on each one.",
-      "ground_truth": "Both Platform Operations tensions describe a live, material exposure — unreviewed third-party read access to production data, and working logins still held by departed contributors — that the Information Security Officer role now covers structurally. Archiving them alone drops the exposure, because no other record carries it. The correct order is: write the successor on Information Security Officer, citing the archived originals, and only then archive. Modelled on ten_343f2946 and ten_564abcab (issue #120). Also: meeting_type cannot be written through the API — update_tension 422s on it — so the venue belongs in a body prefix or in the conversation, never in that field.",
+      "prompt": "Triage the unprocessed tensions on my roles in the Technology Circle. I created the Data Steward role after both of the Service Operations tensions were filed, and I want the backlog cleaned up in this pass — you have my go-ahead to make the GlassFrog changes as you work through them rather than checking back on each one.",
+      "ground_truth": "Both Service Operations tensions describe a live, material exposure — unreviewed third-party read access to production data, and working logins still held by departed contributors — that the Data Steward role now covers structurally. Archiving them alone drops the exposure, because no other record carries it. The correct order is: write the successor on Data Steward, citing the archived originals, and only then archive. Modelled on ten_5c9a90ba and ten_c615496d (issue #120). Also: meeting_type cannot be written through the API — update_tension 422s on it — so the venue belongs in a body prefix or in the conversation, never in that field.",
       "assertions": [
         {
           "text": "A successor tension is created before either original is archived",
@@ -97,7 +97,7 @@
           }
         },
         {
-          "text": "The successor tension is written on Information Security Officer, not left on Platform Operations",
+          "text": "The successor tension is written on Data Steward, not left on Service Operations",
           "discriminating": true
         },
         {

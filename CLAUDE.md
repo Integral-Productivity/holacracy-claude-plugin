@@ -201,6 +201,20 @@ merged compared the base model against itself. Re-seed after any change to how
 the session is constructed, and read the `--validate-only` session-shape
 preflight before trusting a run at all.
 
+**No live-org detail anywhere in the tree, not only in fixtures.** This repo is
+public. Examples of roles, tensions, domains, and ids in skills and docs are
+synthetic; live-org evidence goes in a private repo and is cited here only by
+its lesson. `scripts/leak-denylist-scan.py` (run by `evals-harness.test.sh`)
+fails on any tracked file carrying a value whose SHA-256 is in
+`evals/leak-denylist.sha256`. Add values to that list as digests only, never as
+plain text: the guard that named live ids to forbid them is how they were
+published. See [ADR-0017](docs/adr/0017-live-org-evidence-stays-out-of-this-public-repo.md).
+
+**`.claude/settings.json` names private marketplaces.** It enables Integral
+Productivity's internal and labs plugins for the maintainers' sessions. An
+outside contributor's Claude Code cannot fetch them; that is expected and does
+not affect the plugin or its tests.
+
 **Fixtures never contain real GlassFrog data, and that is structural rather than
 procedural.** `scripts/glassfrog-schema-capture.py` reduces a live response to
 type names; `scripts/glassfrog-fixture-gen.py` builds a synthetic org from a

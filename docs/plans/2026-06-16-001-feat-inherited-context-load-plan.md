@@ -84,7 +84,7 @@ flowchart TD
 **Patterns to follow:** `skills/shared/actor-and-role-resolution.md` (structure, step framing, "When GlassFrog Data Is Unavailable" section); the corrected `skills/holacratic-ai-governance/references/glassfrog-api-constraints.md` (tool names, payload shapes).
 
 **Test scenarios:**
-- Happy path (deep org): given a role nested 3+ levels, the procedure as written yields the full ancestor purpose chain to the Anchor Circle, the parent-policy excerpts, and the inherited strategy with its source — verified by a dry run against the live GlassFrog (e.g. Product Architecture, as in the origin probe).
+- Happy path (deep org): given a role nested 3+ levels, the procedure as written yields the full ancestor purpose chain to the Anchor Circle, the parent-policy excerpts, and the inherited strategy with its source — verified by a dry run against the live GlassFrog (e.g. Offer Design, as in the origin probe).
 - Edge (flat/solo org): given a role one level under the Anchor, the rendered chain is short but well-formed (no error, no empty-section noise).
 - Edge (no inherited strategy): given a role whose `get_role_strategy` returns "no strategy set", the block omits strategy gracefully rather than rendering a stub.
 - Error (disconnected): given GlassFrog unavailable, the procedure names the limitation and asks the user to declare context — no silent assumption.
@@ -107,7 +107,7 @@ flowchart TD
 
 **Test scenarios:**
 - Invariant (default unchanged): given no `--inherited`, the command's described tool calls and output are identical to the pre-change version — diff shows only additive content.
-- Happy path: given `/holacracy:context "Enterprise Architecture" --inherited`, the output appends the inherited-context block for that circle's resolved role.
+- Happy path: given `/holacracy:context "Design Circle" --inherited`, the output appends the inherited-context block for that circle's resolved role.
 - Edge (flag, no circle, single match): `--inherited` with no circle name but the actor fills the target role in exactly one circle → resolves silently and loads.
 - Edge (flag, multi-match): `--inherited` with an ambiguous role → asks which circle before loading (no wasted call).
 - Error (disconnected): `--inherited` while GlassFrog is down → the sibling fallback fires.

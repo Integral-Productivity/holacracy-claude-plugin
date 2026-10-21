@@ -128,6 +128,18 @@ There is only one token type to choose from — API keys carry the same scopes a
 
 The first time a skill invokes a `glassfrog_*` tool, Claude runs the OAuth handshake against the MCP server — paste your API key when prompted. Tokens then refresh in the background; re-authentication is only required after 30 days of inactivity or if you regenerate the underlying GlassFrog API key.
 
+### What the hosted server does with your key and data
+
+GlassFrog Extended is run by Integral Productivity LLC on Vercel. This is what it does, as read from its source on 2026-10-21:
+
+- **Your API key.** The server checks your key against GlassFrog once, then puts it inside the OAuth tokens it gives your MCP client. It keeps no database of keys or users. Access tokens last 24 hours; refresh tokens last 30 days and renew while you use them.
+- **The tokens are signed, not encrypted.** Anyone who can read a token from your client's storage can decode your GlassFrog API key from it. Treat the tokens with the same care as the key.
+- **Revocation.** The server cannot revoke a token. To cut off access, regenerate your GlassFrog API key; every token made from the old key then stops working.
+- **Your GlassFrog data.** Each tool call is passed to the GlassFrog API with your key, and the answer goes back to your client. The server code writes none of that content to storage or to its own logs. Vercel, the host, keeps standard request logs (time, path, status).
+- **No warranty.** The server is offered as is, with no uptime or support commitment. The server's source is private for now.
+
+If you prefer not to route your key through a third party, use GlassFrog's own hosted MCP (`https://app.glassfrog.com/api/v5/mcp`) instead. Some skills need tools it does not have yet; [#340](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/340) tracks making it the default.
+
 ### Working without GlassFrog
 
 All six skills degrade gracefully if GlassFrog Extended is not connected. They will operate on constitutional knowledge and context the user provides directly, and will name that limitation clearly (e.g., "I don't have live governance data, so I'm working from what you've shared.").
@@ -170,3 +182,7 @@ Tracked as issues on this repo as the work is broken out.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Trademarks
+
+Holacracy® is a registered trademark of HolacracyOne, LLC. GlassFrog is a product of HolacracyOne. This plugin is an independent project by Integral Productivity LLC. HolacracyOne does not make, endorse, or support it.

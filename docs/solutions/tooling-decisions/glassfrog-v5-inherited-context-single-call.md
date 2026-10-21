@@ -75,8 +75,8 @@ Live v5 reality (after one probe):
   "inherited_from_role_id": "role_c659…" }
 
 // glassfrog_get_role_context(role_id).governance.ancestor_roles:
-[ { "name": "Enterprise Architecture", "purpose": "Shape the corporation…" },
-  { "name": "Market Applied Innovation", "purpose": "Deliver … to the marketplace" },
+[ { "name": "Design Circle", "purpose": "Shape the corporation…" },
+  { "name": "Market Circle", "purpose": "Deliver … to the marketplace" },
   { "name": "… Anchor Circle", "purpose": "Enabling the actualization…", "parent_role_id": null } ]
 
 // glassfrog_list_role_policies(role_id) → full title + body per policy (readable)

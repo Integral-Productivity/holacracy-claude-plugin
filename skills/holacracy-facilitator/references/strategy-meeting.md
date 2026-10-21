@@ -19,8 +19,9 @@ A Strategy meeting is a Lead Link-initiated session for setting or revisiting th
 
 Load the current circle context before beginning:
 ```
-glassfrog_get_circle(circle_id) -> current strategy, all roles, people
-glassfrog_list_projects(circle_id) -> current project landscape
+glassfrog_get_role_strategy(circle_id) -> current strategy
+glassfrog_get_role(circle_id, include: ["sub_roles", "assignments"]) -> all roles, people
+glassfrog_list_subrole_projects(role_id: circle_id) -> current project landscape
 glassfrog_list_roles(circle_id) -> role purposes and accountabilities
 ```
 

@@ -45,9 +45,9 @@ Build a person-to-role map: who fills which roles, and what is their total accou
 
 **Step 3: Load current operational work**
 ```
-glassfrog_list_projects(circle_id) -> count active projects per role
-glassfrog_list_checklist_items(circle_id) -> recurring time obligations per role
-glassfrog_list_metrics(circle_id) -> reporting obligations per role
+glassfrog_list_subrole_projects(role_id: circle_id) -> count active projects per role
+glassfrog_list_role_checklist_items(role_id) -> recurring time obligations, for each role
+glassfrog_list_role_metrics(role_id) -> reporting obligations, for each role
 ```
 
 Active project count is a rough proxy for current load intensity. Combine with accountability weight to get a capacity estimate per person.
@@ -161,7 +161,7 @@ The core problem: when one person fills all roles, urgency and habit tend to dom
 A practical weekly protocol for solo-operator Lead Links:
 
 **Monday (or start-of-week): allocation review**
-1. Load current projects from GlassFrog: `glassfrog_list_projects(circle_id)`
+1. Load current projects from GlassFrog: `glassfrog_list_subrole_projects(role_id: circle_id)`
 2. Review the strategy statement
 3. Allocate the week's available hours across roles and projects using the strategy as the filter
 4. Name explicitly what is being deprioritized this week

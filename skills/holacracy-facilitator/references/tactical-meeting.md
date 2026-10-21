@@ -11,10 +11,10 @@ A Tactical meeting is the circle's regular operational heartbeat. Its purpose is
 Load the following before the meeting starts:
 
 ```
-glassfrog_list_checklist_items(circle_id)  -> organized by role
-glassfrog_list_metrics(circle_id)          -> organized by role
-glassfrog_list_projects(circle_id)         -> organized by role and status
-glassfrog_get_circle(circle_id)            -> confirm role/people assignments
+glassfrog_list_role_checklist_items(role_id)  -> for each role in the circle
+glassfrog_list_role_metrics(role_id)          -> for each role in the circle
+glassfrog_list_subrole_projects(role_id: circle_id) -> organized by role and status
+glassfrog_get_role(circle_id, include: ["sub_roles", "assignments"]) -> confirm role/people assignments
 ```
 
 Prepare the meeting agenda by organizing these into sections:

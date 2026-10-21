@@ -12,7 +12,7 @@ A Governance meeting is the circle's structural evolution mechanism. Its purpose
 
 Before the meeting, load:
 ```
-glassfrog_get_circle(circle_id) -> all roles, accountabilities, domains, people
+glassfrog_get_role(circle_id, include: ["sub_roles", "assignments", "policies"]) -> all roles, people, policies
 glassfrog_list_roles(circle_id) -> full role inventory for cross-reference
 glassfrog_list_people          -> attendee identification
 ```

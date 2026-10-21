@@ -3,7 +3,7 @@ name: holacracy-facilitator
 description: >
   Full Holacracy Facilitator skill for organizations using Holacracy and GlassFrog. Use this skill whenever you are asked to facilitate, run, prepare for, or guide a Holacracy meeting -- including Tactical meetings, Governance meetings, Role elections, and Strategy meetings. Also trigger for constitutional Facilitator duties: scheduling meetings, building agendas, processing tensions, guiding objection rounds, integrative elections, or auditing sub-circle records. Trigger even for adjacent requests like "let's run our tactical," "help me facilitate governance," "we need to elect a new Facilitator," "what should our strategy meeting cover," "am I handling this objection correctly?", or "help me process this tension." Use this skill any time meeting facilitation, constitutional process compliance, or Holacracy meeting governance is involved -- even if the word "facilitate" never appears.
 status: draft
-version: 1.1.2
+version: 1.1.3
 ---
 # Holacracy Facilitator
 
@@ -68,10 +68,10 @@ In Mode C, announce the limitation clearly at the start: "GlassFrog isn't connec
 
 | Category | Tools | Used For |
 |---|---|---|
-| **Structure** | `glassfrog_list_circles`, `glassfrog_get_circle`, `glassfrog_list_roles`, `glassfrog_get_role`, `glassfrog_list_people` | Load circle membership, roles, accountabilities |
-| **Operations** | `glassfrog_list_checklist_items`, `glassfrog_list_metrics`, `glassfrog_list_projects` | Populate Tactical meeting agenda |
+| **Structure** | `glassfrog_list_roles` (`has_sub_roles: true` lists circles), `glassfrog_get_role`, `glassfrog_get_role_strategy`, `glassfrog_list_people` | Load circle membership, roles, accountabilities |
+| **Operations** | `glassfrog_list_role_checklist_items`, `glassfrog_list_role_metrics` (per role), `glassfrog_list_subrole_projects` (per circle) | Populate Tactical meeting agenda |
 | **Write-back** | `glassfrog_update_project`, `glassfrog_update_checklist_item`, `glassfrog_update_metric` | Update project status/definitions after meeting |
-| **Reference** | `glassfrog_list_frequencies` | Validate cadence settings |
+| **Reference** | the `frequency` field on each checklist item and metric | Validate cadence settings (Weekly, Monthly, Quarterly) |
 
 **What GlassFrog cannot do via API**: Record checklist completions, log metric values, create new projects, or adopt governance changes. These happen in the GlassFrog UI. The AI facilitates the process and produces a written record; participants enter data directly.
 
@@ -82,7 +82,7 @@ In Mode C, announce the limitation clearly at the start: "GlassFrog isn't connec
 When the user invokes this skill, run this intake sequence before any facilitation work begins:
 
 **Step 0 -- Determine operating mode**
-Check whether GlassFrog MCP tools are available (try `glassfrog_list_circles` -- if it fails or the tool does not exist, default to Mode C). Announce the mode briefly:
+Check whether GlassFrog MCP tools are available (try `glassfrog_get_me` -- if it fails or the tool does not exist, default to Mode C). Announce the mode briefly:
 - Mode A/B: "GlassFrog is connected -- I'll load your circle data before we start."
 - Mode C: "GlassFrog isn't connected -- I'll guide the process and you can share your agenda items as we go."
 
@@ -98,8 +98,9 @@ For scheduled routines, the routine's prompt declares the acting AI agent and ci
 **Step 1 -- Identify the circle**
 Ask which circle the meeting is for, or infer from context. In Modes A/B:
 ```
-glassfrog_list_circles -> find the circle ID
-glassfrog_get_circle(circle_id) -> full structure: roles, people, strategy
+glassfrog_list_roles(has_sub_roles: true) -> find the circle ID
+glassfrog_get_role(circle_id, include: ["sub_roles", "assignments"]) -> full structure: roles, people
+glassfrog_get_role_strategy(circle_id) -> strategy
 ```
 In Mode C: ask the user to describe the circle, its key roles, and current participants.
 
@@ -120,9 +121,9 @@ Ask which meeting type, or infer from context:
 
 **Step 4 -- Load operational data (Tactical only; Modes A/B)**
 ```
-glassfrog_list_checklist_items(circle_id) -> checklist agenda items by role
-glassfrog_list_metrics(circle_id) -> metrics to review by role
-glassfrog_list_projects(circle_id) -> projects to update by role
+glassfrog_list_role_checklist_items(role_id) -> checklist agenda items, for each role in the circle
+glassfrog_list_role_metrics(role_id) -> metrics to review, for each role in the circle
+glassfrog_list_subrole_projects(role_id: circle_id) -> projects to update by role
 ```
 In Mode C: ask the user to share their checklist items, metrics, and current projects. Offer to organize them into an agenda based on what they provide.
 
@@ -216,7 +217,7 @@ One of the Facilitator's less-exercised but real duties is auditing sub-circle m
 - Checking that governance records are being maintained by sub-circle Secretaries
 - Flagging sub-circles that appear to have lapsed
 
-To support this, load sub-circle structure via `glassfrog_list_circles` and verify each sub-circle has a Facilitator and Secretary assigned. Unfilled core roles are a signal worth surfacing.
+To support this, load sub-circle structure via `glassfrog_list_roles(parent_role_id: circle_id, has_sub_roles: true)` and verify each sub-circle has a Facilitator and Secretary assigned. Unfilled core roles are a signal worth surfacing.
 
 ---
 

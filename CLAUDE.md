@@ -61,12 +61,29 @@ bash scripts/skills-lint.test.sh         # the lint's own mutation-checked suite
 `skills-lint.sh` checks every shipped markdown file for: path resolution,
 `Step N` citation integrity, frontmatter contract, skill-version bumped when
 content changed, referenced-command existence, orphaned shared references,
-role-roster delegation, and descriptions inside Claude's upload limits (500
-characters for `plugin.json`, 1024 for a skill). The last one exists because a
+role-roster delegation, descriptions inside Claude's upload limits (500
+characters for `plugin.json`, 1024 for a skill), GlassFrog tool names that
+exist on the server, and GlassFrog tool grants generated from the inventory. The last one exists because a
 rejected upload is silent: the org's claude.ai copy, which Cowork and scheduled
 cloud sessions load, keeps the last version it accepted and every later release
 misses those sessions ([#368](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/368)).
-`claude plugin validate` does not check these limits. CI runs both on every PR
+`claude plugin validate` does not check these limits.
+
+The last two read `evals/glassfrog-tools.tsv`, a snapshot of GlassFrog
+Extended's tools with read/write taken from each tool's `readOnlyHint`. When the
+server adds, removes, or renames a tool, regenerate it and the coach's tool
+lines, in this order:
+
+```bash
+python3 scripts/glassfrog-tool-inventory.py capture ../glassfrog-mcp-server > evals/glassfrog-tools.tsv
+python3 scripts/glassfrog-tool-inventory.py coach-frontmatter   # paste over agents/holacracy-coach.md's tools:/disallowedTools:
+```
+
+The coach lists every read tool once per server prefix in
+`evals/glassfrog-server-prefixes.txt`, because Claude Code matches subagent tool
+entries literally: `mcp__*__glassfrog_get_*` matches nothing (#338). Under a
+prefix not in that file the coach gets no GlassFrog tools, which fails closed.
+Cite tools in prose by the bare `glassfrog_*` name, never with a server prefix. CI runs both on every PR
 via `scripts-test.yml`, plus
 `--base origin/<base>` so the version-bump check has something to diff against.
 

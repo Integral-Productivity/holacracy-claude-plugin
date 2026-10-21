@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.2](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.25.1...v0.25.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* remove live GlassFrog org detail from the public tree ([#389](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/389)) ([874ce40](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/874ce409d2f429e0683492ca8f6b1e229c830375))
+
 ## [0.25.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.25.0...v0.25.1) (2026-10-21)
 
 

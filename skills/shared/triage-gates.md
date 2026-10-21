@@ -29,11 +29,11 @@ This is a distinct class of inbox debt: **authority parked as though it needed s
 
 | Tension(s) | What the check found |
 |---|---|
-| `ten_343f2946`, `ten_564abcab` | ◎Information Security Officer was created *after* they were filed -- structurally superseded; only operational work remained |
-| `ten_03c044b3` | ◎Product Architecture held the Productboard domain outright; 21 months waiting for a meeting that was never required |
-| `ten_02b1a22a`, `ten_a86c6fd8`, `ten_2a981db9` | Circle Lead defines metrics for roles in the circle -- all three resolvable without governance |
-| `ten_580f803a` | ◎Platform Engineering's "boundary objects" accountability already covers the Custom Skills Platform -- the tension is energization, not structure |
-| `ten_4e489b1a` | ◎Community Architect already holds both the gateway accountability and the taxonomy domain -- narrowed the governance question substantially |
+| `ten_5c9a90ba`, `ten_c615496d` | ◎Data Steward was created *after* they were filed -- structurally superseded; only operational work remained |
+| `ten_c25e7e16` | ◎Offer Design held the Productboard domain outright; 21 months waiting for a meeting that was never required |
+| `ten_e011d457`, `ten_a2df297d`, `ten_180b379e` | Circle Lead defines metrics for roles in the circle -- all three resolvable without governance |
+| `ten_84264e13` | ◎Tooling Steward's "boundary objects" accountability already covers the shared tooling platform -- the tension is energization, not structure |
+| `ten_2b5d028b` | ◎Member Experience already holds both the gateway accountability and the taxonomy domain -- narrowed the governance question substantially |
 
 **Procedure:**
 
@@ -92,7 +92,7 @@ Reframing a person tension as a role tension, or partitioning a blended one, cha
 
 Some tensions are genuinely both, and the substitution test splits them cleanly rather than resolving them either way. Refusing loses the structural half; keeping them fused makes the tension unresolvable, because no proposal can address the behavioural part.
 
-**Worked example -- `ten_00fc5815`:**
+**Worked example -- `ten_22537203`:**
 
 > *"I'm unclear on my priority work... I haven't been finishing things as planned and have left some work incomplete while moving on to fresh/new/novel work."*
 
@@ -114,7 +114,7 @@ committed work. Noted here for my own tracking; this is self-management, not
 governance.
 ```
 
-`ten_00fc5815` sat unresolvable for 15 months because both halves were fused. Partitioning is what made the structural half actionable.
+`ten_22537203` sat unresolvable for 15 months because both halves were fused. Partitioning is what made the structural half actionable.
 
 **Decision:** partition, then continue to Step 3 carrying **only the structural half** into venue routing -- and tell the user you did, per "Surfacing the reframe" above. A partition the user never saw is indistinguishable, from their side, from having their tension quietly replaced.
 
@@ -151,10 +151,10 @@ A tactical tension that recurs across multiple meetings often signals a missing 
 
 | Tension | Filed | Role | Sensing |
 |---|---|---|---|
-| `ten_e1df0c3b` | 2024-10 | ◎Product Architecture | a delivery date with no commitment practice behind it |
-| `ten_00fc5815` | 2025-04 | ◎Circle Lead | no mechanism makes priority visible; work left incomplete |
-| `ten_2e600a8a` | 2026-05 | ◎Circle Lead | five projects, 11+ months without updates |
-| `ten_1fc3b778` | 2026-05 | ◎Resilience Management | work miscast as a project, no update in a year |
+| `ten_5205182a` | 2024-10 | ◎Offer Design | a delivery date with no commitment practice behind it |
+| `ten_22537203` | 2025-04 | ◎Circle Lead | no mechanism makes priority visible; work left incomplete |
+| `ten_64742b9a` | 2026-05 | ◎Circle Lead | five projects, 11+ months without updates |
+| `ten_e79a7ee6` | 2026-05 | ◎Continuity Planning | work miscast as a project, no update in a year |
 
 Four sensings of one absence, surfacing wherever work is committed to. Any one of them reads tactical. Together they are unmistakably governance.
 
@@ -196,7 +196,7 @@ Constitutional grounding: S.5.5.1d -- the test for whether a proposed objection 
 
 **Important caveat.** Supersession is not the same as similarity. Two tensions can describe the same circle's structural debt from different angles, and both may be worth keeping for the role-filler's own clarity. Only collapse when the resolution of one *truly* eliminates the other.
 
-**Successor before archive.** When a tension is superseded *structurally* -- by a role that now exists, per Step 1 -- archiving it alone can drop a live exposure that no other record carries. Write the successor on the correct role first, citing the archived original, *then* archive. This is what `ten_343f2946` and `ten_564abcab` required.
+**Successor before archive.** When a tension is superseded *structurally* -- by a role that now exists, per Step 1 -- archiving it alone can drop a live exposure that no other record carries. Write the successor on the correct role first, citing the archived original, *then* archive. This is what `ten_5c9a90ba` and `ten_c615496d` required.
 
 ---
 

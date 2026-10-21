@@ -15,7 +15,7 @@ A live probe against the GlassFrog v5 MCP settles how `/holacracy:context` shoul
 
 ## Findings
 
-Probed against org `Integral Productivity` (75 roles, multi-circle), focal role **Product Architecture** (nested: Anchor Circle → Market Applied Innovation → Enterprise Architecture → Product Architecture).
+Probed against org `Integral Productivity` (75 roles, multi-circle), focal role **Offer Design** (nested: Anchor Circle → Market Circle → Design Circle → Offer Design).
 
 - **F1. `glassfrog_get_role_context(role_id)` is the inherited-context bundle.** One call returns the role (purpose, accountabilities, domains, skills, notes, projects, actions) **plus** a `governance` block containing: `ancestor_roles` (the full chain to the Anchor Circle, each with name + purpose + parent), `parent_role` with its `policies` inline (excerpts), `sibling_roles`, and `org_rules` (Constitution v5 sections with summaries + content URLs). It is described as "lighter weight than `glassfrog_get_role` with all includes."
 - **F2. Inherited strategy is resolved server-side.** `glassfrog_get_role_strategy(role_id)` returns the strategy body with `"inherited": true` and `"inherited_from_role_id"` when the role's strategy comes from an enclosing circle. The caller does not walk the chain to resolve it.

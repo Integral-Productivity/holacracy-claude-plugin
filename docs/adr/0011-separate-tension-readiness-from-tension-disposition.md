@@ -18,13 +18,13 @@ A live run on 2026-07-31 through 2026-08-01 worked the real backlog — 47
 unprocessed tensions down to 21 — and violated four of the five, correctly each
 time:
 
-- **Filed successors.** `ten_343f2946` and `ten_564abcab` (both Nov 2024, on
-  ◎Technology Architecture) had been structurally superseded by the later
-  creation of ◎Information Security Officer. Archiving them alone would have
+- **Filed successors.** `ten_5c9a90ba` and `ten_c615496d` (both Nov 2024, on
+  ◎Systems Design) had been structurally superseded by the later
+  creation of ◎Data Steward. Archiving them alone would have
   dropped a live, material exposure, so successors were written on the correct
   role first, each citing the archived original.
-- **Converted a tension to a project.** `ten_03c044b3` was a decision wholly
-  inside a domain ◎Product Architecture already held. It needed no meeting at
+- **Converted a tension to a project.** `ten_c25e7e16` was a decision wholly
+  inside a domain ◎Offer Design already held. It needed no meeting at
   all. It had waited 21 months for one.
 - **Converted tensions to actions**, nine of them.
 - **Repaired the referenced artifact directly**, for three metric-source
@@ -50,10 +50,10 @@ Three further findings shaped the decision.
 **The authority question is not a late check — it is the first one.** Across 35
 processed tensions, the question *"does the authority that would resolve this
 already exist?"* fired five times and **changed the disposition every time**:
-◎Information Security Officer's existence superseding two 2024 tensions;
-◎Product Architecture's Productboard domain; Circle Lead metric authority on
-three tensions; ◎Platform Engineering's boundary-objects accountability;
-◎Community Architect's gateway accountability. Roughly a third of the inbox was
+◎Data Steward's existence superseding two 2024 tensions;
+◎Offer Design's Productboard domain; Circle Lead metric authority on
+three tensions; ◎Tooling Steward's boundary-objects accountability;
+◎Member Experience's gateway accountability. Roughly a third of the inbox was
 work waiting on permission the role-filler already held. The shared reference
 asked it last, as a fourth gate about *which role to attribute the write to* —
 so the other three gates' work was spent on tensions that did not need a venue
@@ -188,7 +188,7 @@ separate commands, with a shared gate reference underneath.**
   withdrawn: the argument for it was that the plugin's own prose already says
   "filed" everywhere, which is evidence of a leak, not of fitness.
 - Two commands where there was one means a handoff, and handoffs can drop
-  things. `ten_61292811` is the cautionary case from the very session that
+  things. `ten_688d0a7b` is the cautionary case from the very session that
   identified this problem: marked `processed` on the strength of a cleanup
   action, while a second, genuinely governance question inside it survived only
   as a note on that action.

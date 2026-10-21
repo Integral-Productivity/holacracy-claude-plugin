@@ -98,27 +98,48 @@ if grep -rEn '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$REPO/evals/" \
 fi
 pass
 
-# The real organization's own strings. If any of these appear in a fixture,
-# something was recorded that should have been generated.
-for needle in "Integral Productivity" "Kraig Parkinson" "integralproductivity" \
-              "Crisis Response Protocol" "Coaching Session Data" "Strategyzer"; do
+# The real organization's public names. If any of these appear in a fixture,
+# something was recorded that should have been generated. These three are
+# public already (LICENSE, plugin.json), so naming them here leaks nothing.
+for needle in "Integral Productivity" "Kraig Parkinson" "integralproductivity"; do
   grep -rqF "$needle" "$REPO/evals/fixtures/" "$REPO/evals/scenarios/" 2>/dev/null \
     && fail "real organizational string '$needle' appears in a fixture or scenario"
 done
 pass
 
-# Live ids. Synthetic ids are sha256-derived, so a *specific* live id appearing
-# would mean a recorded response leaked through.
-for live_id in role_81f4328624e445ba8edc8812f74dec7b \
-               per_9419ceadf6214513abc93651183ce957 \
-               org_13a747d808864b1c99fe7f47c3a5bc34; do
-  grep -rqF "$live_id" "$REPO/evals/" 2>/dev/null \
-    && fail "live GlassFrog id $live_id appears under evals/"
-done
-# The real organization's LEGACY number. Web URLs carry it (#357), and a fixture
-# web_url copied from a live response would publish it.
-grep -rqF "organizations/32215/" "$REPO/evals/" 2>/dev/null \
-  && fail "the live organization's legacy number appears in a URL under evals/"
+# Live ids, the organization's legacy number, and real policy and domain names.
+# This guard used to list those values here in order to forbid them, which
+# published them (ADR-0017). They now live only as SHA-256 digests in
+# evals/leak-denylist.sha256, and the scan covers every tracked file, not just
+# evals/: the live values that leaked were in skills/ and docs/.
+SCAN="$HERE/leak-denylist-scan.py"
+python3 "$SCAN" --root "$REPO" \
+  || fail "a denylisted live organizational value appears in a tracked file"
+pass
+
+# The scan must be able to FAIL. Plant a synthetic value, deny its digest in a
+# throwaway denylist, and require exit 1 with the location reported. Without
+# this, an empty or unread denylist would pass every repo forever.
+mkdir -p "$TMP/leakroot"
+printf 'see role_%s here\n' "$(python3 -c 'import hashlib;print(hashlib.sha256(b"canary").hexdigest()[:32])')" > "$TMP/leakroot/planted.md"
+python3 -c "
+import hashlib,re,sys
+v=re.search(r'role_[0-9a-f]{32}',open(sys.argv[1]).read()).group(0)
+open(sys.argv[2],'w').write(hashlib.sha256(v.encode()).hexdigest()+'\\n')
+" "$TMP/leakroot/planted.md" "$TMP/leakroot/deny.sha256"
+out="$(python3 "$SCAN" --root "$TMP/leakroot" --denylist "$TMP/leakroot/deny.sha256")"
+[ $? -eq 1 ] || fail "leak scan did not exit 1 on a planted denylisted id"
+printf '%s' "$out" | grep -q 'planted.md:1:' || fail "leak scan did not report the planted file and line"
+printf '%s' "$out" | grep -q 'role_' && fail "leak scan printed the matched value; it must print the location only"
+# A two-word phrase is caught too, case-insensitively.
+printf 'The Canary Policy applies.\n' > "$TMP/leakroot/planted.md"
+python3 -c 'import hashlib;print(hashlib.sha256(b"canary policy").hexdigest())' > "$TMP/leakroot/deny.sha256"
+python3 "$SCAN" --root "$TMP/leakroot" --denylist "$TMP/leakroot/deny.sha256" >/dev/null
+[ $? -eq 1 ] || fail "leak scan missed a denylisted phrase"
+# An empty denylist is an error, never a clean report.
+printf '# nothing\n' > "$TMP/leakroot/deny.sha256"
+python3 "$SCAN" --root "$TMP/leakroot" --denylist "$TMP/leakroot/deny.sha256" >/dev/null 2>&1
+[ $? -eq 2 ] || fail "leak scan reported clean with an empty denylist"
 pass
 
 # Every committed schema is clean by its own checker.

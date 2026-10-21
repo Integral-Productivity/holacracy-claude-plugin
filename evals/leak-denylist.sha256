@@ -1,0 +1,10 @@
+# SHA-256 of live organizational values that must never appear in this repo.
+# One hex digest per line. Read by scripts/leak-denylist-scan.py.
+# Values are lowercased before hashing. Never commit the values themselves.
+c3a7f8a7c82204563a56794c153107a6159ce676f29b3f44d68b2d279abe2f06
+2e254ecd85d45630fd81559134b603fbf60f0ed0be1ce5bc27bd27d9d6fae960
+bd22fb993eb228b46f149c8aea694214db9b76348492eb0ebbdbab6276328a13
+f205728414136158ad93bdfa059d3a9691aa4301ae064c9389bb41778cda3152
+6d5491947d3c167a60f11f932b437e62df80946435f850d1587f6975a947b62b
+25dda26704292d75f7916c974bf7debb0ebaa84b033548e60379ca865c13c455
+707d1f8d41d6ca3c9089a4695403650fcde39b0f16a7b1db097383ef5d15cdf0

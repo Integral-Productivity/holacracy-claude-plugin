@@ -3,7 +3,7 @@ name: holacratic-ai-governance
 description: >
   Governance-aware AI operating skill for organizations using Holacracy and GlassFrog. Use this skill whenever the user mentions GlassFrog, Holacracy, circles, roles (in a Holacratic context), accountabilities, domains, governance meetings, tactical meetings, tensions, lead link, rep link, facilitator, secretary, or any organizational governance topic. Also trigger when the user asks for help with work and GlassFrog MCP tools are connected -- this skill teaches how to ground AI responses in actual governance structure rather than operating generically. Trigger even for adjacent requests like "help me think about my role," "what should I focus on," "draft a governance proposal," or "what tensions exist in my organization." This skill is essential for any AI interaction where organizational context from GlassFrog would improve the quality, authority-awareness, or developmental sophistication of the response.
 status: draft
-version: 1.3.1
+version: 1.3.2
 ---
 # Holacratic AI Governance
 
@@ -203,7 +203,7 @@ Route by **live governance, not assumption**: a role's **domains** already name 
 2. Read its domains live via `glassfrog_list_role_domains` (and `glassfrog_list_role_policies` to corroborate). Live-then-session-cache: read at first need, cache for the session, re-read on a major pivot.
 3. Recognize each domain's system of record -- inline URL host, then the named system in the text, then the semantic governance fallback (governance-records → GlassFrog). The domain names its own system; extract it.
 4. If one substrate is named, route there; if several are held and one clearly fits the artifact, prefer it and say why; if two plausibly fit, **surface the ambiguity and ask** -- never silently pick.
-5. **Announce the routing**, tied to the governance evidence: "Routing this to Productboard -- Product Architecture's system of record for features (domain read live from GlassFrog)."
+5. **Announce the routing**, tied to the governance evidence: "Routing this to Productboard -- Offer Design's system of record for features (domain read live from GlassFrog)."
 
 If GlassFrog is not connected, **name the limit and ask** -- do not silently default to the engineering substrate. This is the same honest-by-construction discipline as role resolution: reason only from domains actually read this session; a vague domain that can't say where its work lands is a governance tension worth surfacing, not a guess to paper over.
 

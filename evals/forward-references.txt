@@ -22,3 +22,4 @@
 /holacracy:process-tension  #160  the disposition router; triage hands off to it
 /holacracy:policy:audit     #103  v0.5 policy command, named by agents/holacracy-coach.md
 /holacracy:policy:cascade   #103  v0.5 policy command, named by agents/holacracy-coach.md
+/holacracy:project-triage   #393  stateful project readiness walker; split from review-project by ADR-0018

@@ -1,6 +1,6 @@
 ---
 description: Capture a well-formed Holacratic project to a role's GlassFrog backlog via a draft-and-confirm flow. Soft-gates on the well-formedness rubric's Family A (outcome-framed / first next-action / clear owner), teaching the missing element with a drafted fix rather than hard-blocking. Files additively — the project plus its first next-action — with a single per-project confirmation, then a light skippable goal-link nudge. The capture-time twin of /holacracy:review-project.
-argument-hint: [project text, optional] [--source <url>, optional]
+argument-hint: "[project text, optional] [--source <url or label>, optional]"
 ---
 
 # /holacracy:capture-project

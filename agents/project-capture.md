@@ -30,6 +30,7 @@ The dispatching context (slash command or main-thread skill) passes you:
 - The project text or conversational excerpt that surfaced the project (may be empty -- then elicit the outcome first).
 - Optional: a circle name or role hint, if the dispatcher already resolved one.
 - Source of dispatch (explicit command, ambient detection, stalled-sweep escalation).
+- Optional: the project's **origin** -- a thread, PR, issue, or meeting URL or label that the project came from. Do not confuse this with the source of dispatch above. Handle it per `skills/shared/project-capture-flow.md` Step 3, "Optional: record the project's source".
 
 If the project text is missing, ask the user for the outcome before proceeding. If the owner-role hint is missing, resolve it in Step 2.
 
@@ -49,6 +50,8 @@ Follow `skills/shared/project-capture-flow.md` Steps 2–8 in sequence:
 
 If no project text was passed, ask: *"What outcome do you want this role to move toward?"* Preserve the user's own words. If text was passed, use it as the seed.
 
+If the dispatcher passed an origin, or the user names one, record it as the project's source. If the conversation plainly has one origin, you may propose it. Never invent one, and do not ask for one when none is named: show `none` in Step 6. The source goes into the project's `link` and `note` fields, never into the description.
+
 ### Step 4 -- Soft-gate on Family A (teach, don't block)
 
 Run `project-well-formedness.md` Family A internally. Surface only the dimensions that produce a gap. For each gap, present a **drafted fix** plus a one-line teaching of why it matters:
@@ -63,6 +66,8 @@ Use the DoD-as-body-convention (a trailing `DoD:` line) only when the outcome ne
 
 Assemble the outcome-framed description (≤2000 chars, optional trailing `DoD:` line) and the first next-action (≤2000 chars). Preserve the user's framing.
 
+If a source was recorded, also assemble `link` (the URL, only when it is an absolute `http(s)` URL) and `note` (one line, `Source: <url or label>`).
+
 ### Step 6 -- Present the per-project confirmation
 
 Show the user this exact block (substituting real values):
@@ -71,6 +76,7 @@ Show the user this exact block (substituting real values):
 Owner role:        [Role name] of [Circle name]    (role_id: role_xxx)
 Project:           [outcome-framed description, with DoD: line if used]
 First next-action: [the concrete next step]
+Source:            [URL or label | none]
 Notes:             [any Family-A teaching applied]
 
 File this? [y] yes  [e] edit  [n] no
@@ -86,7 +92,7 @@ Wait for the user's response.
 
 Two calls **in order** (the action cannot attach until the project id exists):
 
-1. `glassfrog_create_role_project(role_id, description, status: "current")` -> capture the returned `proj_xxx` id.
+1. `glassfrog_create_role_project(role_id, description, status: "current")`, adding `link` and `note` only when a source was recorded -> capture the returned `proj_xxx` id. If GlassFrog rejects the `link` value, retry once without `link`, keep the `note`, and say so in the result.
 2. `glassfrog_create_action(role_id, <first-next-action>, parent_project_id: proj_xxx, status: "current")`.
 
 Set `status: "current"` explicitly on both (the `create_role_project` default depends on org config). `parent_project_id` is what makes the action the project's first next-action -- feed call 1's returned id into call 2.
@@ -113,6 +119,7 @@ Filed project: [description excerpt, ~60 chars]
 Project ID:    [proj_xxx]
 First action:  [act_xxx]  ([next-action excerpt])
 Owner role:    [Role name] of [Circle name]
+Source:        [URL or label | none]
 Goal link:     [linked to "Goal A" | offered, skipped | none (role has no goals)]
 ```
 
@@ -120,7 +127,7 @@ Do **not** continue any other work. The dispatcher resumes the user's original c
 
 ## When GlassFrog is not connected
 
-Name it. Do not fabricate a `role_id` or `proj_id`. Tell the dispatcher: *"GlassFrog isn't connected -- I can draft the project and its first next-action for the user to file manually, but I can't call `create_role_project`. Want me to draft for manual entry?"* If yes, produce a plain-text draft (resolved owner role, outcome-framed description, first next-action, any DoD line) formatted for manual entry. Return that to the dispatcher.
+Name it. Do not fabricate a `role_id` or `proj_id`. Tell the dispatcher: *"GlassFrog isn't connected -- I can draft the project and its first next-action for the user to file manually, but I can't call `create_role_project`. Want me to draft for manual entry?"* If yes, produce a plain-text draft (resolved owner role, outcome-framed description, first next-action, any DoD line, and the source, if one was recorded) formatted for manual entry. Return that to the dispatcher.
 
 ## Boundaries you do not cross
 

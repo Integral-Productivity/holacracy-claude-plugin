@@ -61,6 +61,15 @@ If the user passed no `$ARGUMENTS`, ask for the **outcome** first: *"What outcom
 
 If the user passed text, use it as the seed and move to Step 4 -- the soft-gate does the completing.
 
+#### Optional: record the project's source
+
+A project often comes from somewhere: a pull request, an issue, a chat thread, a meeting. The flow accepts an **optional source** so the project records where it came from. A capture without a source works exactly as before.
+
+- **Where it comes from.** The user names it (`--source <url>` in `$ARGUMENTS`, or in words: *"this came out of PR #412"*), or the dispatcher passes it. If the conversation plainly has one origin -- the session is working on one PR, or the user pasted one thread link -- you may *propose* it as the source. Never invent one, and never pick between several candidates silently; ask instead.
+- **What it is.** Preferably one absolute `http(s)` URL. A plain label without a URL (*"Tactical meeting, 2026-10-21"*) is also accepted.
+- **Where it goes.** Into the project's `link` and `note` fields (Step 7), **never into the description**. The description stays the outcome title, about one line; provenance is detail, and detail belongs in the note.
+- **Do not ask for it.** If no source is named or obvious, show `none` in the confirmation block and move on. The user can add one with `e`.
+
 ### Step 4 -- Soft-gate on rubric Family A (teach, don't block)
 
 Load `./project-well-formedness.md` and run **Family A only**, internally. Surface only the dimensions that produce a gap. For each gap, present a **drafted fix** and a one-line teaching of *why it matters* -- never an interrogation.
@@ -84,6 +93,11 @@ Assemble two strings:
 - **Project description** -- outcome-framed, the user's words preserved, ≤2000 characters (per the live `create_role_project` schema, verified 2026-07-20), with an optional trailing `DoD:` line.
 - **First next-action** -- one concrete physical step, ≤2000 characters (per the live `create_action` schema).
 
+If a source was recorded (see Step 3), also assemble:
+
+- **Link** -- the source URL, only when it is an absolute `http(s)` URL (the live `create_role_project` schema types `link` as `format: uri`). Omit it for a label-only source.
+- **Note** -- one line, `Source: <url or label>`. Write it for both kinds of source, so the provenance survives if someone later repoints the project's link.
+
 ### Step 6 -- Present the per-project confirmation
 
 Show the user a single, compact confirmation block:
@@ -92,6 +106,7 @@ Show the user a single, compact confirmation block:
 Owner role:        [Role name] of [Circle name]    (role_id: role_xxx...)
 Project:           [outcome-framed description, with DoD: line if used]
 First next-action: [the concrete next step]
+Source:            [URL or label | none]
 Notes:             [any Family-A teaching applied, e.g. "reframed from activity to outcome"]
 
 File this? [y] yes  [e] edit  [n] no
@@ -100,7 +115,7 @@ File this? [y] yes  [e] edit  [n] no
 The user can:
 
 - **y / yes** -> Proceed to Step 7.
-- **e / edit** -> Allow editing any field (owner role, project, next-action), then re-present. Loop until y or n.
+- **e / edit** -> Allow editing any field (owner role, project, next-action, source), then re-present. Loop until y or n.
 - **n / no** -> Abort. Confirm the abort; nothing is written. Return to the original conversation.
 
 Per-project confirmation. Never batched.
@@ -110,11 +125,12 @@ Per-project confirmation. Never batched.
 On confirmation, two calls **in order** -- the action cannot attach until the project id exists:
 
 ```
-1. glassfrog_create_role_project(role_id, description, status: "current")  -> Project { id: proj_xxx, ... }
+1. glassfrog_create_role_project(role_id, description, status: "current"[, link: <source URL>][, note: "Source: <url or label>"])  -> Project { id: proj_xxx, ... }
 2. glassfrog_create_action(role_id, <first-next-action>, parent_project_id: proj_xxx, status: "current")  -> Action { id: act_xxx, ... }
 ```
 
 - **Set `status: "current"` explicitly on both.** The `create_role_project` default "depends on org config"; do not rely on an unknown default. `current` is a member of the closed enum `archived | cancelled | completed | current | scheduled | someday | waiting` (verified live 2026-07-20).
+- **Pass `link` and `note` only when a source was recorded.** Both are optional fields of the live `create_role_project` schema. With no source, the call is the same as before. If GlassFrog rejects the `link` value, do not drop the source silently: retry once without `link`, keep the `note`, and say so in the result.
 - **`parent_project_id` is the attachment mechanism** -- it is what makes the action the project's first next-action (satisfying rubric A2). Feed the id returned by call 1 into call 2.
 - **Trust the returned ids. Do not list-back to verify.** `glassfrog_list_role_projects` / `list_project_actions` may not return the just-created records immediately (propagation/scoping) -- the create responses are the only reliable same-session confirmation. This is the same caveat documented for tensions in `../holacratic-ai-governance/references/glassfrog-api-constraints.md`.
 
@@ -140,6 +156,7 @@ Filed project: [description excerpt, ~60 chars]
 Project ID:    [proj_xxx]
 First action:  [act_xxx]  ([next-action excerpt])
 Owner role:    [Role name] of [Circle name]
+Source:        [URL or label | none]
 Goal link:     [linked to "Goal A" | offered, skipped | none (role has no goals)]
 ```
 
@@ -161,7 +178,7 @@ Then continue the original conversation. Do not interrogate the user about next 
 
 ## When GlassFrog Is Not Connected
 
-Name it. Do not fabricate a `role_id` or `proj_id`. Tell the user: *"GlassFrog isn't connected -- I can draft the project and its first next-action for you to file manually, but I can't call `create_role_project`. Want me to draft for manual entry?"* If yes, produce a plain-text draft (resolved owner role, outcome-framed description, first next-action, any DoD line) formatted for manual entry into the GlassFrog UI. Do not silently assume an actor or invent role data.
+Name it. Do not fabricate a `role_id` or `proj_id`. Tell the user: *"GlassFrog isn't connected -- I can draft the project and its first next-action for you to file manually, but I can't call `create_role_project`. Want me to draft for manual entry?"* If yes, produce a plain-text draft (resolved owner role, outcome-framed description, first next-action, any DoD line, and the source for the project's link and note fields, if one was recorded) formatted for manual entry into the GlassFrog UI. Do not silently assume an actor or invent role data.
 
 ---
 

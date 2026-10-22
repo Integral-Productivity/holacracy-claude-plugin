@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.26.0...v0.27.0) (2026-10-22)
+
+
+### Features
+
+* **triage:** add the closed list of project triage states ([#397](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/397)) ([758b775](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/758b77577e5897c2388e794b45979bd36789e751))
+
 ## [0.26.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.25.3...v0.26.0) (2026-10-22)
 
 

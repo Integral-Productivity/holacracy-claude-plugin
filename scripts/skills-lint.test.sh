@@ -413,7 +413,39 @@ sedi 's/^model: inherit$/model: inherit\ntools: Read, mcp__made-up__glassfrog_ge
 git -C "$TMP/c10e" add -A && git -C "$TMP/c10e" commit -qm c10e
 _assert_load_bearing 10 "$TMP/c10e" "unknown server prefix in a tools: line"
 
-# 11. The real repository is clean. Fixtures prove the checks work; this proves
+# 11. Triage-state names come from a closed list. GlassFrog creates any tag it
+#     is sent, so a misspelled state becomes a tag no queue reads (ADR-0019).
+_states_fixture() {  # $1 = destination dir
+  _fixture "$1"
+  printf '# States\n## Step 1 -- list\n| State | Meaning |\n|---|---|\n| `needs-info` | ask |\n| `ready-for-agent` | go |\n' \
+    > "$1/skills/shared/triage-states.md"
+  printf '# Rubric\n| State | Meaning |\n|---|---|\n| `needs-outcome` | reframe |\n' \
+    > "$1/skills/shared/project-well-formedness.md"
+  printf '\nStates: `skills/shared/triage-states.md`; verdicts: `skills/shared/project-well-formedness.md`.\n' >> "$1/README.md"
+  git -C "$1" add -A && git -C "$1" commit -qm states
+}
+
+# 11a. Names from either list are fine, in prose and in the tables themselves.
+_states_fixture "$TMP/c11a"
+printf '\nRoute it `ready-for-agent`, or `needs-info`; review may say `needs-outcome`.\n' >> "$TMP/c11a/skills/demo/SKILL.md"
+git -C "$TMP/c11a" add -A && git -C "$TMP/c11a" commit -qm c11a
+SKILLS_LINT_ROOT="$TMP/c11a" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c11a" bash "$LINT"; fail "check 11 flagged names that are in the lists"; }
+CASES=$((CASES + 1))
+
+# 11b. A misspelled state in a skill -- the silent-new-tag defect.
+_states_fixture "$TMP/c11b"
+printf '\nTag the project `ready-for-agents`.\n' >> "$TMP/c11b/skills/demo/SKILL.md"
+git -C "$TMP/c11b" add -A && git -C "$TMP/c11b" commit -qm c11b
+_assert_load_bearing 11 "$TMP/c11b" "triage state not in the closed list"
+
+# 11c. A name in both lists: a review verdict that would also be a tag write.
+_states_fixture "$TMP/c11c"
+printf '| `needs-info` | also a verdict |\n' >> "$TMP/c11c/skills/shared/project-well-formedness.md"
+git -C "$TMP/c11c" add -A && git -C "$TMP/c11c" commit -qm c11c
+_assert_load_bearing 11 "$TMP/c11c" "name in both the state list and the verdict table"
+
+# 12. The real repository is clean. Fixtures prove the checks work; this proves
 #    they are actually pointed at the plugin.
 bash "$LINT" >/dev/null 2>&1 || { bash "$LINT"; fail "the live repository does not pass its own lint"; }
 CASES=$((CASES + 1))

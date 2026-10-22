@@ -587,6 +587,46 @@ check_tool_grants() {
   done <<< "$(cd "$ROOT" && _glassfrog_files | xargs -r grep -nE 'mcp__[A-Za-z0-9_-]+__glassfrog_' 2>/dev/null)"
 }
 
+# ---------------------------------------------------------------------------
+# Check 11 -- every triage-state name is in the closed list.
+#
+# Two vocabularies use the same `needs-*` shape. Triage states
+# (skills/shared/triage-states.md) are ROUTES, written onto a project as a
+# GlassFrog tag. Rubric verdicts (skills/shared/project-well-formedness.md) are
+# review findings and are never written. GlassFrog creates any tag name it is
+# sent, so a misspelled state (`ready-for-agents`) becomes a new tag no queue
+# reads, and nothing errors (ADR-0019).
+#
+# Two rules. (a) A `needs-*` or `ready-for-*` token in a live file is a name
+# from one of the two tables. (b) No name is in both tables: a verdict that is
+# also a state would let review's prose instruct a tag write.
+#
+# The tables are the source: the backticked first cell of each `| \`name\` |`
+# row. Live files only, as check 1 -- an ADR records the vocabulary as it was.
+# ---------------------------------------------------------------------------
+_state_names() {  # $1 = file; prints the backticked first-cell names of its tables
+  [ -f "$ROOT/$1" ] || return 0
+  grep -oE '^\| `[a-z][a-z-]*` \|' "$ROOT/$1" | sed -E 's/^\| `([a-z-]+)` \|$/\1/' | sort -u
+}
+
+check_state_names() {
+  skipped 11 && return 0
+  local states verdicts known hits name f n
+  states="$(_state_names skills/shared/triage-states.md)"
+  verdicts="$(_state_names skills/shared/project-well-formedness.md)"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    finding 11 "skills/shared/triage-states.md" "$name is both a triage state and a rubric verdict; the two lists must not overlap"
+  done < <(comm -12 <(printf '%s\n' "$states") <(printf '%s\n' "$verdicts") | grep -v '^$')
+  known="$(printf '%s\n%s\n' "$states" "$verdicts")"
+  hits="$(cd "$ROOT" && _live_md | xargs -r grep -noE '\b(needs|ready-for)-[a-z]+(-[a-z]+)*\b' 2>/dev/null)"
+  while IFS=: read -r f n name; do
+    [ -n "$name" ] || continue
+    grep -qxF "$name" <<< "$known" \
+      || finding 11 "$f:$n" "$name is not in the closed list (skills/shared/triage-states.md) or the rubric's state table"
+  done <<< "$hits"
+}
+
 check_links
 check_step_citations
 check_frontmatter
@@ -597,5 +637,6 @@ check_roster_delegation
 check_upload_limits
 check_tool_names
 check_tool_grants
+check_state_names
 
 check_common_summarize "skills-lint"

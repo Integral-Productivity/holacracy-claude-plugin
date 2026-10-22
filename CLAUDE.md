@@ -37,6 +37,8 @@ The plugin separates **tension readiness** (`/holacracy:tension-triage` — is t
 
 `skills/shared/project-well-formedness.md` (the project-quality rubric) and `skills/shared/project-review-critics.md` (the five critic lenses + finding schema) are loaded by the `/holacracy:review-project` command and the `project-critic` subagent. The rubric is also loaded (Family A only) by the `/holacracy:capture-project` command and the `project-capture` subagent, and by `/holacracy:stalled-project-sweep` (which emits the rubric's reserved `stale`/`blocked` states — the sweep owns the detection logic that produces them). The rubric is the single source of truth for "well-formed enough"; keep it and the critic spec in sync.
 
+`skills/shared/triage-states.md` is the closed list of project triage states (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`), written onto a project as a GlassFrog tag by `/holacracy:project-triage` (#393). It lives here, not in `glassfrog-config`, whose vocabulary covers role tags only ([ADR-0019](docs/adr/0019-the-triage-state-vocabulary-lives-in-the-plugin.md)). A state is a route; the rubric's `needs-outcome`-style verdicts are findings and are never written. `skills-lint.sh` check 11 keeps the two lists disjoint and fails any `needs-*` or `ready-for-*` name found in neither.
+
 `skills/shared/project-capture-flow.md` (the draft-and-confirm P-flow for filing a well-formed project at intake) is loaded by the `/holacracy:capture-project` command and the `project-capture` subagent. It is the create-flow twin of `skills/shared/tension-capture-flow.md`; keep the two flows' constitutional-safeguard and confirmation-block conventions aligned.
 
 `skills/checklist-metric-audit/` audits a circle's checklist items and metrics against its purpose, accountabilities, and domains, then remediates directly through the GlassFrog MCP. It leans on the constitutional distinction that checklist items and metrics are **operational, not governance** (Art. 3.2), so — unlike governance edits — it applies changes without a proposal. Its companion command is `/holacracy:audit-portfolio`. When an audit finding actually needs a new accountability or domain, it hands off to `/holacracy:capture-tension` rather than papering over the gap.
@@ -63,7 +65,8 @@ bash scripts/skills-lint.test.sh         # the lint's own mutation-checked suite
 content changed, referenced-command existence, orphaned shared references,
 role-roster delegation, descriptions inside Claude's upload limits (500
 characters for `plugin.json`, 1024 for a skill), GlassFrog tool names that
-exist on the server, and GlassFrog tool grants generated from the inventory. The last one exists because a
+exist on the server, GlassFrog tool grants generated from the inventory, and
+triage-state names that are in the closed list. The last one exists because a
 rejected upload is silent: the org's claude.ai copy, which Cowork and scheduled
 cloud sessions load, keeps the last version it accepted and every later release
 misses those sessions ([#368](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/368)).

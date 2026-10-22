@@ -6,6 +6,11 @@ Date: 2026-10-22
 
 Proposed
 
+Amended by
+[ADR-0019](0019-the-triage-state-vocabulary-lives-in-the-plugin.md) —
+the triage-state vocabulary lives in `skills/shared/triage-states.md`, not in
+`glassfrog-config`, whose vocabulary covers role tags only.
+
 ## Context
 
 [ADR-0011](0011-separate-tension-readiness-from-tension-disposition.md) split

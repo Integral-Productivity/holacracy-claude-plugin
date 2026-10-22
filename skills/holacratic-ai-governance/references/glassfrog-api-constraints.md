@@ -69,7 +69,7 @@ There is no frequencies tool. `frequency` on a checklist item or metric is a clo
 |---|---|---|
 | `glassfrog_create_checklist_item` | role_id, description, frequency?, link?, view? | New checklist item on a role |
 | `glassfrog_create_metric` | role_id, description, frequency?, link?, view? | New metric on a role |
-| `glassfrog_create_role_project` | role_id, description, status, ... | New project on a role |
+| `glassfrog_create_role_project` | role_id, description, status, link, note, ... | New project on a role |
 
 ### Tension and Action Creation
 | Tool | Input | Creates |

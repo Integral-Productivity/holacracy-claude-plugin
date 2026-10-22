@@ -92,7 +92,7 @@ LEGACY_FIELDS = ("legacy_id", "web_url", "role_projects_url")
 WRITE_TOOLS = {
     "glassfrog_create_tension": "Create a tension on a role. Args: role_id, body.",
     "glassfrog_update_tension": "Update a tension. Args: tension_id, and body and/or status.",
-    "glassfrog_create_role_project": "Create a project on a role. Args: role_id, description, status.",
+    "glassfrog_create_role_project": "Create a project on a role. Args: role_id, description, status, link (optional), note (optional).",
     "glassfrog_create_action": "Create an action. Args: role_id, description, parent_project_id, status.",
 }
 

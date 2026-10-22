@@ -29,7 +29,7 @@ Before any `glassfrog_set_project_tags` call that sets a triage state:
 1. Compare the state name to the table in Step 1, character for character. Lowercase, hyphens, no plural, no prefix.
 2. If it is not in the table, **refuse the write** and say which name was refused. Do not create a tag. Do not pick the nearest match.
 
-**Why:** GlassFrog creates any tag name it is sent. A misspelled state (`ready-for-agents`) silently becomes a new tag that no queue reads, and the project drops out of triage without an error.
+**Why:** GlassFrog creates any tag name it is sent. A misspelled state (a stray plural `s` on `ready-for-agent`) silently becomes a new tag that no queue reads, and the project drops out of triage without an error.
 
 ## Step 3 -- Keep the project's other tags
 

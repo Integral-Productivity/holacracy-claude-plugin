@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.25.3...v0.26.0) (2026-10-22)
+
+
+### Features
+
+* **capture-project:** record an optional source thread or PR on captured projects ([#395](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/395)) ([3a1f995](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/3a1f9958e90614b7096aa2d6b1e61d612dc3d9db))
+
 ## [0.25.3](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.25.2...v0.25.3) (2026-10-21)
 
 

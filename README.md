@@ -151,7 +151,7 @@ The three new tension commands rely on `glassfrog_create_tension(role_id, body)`
 - **Body-only create.** `glassfrog_create_tension` takes `role_id` and `body` only. The `label` and `meeting_type` fields are not part of the stable signature ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)). Front-load the topic in the first sentence of the body since there is no label.
 - **Same-session list-back is unreliable.** Immediately after creation, `glassfrog_list_role_tensions` may not include the new tension (propagation/scoping). The capture subagent treats the `create_tension` response ID as the only reliable same-session confirmation; the supersession sweep uses an internal session-ID cache for the same reason.
 
-If a server without these tools is wired up in its place (GlassFrog's hosted v5 MCP, for example, has `glassfrog_createTension` and no tension reads), the `tension-capture` subagent falls back to drafting a plain-text tension formatted for manual entry, and the inbox/sweep commands degrade with a clear message.
+If a server without these tools is wired up in its place (GlassFrog's hosted v5 MCP, for example, has `glassfrog_createTension` and no tension reads), the `tension-capture` subagent sees from the session's tool list that `glassfrog_create_tension` is missing, says so, and offers a plain-text tension formatted for manual entry. It does not yet file through `glassfrog_createTension`; [#340](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/340) tracks that. The inbox/sweep commands degrade with a clear message.
 
 ## What's coming
 

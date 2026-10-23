@@ -293,8 +293,8 @@ jobs:
         # has nothing to compare against on a push to main. It is skipped rather
         # than faked, so the check never reports a conclusion it cannot support.
         #
-        # SKILLS_LINT_CHECK_ISSUES turns on the leg of check 5 that asks GitHub
-        # whether a declared forward reference's tracking issue is still open.
+        # SKILLS_LINT_CHECK_ISSUES turns on the legs of checks 5 and 13 that ask GitHub
+        # whether a tracking issue is still open (and, for 13, touched in 90 days).
         # That needs `gh` authenticated, which is true here and not on a laptop,
         # so the local run degrades to accepting the declaration alone.
         env:

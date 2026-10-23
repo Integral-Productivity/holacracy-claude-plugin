@@ -678,6 +678,150 @@ check_legacy_names() {
   done <<< "$hits"
 }
 
+# ---------------------------------------------------------------------------
+# Check 13 -- every work-item lifecycle stage has a command or a live tracked gap.
+#
+# From July to October 2026 the plugin had no project-readiness command, and
+# nobody could see it. The 2026-07-20 ideation proposed one, nothing tracked
+# it, and the gap surfaced only when a person counted idle projects by hand. A
+# missing stage looked exactly like a stage nobody needed (ADR-0021).
+#
+# docs/surface-map.md is a table: a row per work-item type, a column per
+# lifecycle stage. CONCEPTS.md § Work-item lifecycle holds the closed lists of
+# types and stages, as two tables with the name in bold in the first cell.
+# (Number 12 is taken by the legacy-name check in PR #408.)
+#
+# Two rule families:
+#
+#   glossary <-> map   every type has a row and every stage has a column, and
+#                      the map has no row or column the glossary does not name
+#                      (a `Context` column is allowed, for C5's links). This is
+#                      the review trigger: a new type or stage cannot ship
+#                      without a place in the map.
+#
+#   cells              a cell names a built command in backticks (a bare name,
+#                      resolved as commands/<name>.md), or an issue `#NNN`, or
+#                      both. An empty cell fails, and so does a command that
+#                      does not exist with no issue beside it.
+#
+# A cell held only by issues -- no built command -- must rest on LIVE issues:
+# not closed, and touched within 90 days. An issue nobody touches is an empty
+# cell in disguise. That leg asks GitHub, so it is gated exactly like check 5:
+# CI sets SKILLS_LINT_CHECK_ISSUES and authenticates `gh`; a laptop accepts the
+# issue number alone and stays offline. One `gh` call per issue returns the
+# state and the last activity as epoch seconds, so no GNU-only `date -d` is
+# needed. SKILLS_LINT_NOW sets the clock for the test suite.
+#
+# A missing map is a finding, never a skip: an absent map must not read as a
+# clean one.
+# ---------------------------------------------------------------------------
+SURFACE_MAP_IDLE_DAYS=90
+
+_glossary_names() {  # $1 = first header cell of a CONCEPTS.md table; prints its bold first cells
+  [ -f "$ROOT/CONCEPTS.md" ] || return 0
+  awk -F'|' -v want="$1" '
+    /^\|/ {
+      c = $2; gsub(/^[ \t]+|[ \t]+$/, "", c)
+      if (c ~ /^\*\*.*\*\*$/) { if (cur == want) { gsub(/\*/, "", c); print c } }
+      else if (c !~ /^-+$/) cur = c
+      next
+    }
+    { cur = "" }' "$ROOT/CONCEPTS.md"
+}
+
+# Prints `COL<TAB>name` per header cell after the first, then for each bold row
+# `ROW<TAB>type` and one `CELL<TAB>type<TAB>column<TAB>content` per header
+# column -- including columns the row is too short to fill, which arrive empty
+# rather than going unchecked.
+_surface_map_cells() {  # $1 = map file
+  awk -F'|' '
+    /^\|/ {
+      c = $2; gsub(/^[ \t]+|[ \t]+$/, "", c)
+      if (!seen && c == "Work-item type") {
+        seen = 1; inmap = 1; n = NF
+        for (i = 3; i < n; i++) { h = $i; gsub(/^[ \t]+|[ \t]+$/, "", h); col[i] = h; print "COL\t" h }
+        next
+      }
+      if (inmap && c ~ /^\*\*.*\*\*$/) {
+        gsub(/\*/, "", c); print "ROW\t" c
+        for (i = 3; i < n; i++) { v = (i < NF) ? $i : ""; gsub(/^[ \t]+|[ \t]+$/, "", v); print "CELL\t" c "\t" col[i] "\t" v }
+      }
+      next
+    }
+    { inmap = 0 }' "$1"
+}
+
+check_surface_map() {
+  skipped 13 && return 0
+  local map="docs/surface-map.md" types stages parsed cols rows name
+  local kind row col cell cmds issues c built n info state updated now cache=""
+
+  [ -f "$ROOT/$map" ] || { finding 13 "$map" "missing; every work-item lifecycle stage must be mapped (CONCEPTS.md § Work-item lifecycle)"; return 0; }
+  types="$(_glossary_names 'Work-item type')"
+  stages="$(_glossary_names 'Lifecycle stage')"
+  if [ -z "$types" ] || [ -z "$stages" ]; then
+    finding 13 "CONCEPTS.md" "no 'Work-item type' and 'Lifecycle stage' tables under § Work-item lifecycle; check 13 has nothing to hold the map to"
+    return 0
+  fi
+  parsed="$(_surface_map_cells "$ROOT/$map")"
+  cols="$(awk -F'\t' '$1 == "COL" { print $2 }' <<< "$parsed")"
+  rows="$(awk -F'\t' '$1 == "ROW" { print $2 }' <<< "$parsed")"
+
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    grep -qxF "$name" <<< "$cols" || finding 13 "$map" "lifecycle stage '$name' (CONCEPTS.md) has no column"
+  done <<< "$stages"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    [ "$name" = "Context" ] && continue
+    grep -qxF "$name" <<< "$stages" || finding 13 "$map" "column '$name' is not a lifecycle stage in CONCEPTS.md"
+  done <<< "$cols"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    grep -qxF "$name" <<< "$rows" || finding 13 "$map" "work-item type '$name' (CONCEPTS.md) has no row"
+  done <<< "$types"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    grep -qxF "$name" <<< "$types" || finding 13 "$map" "row '$name' is not a work-item type in CONCEPTS.md"
+  done <<< "$rows"
+
+  now="${SKILLS_LINT_NOW:-$(date +%s)}"
+  while IFS=$'\t' read -r kind row col cell; do
+    [ "$kind" = "CELL" ] || continue
+    grep -qxF "$row" <<< "$types" || continue
+    grep -qxF "$col" <<< "$stages" || continue
+    cmds="$(grep -oE '`[a-z0-9-]+`' <<< "$cell" | tr -d '`')"
+    issues="$(grep -oE '#[0-9]+' <<< "$cell" | tr -d '#')"
+    built=""
+    for c in $cmds; do [ -f "$ROOT/commands/$c.md" ] && built="$c"; done
+    [ -n "$built" ] && continue
+    if [ -z "$issues" ] && [ -z "$cmds" ]; then
+      finding 13 "$map" "$row × $col is empty: name a command or a tracking issue"
+      continue
+    fi
+    if [ -z "$issues" ]; then
+      finding 13 "$map" "$row × $col names $(printf '%s' "$cmds" | tr '\n' ' ')but no commands/<name>.md exists and no issue tracks it"
+      continue
+    fi
+    [ -n "${SKILLS_LINT_CHECK_ISSUES:-}" ] || continue
+    command -v gh >/dev/null 2>&1 || continue
+    for n in $issues; do
+      info="$(grep -E "^$n " <<< "$cache" | cut -d' ' -f2-)"
+      if [ -z "$info" ]; then
+        info="$(gh issue view "$n" --json state,updatedAt \
+                  --jq '.state + " " + (.updatedAt | fromdateiso8601 | tostring)' 2>/dev/null || echo "UNKNOWN 0")"
+        cache="$(printf '%s\n%s %s' "$cache" "$n" "$info")"
+      fi
+      state="${info%% *}"; updated="${info#* }"
+      if [ "$state" = "CLOSED" ]; then
+        finding 13 "$map" "$row × $col is held only by #$n, which is CLOSED -- ship the command or track the gap in an open issue"
+      elif [ "$state" = "OPEN" ] && [ "$(( (now - updated) / 86400 ))" -gt "$SURFACE_MAP_IDLE_DAYS" ]; then
+        finding 13 "$map" "$row × $col is held only by #$n, which has had no activity for $(( (now - updated) / 86400 )) days (limit $SURFACE_MAP_IDLE_DAYS)"
+      fi
+    done
+  done <<< "$parsed"
+}
+
 check_links
 check_step_citations
 check_frontmatter
@@ -690,5 +834,6 @@ check_tool_names
 check_tool_grants
 check_state_names
 check_legacy_names
+check_surface_map
 
 check_common_summarize "skills-lint"

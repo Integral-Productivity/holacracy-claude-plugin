@@ -4,7 +4,7 @@ Date: 2026-10-22
 
 ## Status
 
-Proposed
+Accepted (2026-10-23, Kraig Parkinson)
 
 Amends [ADR-0018](0018-separate-project-readiness-from-project-quality.md):
 replaces the part of its decision 4 that says `glassfrog-config` owns the tag

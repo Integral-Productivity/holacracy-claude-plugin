@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.29.0...v1.0.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* the command prefix changes from /holacracy: to /self-org:, the plugin installs as self-org@<catalog>, the self-hosted catalog is integral-productivity-self-org, skills and the coach agent are renamed, and GlassFrog must be signed in to again because the connector credential is stored under the plugin name.
+
+### Features
+
+* rename the plugin from holacracy to self-org ([#408](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/408)) ([71543a9](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/71543a91156e2375e543e9346218a3998ac0ff71))
+
 ## [0.29.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.28.1...v0.29.0) (2026-10-23)
 
 

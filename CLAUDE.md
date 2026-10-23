@@ -67,14 +67,23 @@ bash scripts/skills-lint.test.sh         # the lint's own mutation-checked suite
 content changed, referenced-command existence, orphaned shared references,
 role-roster delegation, descriptions inside Claude's upload limits (500
 characters for `plugin.json`, 1024 for a skill), GlassFrog tool names that
-exist on the server, GlassFrog tool grants generated from the inventory, and
-triage-state names that are in the closed list. The last one exists because a
+exist on the server, GlassFrog tool grants generated from the inventory,
+triage-state names that are in the closed list, and a work-item surface map
+with no empty lifecycle cell. The upload-limit check exists because a
 rejected upload is silent: the org's claude.ai copy, which Cowork and scheduled
 cloud sessions load, keeps the last version it accepted and every later release
 misses those sessions ([#368](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/368)).
 `claude plugin validate` does not check these limits.
 
-The last two read `evals/glassfrog-tools.tsv`, a snapshot of GlassFrog
+The surface-map check (check 13) holds `docs/surface-map.md` to the closed lists
+in `CONCEPTS.md` § Work-item lifecycle: every work-item type has a row, every
+lifecycle stage has a column, and every cell names a built command (bare name,
+no plugin prefix) or a tracking issue. In CI, an issue-only cell also fails when
+its issue is closed or idle for 90 days. A PR that adds a type or a stage edits
+the glossary and the map together. See
+[ADR-0021](docs/adr/0021-every-work-item-lifecycle-stage-has-a-command-or-a-tracked-gap.md).
+
+The two GlassFrog checks read `evals/glassfrog-tools.tsv`, a snapshot of GlassFrog
 Extended's tools with read/write taken from each tool's `readOnlyHint`. When the
 server adds, removes, or renames a tool, regenerate it and the coach's tool
 lines, in this order:

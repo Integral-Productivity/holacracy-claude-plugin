@@ -33,3 +33,27 @@ The durable per-actor store a routine writes after each fire, and that the surfa
 
 ### Surfacing window
 The span during which a built routine packet is shown at session start, rather than only on its exact fire day. A window is used because a routine can fire late — when the app was closed at the scheduled time — so the packet should stay visible across the prep-to-meeting period.
+
+## Work-item lifecycle
+
+### Work item
+A unit of work the plugin helps a role create and keep healthy in GlassFrog. Each type below moves through the same lifecycle stages, and each stage needs a plugin surface or a tracked gap. [docs/surface-map.md](docs/surface-map.md) shows which command serves each type at each stage.
+
+### Lifecycle stage
+One step a work item passes through, from the moment it is written down to the moment it is cleaned up. A stage with no command and no tracking issue is a hidden gap: from July to October 2026 the project readiness stage was one, and nobody could see it.
+
+The two tables below are the closed lists. `scripts/skills-lint.sh` check 13 reads them and fails when the map has no row for a type, no column for a stage, or a row or column that is not named here. A pull request that adds a type or a stage changes this section and the map together.
+
+| Work-item type | Meaning |
+|---|---|
+| **Tension** | A gap a role senses between what is and what could be, captured for processing. |
+| **Project** | An outcome a role commits to achieve, tracked until it is reached or dropped. |
+| **Action** | A next physical step a role commits to take, with no further outcome to track. |
+| **Checklist item or metric** | A recurring operational check or measure a circle keeps on a role (Art. 3.2). |
+
+| Lifecycle stage | Meaning |
+|---|---|
+| **Create** | The work item is written down well-formed, at intake. |
+| **Readiness** | The work item is checked for form, duplicates, and whether it is still real, then routed. |
+| **Quality or disposition** | The work item is judged against its rubric, or turned into its output. |
+| **Hygiene sweep** | Stale, superseded, or orphaned work items are found across a circle and cleaned up. |

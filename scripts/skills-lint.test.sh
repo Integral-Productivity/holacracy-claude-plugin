@@ -98,6 +98,27 @@ EOF
 # Demo
 See `skills/shared/thing.md` and `commands/demo-cmd.md`.
 EOF
+  mkdir -p "$d/docs"
+  cat > "$d/CONCEPTS.md" <<'EOF'
+# Concepts
+## Work-item lifecycle
+| Work-item type | Meaning |
+|---|---|
+| **Alpha** | first type |
+| **Beta** | second type |
+
+| Lifecycle stage | Meaning |
+|---|---|
+| **Make** | first stage |
+| **Sweep** | second stage |
+EOF
+  cat > "$d/docs/surface-map.md" <<'EOF'
+# Map
+| Work-item type | Make | Sweep | Context |
+|---|---|---|---|
+| **Alpha** | `demo-cmd` | `demo-cmd` | notes |
+| **Beta** | `demo-cmd` | #42 | notes |
+EOF
   printf '# allowlist\n' > "$d/evals/lint-allow-paths.txt"
   printf '# forward references\n' > "$d/evals/forward-references.txt"
   printf '# inventory\nglassfrog_get_me\tread\nglassfrog_list_my_roles\tread\nglassfrog_get_role\tread\nglassfrog_create_tension\twrite\nglassfrog_set_project_tags\twrite\n' \
@@ -444,6 +465,149 @@ _states_fixture "$TMP/c11c"
 printf '| `needs-info` | also a verdict |\n' >> "$TMP/c11c/skills/shared/project-well-formedness.md"
 git -C "$TMP/c11c" add -A && git -C "$TMP/c11c" commit -qm c11c
 _assert_load_bearing 11 "$TMP/c11c" "name in both the state list and the verdict table"
+
+# 13. The work-item surface map (ADR-0021). The fixture's map is 2 types x 2
+#     stages; Beta x Sweep is held only by #42, so it exercises the issue legs.
+#     The issue legs ask `gh`; a stub first on PATH answers instead, with the
+#     state and last-activity epoch that real `gh --jq` would print.
+mkdir -p "$TMP/stub-bin"
+cat > "$TMP/stub-bin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$STUB_GH_ANSWER"
+EOF
+chmod +x "$TMP/stub-bin/gh"
+NOW13=1792800000
+DAY=86400
+_lint_with_issues() {  # $1 = fixture, $2 = stub answer; extra env via caller
+  PATH="$TMP/stub-bin:$PATH" STUB_GH_ANSWER="$2" SKILLS_LINT_CHECK_ISSUES=1 \
+    SKILLS_LINT_NOW="$NOW13" SKILLS_LINT_ROOT="$1" bash "$LINT" >/dev/null 2>&1
+}
+
+# 13a. An empty cell -- the shape of the project-readiness gap.
+_fixture "$TMP/c13a"
+sedi 's/| #42 |/| |/' "$TMP/c13a/docs/surface-map.md"
+git -C "$TMP/c13a" add -A && git -C "$TMP/c13a" commit -qm c13a
+_assert_load_bearing 13 "$TMP/c13a" "empty surface-map cell"
+
+# 13b. A command that does not exist, with no issue beside it. Adding an issue
+#      turns it into a tracked plan, which is allowed offline.
+_fixture "$TMP/c13b"
+sedi 's/| \*\*Alpha\*\* | `demo-cmd` |/| **Alpha** | `ghost-cmd` |/' "$TMP/c13b/docs/surface-map.md"
+git -C "$TMP/c13b" add -A && git -C "$TMP/c13b" commit -qm c13b
+_assert_load_bearing 13 "$TMP/c13b" "unbuilt command with no tracking issue"
+sedi 's/`ghost-cmd` |/`ghost-cmd` #999 |/' "$TMP/c13b/docs/surface-map.md"
+SKILLS_LINT_ROOT="$TMP/c13b" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c13b" bash "$LINT"; fail "check 13: a planned command with a tracking issue was flagged offline"; }
+CASES=$((CASES + 1))
+
+# 13c. The review trigger: a stage in the glossary with no column in the map.
+_fixture "$TMP/c13c"
+sedi 's/^| \*\*Sweep\*\* | second stage |$/| **Sweep** | second stage |\n| **Archive** | third stage |/' "$TMP/c13c/CONCEPTS.md"
+git -C "$TMP/c13c" add -A && git -C "$TMP/c13c" commit -qm c13c
+_assert_load_bearing 13 "$TMP/c13c" "glossary stage with no map column"
+
+# 13d. A type in the glossary with no row in the map.
+_fixture "$TMP/c13d"
+sedi 's/^| \*\*Beta\*\* | second type |$/| **Beta** | second type |\n| **Gamma** | third type |/' "$TMP/c13d/CONCEPTS.md"
+git -C "$TMP/c13d" add -A && git -C "$TMP/c13d" commit -qm c13d
+_assert_load_bearing 13 "$TMP/c13d" "glossary type with no map row"
+
+# 13e. A map row the glossary does not name.
+_fixture "$TMP/c13e"
+printf '| **Gamma** | `demo-cmd` | `demo-cmd` | notes |\n' >> "$TMP/c13e/docs/surface-map.md"
+git -C "$TMP/c13e" add -A && git -C "$TMP/c13e" commit -qm c13e
+_assert_load_bearing 13 "$TMP/c13e" "map row not in the glossary"
+
+# 13f. A map column that is neither a stage nor the Context column.
+_fixture "$TMP/c13f"
+sedi 's/| Sweep | Context |/| Sweep | Notes |/' "$TMP/c13f/docs/surface-map.md"
+git -C "$TMP/c13f" add -A && git -C "$TMP/c13f" commit -qm c13f
+_assert_load_bearing 13 "$TMP/c13f" "map column not in the glossary"
+
+# 13g. A row too short to fill every stage column. Its missing cell is empty,
+#      not unchecked.
+_fixture "$TMP/c13g"
+sedi 's/^| \*\*Beta\*\* | `demo-cmd` | #42 | notes |$/| **Beta** | `demo-cmd` |/' "$TMP/c13g/docs/surface-map.md"
+git -C "$TMP/c13g" add -A && git -C "$TMP/c13g" commit -qm c13g
+_assert_load_bearing 13 "$TMP/c13g" "short map row"
+
+# 13h. No map at all. An absent map must not read as a clean one.
+_fixture "$TMP/c13h"
+git -C "$TMP/c13h" rm -q docs/surface-map.md && git -C "$TMP/c13h" commit -qm c13h
+_assert_load_bearing 13 "$TMP/c13h" "surface map missing"
+
+# 13i. An issue-only cell whose issue is CLOSED fails only with the issue gate
+#      on; without it the lint stays offline and accepts the number.
+_fixture "$TMP/c13i"
+_lint_with_issues "$TMP/c13i" "CLOSED $NOW13" \
+  && fail "check 13: an issue-only cell held by a CLOSED issue passed"
+PATH="$TMP/stub-bin:$PATH" STUB_GH_ANSWER="CLOSED $NOW13" SKILLS_LINT_CHECK_ISSUES=1 SKILLS_LINT_SKIP=13 \
+  SKILLS_LINT_NOW="$NOW13" SKILLS_LINT_ROOT="$TMP/c13i" bash "$LINT" >/dev/null 2>&1 \
+  || fail "check 13 is not load-bearing for a closed issue"
+PATH="$TMP/stub-bin:$PATH" STUB_GH_ANSWER="CLOSED $NOW13" \
+  SKILLS_LINT_ROOT="$TMP/c13i" bash "$LINT" >/dev/null 2>&1 \
+  || fail "check 13: the issue leg ran without SKILLS_LINT_CHECK_ISSUES"
+CASES=$((CASES + 1))
+
+# 13j. Staleness: an open issue idle 91 days fails; 89 days passes.
+_lint_with_issues "$TMP/c13i" "OPEN $((NOW13 - 91 * DAY))" \
+  && fail "check 13: an issue idle for 91 days still held its cell"
+_lint_with_issues "$TMP/c13i" "OPEN $((NOW13 - 89 * DAY))" \
+  || fail "check 13: an issue active 89 days ago was flagged as idle"
+CASES=$((CASES + 1))
+
+# 13k. The issue legs apply to issue-only cells. A built command beside a
+#      closed issue still holds its cell.
+_fixture "$TMP/c13k"
+sedi 's/| #42 |/| `demo-cmd` #42 |/' "$TMP/c13k/docs/surface-map.md"
+git -C "$TMP/c13k" add -A && git -C "$TMP/c13k" commit -qm c13k
+_lint_with_issues "$TMP/c13k" "CLOSED $NOW13" \
+  || fail "check 13: a cell with a built command was failed by the closed issue beside it"
+CASES=$((CASES + 1))
+
+# 13l. THE JULY REPLAY. The only proof that check 13 would have caught the gap
+#      that A3 C4 answers. The facts are stated here, not read from git history:
+#      on 2026-07-21 commands/ held these eleven files and no project-triage,
+#      and nothing tracked a project-readiness command. The glossary is the
+#      real one, so a renamed type or stage breaks this case loudly.
+_july_fixture() {  # $1 = destination dir, $2 = map text
+  mkdir -p "$1/commands" "$1/docs"
+  for c in check-authority context capture-tension process-inbox supersession-sweep \
+           tactical governance routines capture-project review-project stalled-project-sweep; do
+    printf -- '---\ndescription: x\nargument-hint: [x]\n---\n' > "$1/commands/$c.md"
+  done
+  cp "$HERE/../CONCEPTS.md" "$1/CONCEPTS.md"
+  printf '%s\n' "$2" > "$1/docs/surface-map.md"
+  git -C "$1" init -q 2>/dev/null
+  git -C "$1" config user.email t@t.t; git -C "$1" config user.name t
+  git -C "$1" add -A && git -C "$1" commit -qm july
+}
+_findings13() {  # $1 = fixture, $2 = skip list; prints check 13's finding lines
+  SKILLS_LINT_SKIP="$2" SKILLS_LINT_ROOT="$1" bash "$LINT" 2>/dev/null | grep '^\[13\]'
+}
+_july_fixture "$TMP/c13l" '| Work-item type | Create | Readiness | Quality or disposition | Hygiene sweep |
+|---|---|---|---|---|
+| **Tension** | `capture-tension` | | | `supersession-sweep` |
+| **Project** | `capture-project` | | `review-project` | `stalled-project-sweep` |
+| **Action** | | | | |
+| **Checklist item or metric** | | | | |'
+got="$(_findings13 "$TMP/c13l" "")"
+grep -q 'Project × Readiness is empty' <<< "$got" \
+  || { printf '%s\n' "$got"; fail "check 13: the July replay did not flag Project x Readiness"; }
+[ -z "$(_findings13 "$TMP/c13l" 13)" ] || fail "check 13: findings remain with check 13 skipped"
+CASES=$((CASES + 1))
+
+# 13m. The same gap in isolation: today's map with only the July
+#      Project x Readiness cell put back. It must be the one and only finding.
+_july_fixture "$TMP/c13m" "$(sed 's/| `project-triage` |/| |/' "$HERE/../docs/surface-map.md")"
+for c in tension-triage audit-portfolio; do printf -- '---\ndescription: x\nargument-hint: [x]\n---\n' > "$TMP/c13m/commands/$c.md"; done
+git -C "$TMP/c13m" add -A && git -C "$TMP/c13m" commit -qm today
+got="$(_findings13 "$TMP/c13m" "")"
+if [ "$(printf '%s\n' "$got" | grep -c .)" != 1 ] || ! grep -q 'Project × Readiness is empty' <<< "$got"; then
+  printf '%s\n' "$got"
+  fail "check 13: the isolated July gap was not exactly one Project x Readiness finding"
+fi
+CASES=$((CASES + 1))
 
 # 12. The real repository is clean. Fixtures prove the checks work; this proves
 #    they are actually pointed at the plugin.

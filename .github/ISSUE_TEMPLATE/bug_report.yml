@@ -1,0 +1,57 @@
+name: Bug report
+description: A skill, command, agent, or hook did the wrong thing.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is public. Do not paste real role names, people, tensions,
+        GlassFrog IDs, API responses, or credentials. Replace them with made-up examples.
+  - type: input
+    id: surface
+    attributes:
+      label: Which skill, command, agent, or hook?
+      placeholder: e.g. /holacracy:capture-tension or holacracy-secretary
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: Shown by `/plugin` in Claude Code.
+      placeholder: e.g. 0.28.0
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened?
+    validations:
+      required: true
+  - type: dropdown
+    id: connector
+    attributes:
+      label: GlassFrog connector
+      options:
+        - GlassFrog Extended (hosted)
+        - Official GlassFrog MCP
+        - Not connected
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: This report contains no real organization data and no credentials.
+          required: true

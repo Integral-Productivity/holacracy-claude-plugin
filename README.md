@@ -181,7 +181,11 @@ Tracked as issues on this repo as the work is broken out.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE), with one exception. Two reference files quote the [Holacracy Constitution v5.0](https://www.holacracy.org/constitution/5-0/), which HolacracyOne licenses under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Those two files are under CC BY-SA 4.0. [NOTICE](NOTICE) lists them and gives the full attribution.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report a security problem privately, as [SECURITY.md](SECURITY.md) describes. Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Trademarks
 

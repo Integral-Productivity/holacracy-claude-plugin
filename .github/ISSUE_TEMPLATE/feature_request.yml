@@ -1,0 +1,39 @@
+name: Feature request
+description: Propose a new skill, command, or behaviour.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is public. Use made-up examples, not real organization data.
+  - type: textarea
+    id: tension
+    attributes:
+      label: What is the tension?
+      description: The gap between what happens now and what could happen.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What do you propose?
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Which role does this help most?
+      options:
+        - Facilitator
+        - Secretary
+        - Lead Link / Circle Lead
+        - Rep Link / Circle Rep
+        - Any role-filler
+        - Other
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: This request contains no real organization data and no credentials.
+          required: true

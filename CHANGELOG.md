@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v1.0.0...v1.1.0) (2026-10-23)
+
+
+### Features
+
+* add the work-item surface map and lint check 13 ([#411](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/411)) ([70747cc](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/70747cc27504ff99086b509336c5f5b0774eefc1))
+
 ## [1.0.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.29.0...v1.0.0) (2026-10-23)
 
 

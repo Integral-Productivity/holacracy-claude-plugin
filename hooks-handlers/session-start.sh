@@ -484,7 +484,7 @@ This hook found no authenticated GlassFrog connector in the local MCP OAuth stor
 CONDITIONAL
 )
     # Version stamp outside the heredoc, as for the directive below.
-    conditional="${conditional}"$'\n\n'"_Conditional directive emitted by holacracy-claude-plugin v${PLUGIN_VERSION}._"
+    conditional="${conditional}"$'\n\n'"_Conditional directive emitted by self-org plugin v${PLUGIN_VERSION}._"
   fi
   if [[ "$inject" -eq 1 ]]; then
     grounding=$(cat <<'DIRECTIVE'
@@ -501,7 +501,7 @@ DIRECTIVE
     # warns that windows are only comparable within one directive revision. A
     # version string inside the block would change every release and silently
     # break that comparison.
-    grounding="${grounding}"$'\n\n'"_Directive emitted by holacracy-claude-plugin v${PLUGIN_VERSION}._"
+    grounding="${grounding}"$'\n\n'"_Directive emitted by self-org plugin v${PLUGIN_VERSION}._"
   fi
 fi
 
@@ -678,7 +678,7 @@ else
   # It deliberately does NOT contain the directive's marker line, so
   # scripts/grounding-readout.sh will not miscount a quiet session as a
   # directive firing.
-  additional_context="_holacracy-claude-plugin v${PLUGIN_VERSION}: session-start hook ran; nothing to surface._"
+  additional_context="_self-org plugin v${PLUGIN_VERSION}: session-start hook ran; nothing to surface._"
 fi
 
 # Emit the SessionStart envelope.

@@ -449,6 +449,29 @@ assert d["plugin_versions_seen"].get("unknown")==1, d
 assert d["sessions_without_plugin_version"]==0, d
 ' || fail "an explicit 'unknown' stamp must be reported distinctly: $js"
 
+# 10g. Since the self-org rename (ADR-0020) the hook stamps "self-org plugin
+#      vX.Y.Z". Both the new stamp and the old one in older transcripts must
+#      be read, or every post-rename session would land in the no-stamp bucket.
+R="$TMP/renamedver"; mkdir -p "$R"
+cat > "$R/directive.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"**Test plugin: role-grounding directive**\\n\\n_Directive emitted by self-org plugin v1.1.1._\"}"}
+JSONL
+cat > "$R/quiet.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"_self-org plugin v1.1.1: session-start hook ran; nothing to surface._\"}"}
+JSONL
+cat > "$R/old.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"_holacracy-claude-plugin v0.29.0: session-start hook ran; nothing to surface._\"}"}
+JSONL
+js="$(CLAUDE_PROJECTS_DIR="$R" bash "$SCRIPT" --hook "$HOOK" --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+seen=d["plugin_versions_seen"]
+assert seen.get("1.1.1")==2, seen
+assert seen.get("0.29.0")==1, seen
+assert d["sessions_without_plugin_version"]==0, d
+' || fail "the self-org stamp and the old stamp must both be read: $js"
+
 # 11. A transcript whose FIRST record carries no timestamp must still be dated
 #     from a later record, not dropped. Claude Code transcripts routinely open
 #     with a summary/meta record that has none.

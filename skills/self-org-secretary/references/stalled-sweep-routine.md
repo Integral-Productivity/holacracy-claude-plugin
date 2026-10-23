@@ -1,8 +1,8 @@
 # Stalled-sweep routine
 
-A draft-only agentic routine that assembles a **stalled-project review packet** from live GlassFrog data on a cadence and writes it to the routine ledger, so the session-start hook and `/holacracy:stalled-project-sweep` can surface it. Draft only — the routine surfaces stalled candidates; the human runs the sweep to actually re-energize or archive.
+A draft-only agentic routine that assembles a **stalled-project review packet** from live GlassFrog data on a cadence and writes it to the routine ledger, so the session-start hook and `/self-org:stalled-project-sweep` can surface it. Draft only — the routine surfaces stalled candidates; the human runs the sweep to actually re-energize or archive.
 
-`../../shared/agentic-routines.md` defines the mechanism (scheduler fires → ledger → surfaces); this file defines the routine's content. The routine runs as a scheduled-task `SKILL.md` whose prompt is built from the template below at registration time (`/holacracy:routines register stalled-sweep <circle>`).
+`../../shared/agentic-routines.md` defines the mechanism (scheduler fires → ledger → surfaces); this file defines the routine's content. The routine runs as a scheduled-task `SKILL.md` whose prompt is built from the template below at registration time (`/self-org:routines register stalled-sweep <circle>`).
 
 This is the second routine to ride the shared substrate, after Secretary pre-tactical-prep. Notably, pre-tactical-prep declared "projects lacking recent updates" *out of its v1* precisely because GlassFrog exposes no update timestamp — this routine is the surface that takes on that inference deliberately and honestly.
 
@@ -23,7 +23,7 @@ The registered prompt opens with the canonical scheduled-work preamble from `../
 
 ## Draft-only boundary
 
-The routine reads and drafts a packet. It **never** archives a project, drafts or files an action, assigns people, issues rulings, or modifies governance (ADR-0003, `../../shared/tension-capture-flow.md`). A stalled project surfaced in the packet stays a *candidate* — the human runs `/holacracy:stalled-project-sweep` to make the per-item re-energize/archive decision, where every write is a confirmed keystroke. The routine's job is only to make the stall *visible on a cadence*; the acting stays with the human and the interactive command.
+The routine reads and drafts a packet. It **never** archives a project, drafts or files an action, assigns people, issues rulings, or modifies governance (ADR-0003, `../../shared/tension-capture-flow.md`). A stalled project surfaced in the packet stays a *candidate* — the human runs `/self-org:stalled-project-sweep` to make the per-item re-energize/archive decision, where every write is a confirmed keystroke. The routine's job is only to make the stall *visible on a cadence*; the acting stays with the human and the interactive command.
 
 ## Degradation
 

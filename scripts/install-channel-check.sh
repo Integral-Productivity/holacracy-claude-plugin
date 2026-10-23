@@ -8,7 +8,7 @@
 # For months README.md told users to run
 #
 #   /plugin marketplace add Integral-Productivity/marketplace
-#   /plugin install holacracy
+#   /plugin install self-org
 #
 # and that marketplace's catalog was `"plugins": []`. The install path resolved
 # to nothing, by any route, and nothing reported it (issue #234). It is the same
@@ -24,7 +24,7 @@
 # top to bottom, line by line. Two line forms are parsed, each alone on its line:
 #
 #   - `/plugin marketplace add <owner>/<repo>`  (a channel)
-#   - `/plugin install holacracy@<name>`        (an install target)
+#   - `/plugin install self-org@<name>`        (an install target)
 #
 # Any other line in the section that contains `marketplace add` or `plugin
 # install` — a trailing comment, inline code in prose, the `claude plugin ...`
@@ -36,7 +36,7 @@
 # from disk when the channel is this repo, from the GitHub API otherwise — and
 # requires:
 #
-#   - an entry named `holacracy`
+#   - an entry named `self-org`
 #   - sourced from this repo    (`source.source == "github"`, `source.repo`)
 #   - at ref `stable`           (ADR-0002: installs follow the release channel)
 #   - with no `version` field   (ADR-0002: a pinned version is what drifted)
@@ -47,12 +47,12 @@
 # install line of its own. Pairing is per block, not per set: a README whose
 # two blocks each install from the other block's catalog names the right names
 # overall and still sends every reader to the wrong one. A bare
-# `/plugin install holacracy` with no `@<name>` is rejected — with more than one
+# `/plugin install self-org` with no `@<name>` is rejected — with more than one
 # channel it does not say which one it means.
 #
 # EXIT CODES
 # ----------
-#   0  every channel serves holacracy correctly, and every pair is right
+#   0  every channel serves self-org correctly, and every pair is right
 #   1  a README or catalog defect: a channel does not serve it or serves it
 #      wrongly, a pair is wrong, or the Install section is malformed
 #   2  usage error, a catalog could not be read (gh/network/parse/auth), or
@@ -77,7 +77,7 @@
 set -euo pipefail
 
 DEFAULT_SELF_REPO="Integral-Productivity/holacracy-claude-plugin"
-PLUGIN_NAME="holacracy"
+PLUGIN_NAME="self-org"
 REQUIRED_REF="stable"
 CATALOG_PATH=".claude-plugin/marketplace.json"
 
@@ -100,7 +100,7 @@ Usage: install-channel-check.sh [options]
                         others as NOT MEASURED
   -h, --help            show this help
 
-Exit: 0 = every channel serves holacracy and every pair is right,
+Exit: 0 = every channel serves self-org and every pair is right,
       1 = a README or catalog defect, 2 = usage error, read failure, or nothing measured
 EOF
 }

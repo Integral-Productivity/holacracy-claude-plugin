@@ -4,7 +4,7 @@
     python3 scripts/glassfrog-tool-inventory.py capture <glassfrog-mcp-server checkout>
         Print a fresh evals/glassfrog-tools.tsv from the server's source.
     python3 scripts/glassfrog-tool-inventory.py coach-frontmatter
-        Print the `tools:` and `disallowedTools:` lines agents/holacracy-coach.md
+        Print the `tools:` and `disallowedTools:` lines agents/self-org-coach.md
         must carry, built from evals/glassfrog-tools.tsv and
         evals/glassfrog-server-prefixes.txt.
 

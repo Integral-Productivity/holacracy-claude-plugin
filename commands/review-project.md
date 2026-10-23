@@ -1,11 +1,11 @@
 ---
-description: Adversarial review of one GlassFrog project against the well-formedness rubric. Runs five critic lenses (actionability, goal-alignment, scope-authority, assignment-fit, red-team), surfaces findings with drafted fixes, and applies additive fixes with a single per-item confirmation. Never auto-writes. Backlog triage moved to /holacracy:project-triage.
+description: Adversarial review of one GlassFrog project against the well-formedness rubric. Runs five critic lenses (actionability, goal-alignment, scope-authority, assignment-fit, red-team), surfaces findings with drafted fixes, and applies additive fixes with a single per-item confirmation. Never auto-writes. Backlog triage moved to /self-org:project-triage.
 argument-hint: [project name/id]
 ---
 
-# /holacracy:review-project
+# /self-org:review-project
 
-Review GlassFrog **projects** for quality: is each one well-formed (an actionable outcome with a next-action and a clear owner) and well-placed (serving a goal, within the owner role's authority, on the best-fit role)? For each finding, Claude drafts a fix; the human confirms per-item; only additive fixes are written to GlassFrog. This is the project-side analog of `/holacracy:tension-triage`.
+Review GlassFrog **projects** for quality: is each one well-formed (an actionable outcome with a next-action and a clear owner) and well-placed (serving a goal, within the owner role's authority, on the best-fit role)? For each finding, Claude drafts a fix; the human confirms per-item; only additive fixes are written to GlassFrog. This is the project-side analog of `/self-org:tension-triage`.
 
 Load three shared references at the start:
 
@@ -22,7 +22,7 @@ Load three shared references at the start:
 1. **Resolve actor + role roster.** Follow `skills/shared/actor-and-role-resolution.md` Steps 1-2: `glassfrog_get_me`, then `glassfrog_list_my_roles`.
 
 2. **Arg gate -- pick the target set** from `$ARGUMENTS`:
-   - **No argument, or a circle name** -> **deprecated.** The backlog walk moved to `/holacracy:project-triage` ([ADR-0018](../docs/adr/0018-separate-project-readiness-from-project-quality.md)). Say in one line: *"Backlog triage moved to /holacracy:project-triage, which saves each project's route so the next pass resumes. Running it now."* Then run `/holacracy:project-triage` with the same argument and stop here. This dispatch stays until a major release.
+   - **No argument, or a circle name** -> **deprecated.** The backlog walk moved to `/self-org:project-triage` ([ADR-0018](../docs/adr/0018-separate-project-readiness-from-project-quality.md)). Say in one line: *"Backlog triage moved to /self-org:project-triage, which saves each project's route so the next pass resumes. Running it now."* Then run `/self-org:project-triage` with the same argument and stop here. This dispatch stays until a major release.
    - **A named/identified project** -> resolve one project (by id `proj_<32hex>`, or by matching the name against `list_role_projects(..., q: "<name>")`; if ambiguous, ask which one) and run the **deep single-project review** (independent critic subagents -- see "Deep review" below).
    - **A pasted GlassFrog URL** -> the legacy numeric ID in it has no direct lookup, and search does not index it. Follow `skills/shared/glassfrog-id-and-url-resolution.md`: ask for the item's title first and resolve that by search, fall back to that doc's legacy-ID scan on GlassFrog Extended only when the title is unavailable, and confirm whether it is a project or an action before running the rubric on it.
 
@@ -34,7 +34,7 @@ Load three shared references at the start:
 
 5. **Present the project.** Show its verdict -- the state (`well-formed`, `needs-outcome`, ...) of the highest-severity surviving finding -- and expand the full findings block.
 
-6. **The per-project findings block** (modeled on `/holacracy:tension-triage`):
+6. **The per-project findings block** (modeled on `/self-org:tension-triage`):
 
    ```
    Project [N of M]: [description excerpt]   (proj_xxx, owned by [Role] of [Circle])
@@ -74,7 +74,7 @@ A confirmed `advisory-route` finding is a *structural* gap -- the project is on 
 
 - Dispatch the `tension-capture` subagent (`agents/tension-capture.md`) with: the tension text (front-loaded topic, e.g. *"Scope-authority gap: [Role] owns project [X] whose scope reaches into [other role/domain] -- ..."*), the sensing role hint, and an attribution preamble if carried on someone's behalf.
 - The `tension-capture` subagent runs its own draft-and-confirm flow. It files a tension on a role's backlog; it does **not** touch the project.
-- Reason about scope-authority from `skills/shared/authority-boundaries.md`, exactly as `/holacracy:check-authority` does.
+- Reason about scope-authority from `skills/shared/authority-boundaries.md`, exactly as `/self-org:check-authority` does.
 
 Assignment-fit defaults to the structural role-fit reading. Only surface the person-fit reading when the user explicitly asks -- it's a Lead Link question.
 

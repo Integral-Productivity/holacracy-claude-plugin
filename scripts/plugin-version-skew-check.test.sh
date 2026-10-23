@@ -19,7 +19,7 @@ fail() { echo "FAIL: $1"; exit 1; }
 
 # Materialize a plugin copy with a manifest, the way a real install looks.
 mkcopy() {  # mkcopy DIR VERSION [NAME]
-  local dir="$1" version="$2" name="${3:-holacracy}"
+  local dir="$1" version="$2" name="${3:-self-org}"
   mkdir -p "$dir/.claude-plugin"
   printf '%s\n' "$version" > "$dir/version.txt"
   cat > "$dir/.claude-plugin/plugin.json" <<EOF
@@ -48,10 +48,10 @@ console_table() { printf '%s\n' "$1" | sed -n '1,/^::error/p'; }
 # ---------------------------------------------------------------------------
 R1="$TMP/issue122"
 mkcopy "$R1/$APP/abc123/rpm/plugin_011Gxk9EXCkyRyB192A1AxeZ" 0.6.0
-mkcopy "$R1/.claude/plugins/cache/integral-productivity-internal/holacracy/0.10.2" 0.10.2
+mkcopy "$R1/.claude/plugins/cache/integral-productivity-internal/self-org/0.10.2" 0.10.2
 mkdir -p "$R1/.claude/plugins"
 cat > "$R1/.claude/plugins/installed_plugins.json" <<'EOF'
-{"holacracy@integral-productivity-internal": {"version": "0.10.2", "lastUpdated": "2026-07-29T21:54:00Z"}}
+{"self-org@integral-productivity-internal": {"version": "0.10.2", "lastUpdated": "2026-07-29T21:54:00Z"}}
 EOF
 mkloaded "$TMP/loaded-0.6.0.json" '{}' 8 8   # v0.6.0 emitted no stamp at all
 
@@ -78,7 +78,7 @@ echo "$out" | grep -q 'NONE carrying a version stamp' || fail "expected the unst
 # ---------------------------------------------------------------------------
 R2="$TMP/cachebehind"
 mkcopy "$R2/$APP/abc123/rpm/plugin_x" 0.10.3
-mkcopy "$R2/.claude/plugins/cache/mkt/holacracy/0.10.2" 0.10.2
+mkcopy "$R2/.claude/plugins/cache/mkt/self-org/0.10.2" 0.10.2
 mkloaded "$TMP/loaded-0.10.3.json" '{"0.10.3": 5}' 5 0
 
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R2" --stable-version 0.10.3 \
@@ -91,10 +91,10 @@ echo "$out" | grep -q 'plugin cache' || fail "expected the cache channel named; 
 # ---------------------------------------------------------------------------
 R3="$TMP/healthy"
 mkcopy "$R3/$APP/abc123/rpm/plugin_x" 0.12.0
-mkcopy "$R3/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+mkcopy "$R3/.claude/plugins/cache/mkt/self-org/0.12.0" 0.12.0
 mkdir -p "$R3/.claude/plugins"
 cat > "$R3/.claude/plugins/installed_plugins.json" <<'EOF'
-{"holacracy@mkt": {"version": "0.12.0"}}
+{"self-org@mkt": {"version": "0.12.0"}}
 EOF
 mkloaded "$TMP/loaded-0.12.0.json" '{"0.12.0": 6}' 6 0
 
@@ -120,7 +120,7 @@ echo "$out" | grep -q '0.6.0 (1)' || fail "expected the stale version and its se
 # ---------------------------------------------------------------------------
 mkloaded "$TMP/loaded-ahead.json" '{"0.13.0": 3}' 3 0
 R5="$TMP/ahead"
-mkcopy "$R5/.claude/plugins/cache/mkt/holacracy/0.13.0" 0.13.0
+mkcopy "$R5/.claude/plugins/cache/mkt/self-org/0.13.0" 0.13.0
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R5" --stable-version 0.12.0 \
         --loaded-json "$TMP/loaded-ahead.json" 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] || fail "running ahead of stable should not alarm, got $rc: $out"
@@ -165,7 +165,7 @@ echo "$out" | grep -qi 'NOT a pass' || fail "expected an explicit not-a-pass mes
 # 9. An unparseable version is UNKNOWN, hence skew -- never silently equal.
 # ---------------------------------------------------------------------------
 R9="$TMP/garbled"
-mkcopy "$R9/.claude/plugins/cache/mkt/holacracy/latest" "not-a-version"
+mkcopy "$R9/.claude/plugins/cache/mkt/self-org/latest" "not-a-version"
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R9" --stable-version 0.12.0 \
         --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] || fail "an unparseable channel version must alarm, got $rc: $out"
@@ -199,7 +199,7 @@ out="$(bash "$SCRIPT" --dry-run --fixture-root "$R3" --stable-version 0.12.0 \
 #     its newest version.
 R11="$TMP/cachehistory"
 for v in 0.6.0 0.10.2 0.10.3 0.12.0; do
-  mkcopy "$R11/.claude/plugins/cache/mkt/holacracy/$v" "$v"
+  mkcopy "$R11/.claude/plugins/cache/mkt/self-org/$v" "$v"
 done
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R11" --stable-version 0.12.0 \
         --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
@@ -212,8 +212,8 @@ echo "$out" | grep -q 'also cached: 0.10.3, 0.10.2, 0.6.0' \
 # 12. Two marketplaces are two channels, judged independently. The live run had
 #     one current and one a release behind; both facts must survive.
 R12="$TMP/twomarkets"
-for v in 0.10.2 0.10.3; do mkcopy "$R12/.claude/plugins/cache/internal/holacracy/$v" "$v"; done
-for v in 0.10.3 0.12.0; do mkcopy "$R12/.claude/plugins/cache/labs/holacracy/$v" "$v"; done
+for v in 0.10.2 0.10.3; do mkcopy "$R12/.claude/plugins/cache/internal/self-org/$v" "$v"; done
+for v in 0.10.3 0.12.0; do mkcopy "$R12/.claude/plugins/cache/labs/self-org/$v" "$v"; done
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R12" --stable-version 0.12.0 \
         --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] || fail "a marketplace behind stable must still alarm, got $rc: $out"
@@ -250,18 +250,18 @@ skewlines="$(echo "$out" | grep -c '| \*\*BEHIND\*\* |')"
 #     and it must not be silent.
 R15="$TMP/opaque"
 mkcopy "$R15/$APP/abc123/rpm/plugin_other" 0.1.0 reclaim-assistant
-mkcopy "$R15/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+mkcopy "$R15/.claude/plugins/cache/mkt/self-org/0.12.0" 0.12.0
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R15" --stable-version 0.12.0 \
         --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] || fail "an unidentifiable app surface must alarm, got $rc: $out"
-echo "$out" | grep -q 'NONE identifiable as holacracy' \
+echo "$out" | grep -q 'NONE identifiable as self-org' \
   || fail "expected an explicit cannot-tell message; got: $out"
 
 # 15b. A surface that exists but has materialized nothing is not in use, so it
 #      is n/a rather than an alarm.
 R15b="$TMP/emptysurface"
 mkdir -p "$R15b/$APP/abc123/rpm"
-mkcopy "$R15b/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+mkcopy "$R15b/.claude/plugins/cache/mkt/self-org/0.12.0" 0.12.0
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R15b" --stable-version 0.12.0 \
         --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] || fail "a surface with nothing materialized must not alarm, got $rc: $out"
@@ -269,15 +269,15 @@ echo "$out" | grep -q 'no plugins materialized' || fail "expected the empty-surf
 
 # 16. Identification does not depend on one assumed layout. The old probe
 #     demanded a manifest naming us, with a version.txt fallback gated on the
-#     PATH containing "holacracy" -- which `rpm/plugin_<ID>/` never does,
+#     PATH containing "self-org" -- which `rpm/plugin_<ID>/` never does,
 #     making that fallback dead for the only surface it was written for. A copy
 #     with no manifest but our structural fingerprint is still ours.
 R16="$TMP/nomanifest"
 D16="$R16/$APP/abc123/rpm/plugin_opaque"
-mkdir -p "$D16/hooks-handlers" "$D16/skills/holacracy-facilitator"
+mkdir -p "$D16/hooks-handlers" "$D16/skills/self-org-facilitator"
 touch "$D16/hooks-handlers/session-start.sh"
 echo "0.6.0" > "$D16/version.txt"
-mkcopy "$R16/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+mkcopy "$R16/.claude/plugins/cache/mkt/self-org/0.12.0" 0.12.0
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R16" --stable-version 0.12.0 \
         --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] || fail "a manifest-less stale copy must be found and alarm, got $rc: $out"
@@ -289,13 +289,13 @@ console_table "$out" | grep -Eq 'desktop app copy +0.6.0 +BEHIND' \
 #     Unparseable is different -- the file is there and we cannot read it,
 #     which is unreadability, and alarms.
 R17="$TMP/installrecord"
-mkcopy "$R17/.claude/plugins/cache/mkt/holacracy/0.12.0" 0.12.0
+mkcopy "$R17/.claude/plugins/cache/mkt/self-org/0.12.0" 0.12.0
 mkdir -p "$R17/.claude/plugins"
 echo '{"some-other-plugin@mkt": {"version": "1.0.0"}}' > "$R17/.claude/plugins/installed_plugins.json"
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R17" --stable-version 0.12.0 \
         --loaded-json "$TMP/loaded-0.12.0.json" 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] || fail "an install record without us must not alarm, got $rc: $out"
-echo "$out" | grep -q 'has no holacracy entry' || fail "expected the no-entry reason; got: $out"
+echo "$out" | grep -q 'has no self-org entry' || fail "expected the no-entry reason; got: $out"
 
 echo 'not json at all' > "$R17/.claude/plugins/installed_plugins.json"
 out="$(bash "$SCRIPT" --dry-run --fixture-root "$R17" --stable-version 0.12.0 \

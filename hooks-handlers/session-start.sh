@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Holacracy plugin -- SessionStart hook handler.
+# self-org plugin -- SessionStart hook handler.
 #
 # Emits (via the Claude Code hook JSON envelope's
 # `hookSpecificOutput.additionalContext`) up to two things, in order:
@@ -12,7 +12,7 @@
 #      instead: the session grounds only if its own tool list has a
 #      glassfrog_get_me tool, because the local store cannot see a claude.ai
 #      connector (issue #332).
-#   2. A routine briefing: scheduled-task routines tagged with the `holacracy/`
+#   2. A routine briefing: scheduled-task routines tagged with the `self-org/`
 #      prefix that fire today or have anomalies (e.g., last fire failed).
 #
 # NEVER POSES A QUESTION. Nothing this hook emits may require an answer before
@@ -27,7 +27,7 @@
 # fail-silent on *error*, so a broken hook never blocks the user's session.
 #
 # Routine discovery relies on the user's scheduled tasks being tagged with
-# titles that start with `holacracy/<role>/<routine>/<scope>` -- a convention
+# titles that start with `self-org/<role>/<routine>/<scope>` -- a convention
 # set by the agentic-routines mechanism in v0.3+. In v0.2, before any routines
 # exist, the routine half is effectively always silent (the right default);
 # it becomes useful once routines are created in v0.3.
@@ -475,7 +475,7 @@ if _truthy "${HOLACRACY_GROUNDING_DIRECTIVE:-on}"; then
   if [[ "$inject" -eq 1 ]] && ! _glassfrog_authenticated; then
     inject=0
     conditional=$(cat <<'CONDITIONAL'
-**Holacracy plugin: role-grounding check (conditional directive)**
+**self-org plugin: role-grounding check (conditional directive)**
 
 This hook found no authenticated GlassFrog connector in the local MCP OAuth store. That store cannot see a claude.ai connector (Cowork, claude.ai), so the hook cannot tell whether GlassFrog is connected. Your own tool list can. Check it, including deferred tools listed by name only:
 
@@ -488,7 +488,7 @@ CONDITIONAL
   fi
   if [[ "$inject" -eq 1 ]]; then
     grounding=$(cat <<'DIRECTIVE'
-**Holacracy plugin: role-grounding directive**
+**self-org plugin: role-grounding directive**
 
 Before your first substantive action this session, resolve and announce the active Holacratic role/circle per the procedure in `skills/shared/actor-and-role-resolution.md` -- follow its Step 2 call shape, which is bounded: do NOT pass `include_roles: true` to `glassfrog_get_me`, and do NOT call `glassfrog_list_my_roles` unpaged. For a Partner who fills many roles both overflow the tool-result limit and cost you the turn. Then announce the result in your opening lines (e.g. "Operating as **Role of Circle**").
 
@@ -505,7 +505,7 @@ DIRECTIVE
   fi
 fi
 
-# Discover today's holacracy routines.
+# Discover today's self-org routines (and legacy holacracy/ ones).
 #
 # Why not call `mcp__scheduled-tasks__list_scheduled_tasks` from the hook?
 # Hooks run as plain shell commands without access to MCP tooling at
@@ -526,7 +526,7 @@ LEDGER_FILE="${HOLACRACY_ROUTINE_LEDGER:-${HOME}/.claude/holacracy/routines.json
 # still need to emit. We must NOT exit the whole hook here.
 #
 # Ledger line shape. Each line is a JSON object with at least:
-#   { "id": "...", "title": "holacracy/secretary/pre-tactical-prep/operations",
+#   { "id": "...", "title": "self-org/secretary/pre-tactical-prep/operations",
 #     "next_fire": "2026-05-23T18:00:00Z",
 #     "last_fire": "2026-05-16T18:00:00Z",
 #     "last_status": "ok" | "error" | "skipped" }
@@ -580,7 +580,9 @@ try:
                 continue
 
             title = entry.get("title", "")
-            if not title.startswith("holacracy/"):
+            # `holacracy/` is the pre-1.0 prefix; still accepted so routines
+            # scheduled before the rename keep surfacing (ADR-0020).
+            if not title.startswith(("self-org/", "holacracy/")):
                 continue
 
             # Anomaly check
@@ -631,7 +633,7 @@ except Exception:
 if not due and not anomalies:
     sys.exit(0)
 
-lines = ["**Holacracy plugin: routine briefing**", ""]
+lines = ["**self-org plugin: routine briefing**", ""]
 if due:
     lines.append("Routines ready / firing today:")
     lines.extend(due)
@@ -640,7 +642,7 @@ if anomalies:
     lines.append("Anomalies (review needed):")
     lines.extend(anomalies)
     lines.append("")
-lines.append("Run `/holacracy:routines` for full inventory.")
+lines.append("Run `/self-org:routines` for full inventory.")
 
 print("\n".join(lines))
 PY

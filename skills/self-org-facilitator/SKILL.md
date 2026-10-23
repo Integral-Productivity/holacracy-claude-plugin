@@ -1,9 +1,9 @@
 ---
-name: holacracy-facilitator
+name: self-org-facilitator
 description: >
   Full Holacracy Facilitator skill for organizations using Holacracy and GlassFrog. Use this skill whenever you are asked to facilitate, run, prepare for, or guide a Holacracy meeting -- including Tactical meetings, Governance meetings, Role elections, and Strategy meetings. Also trigger for constitutional Facilitator duties: scheduling meetings, building agendas, processing tensions, guiding objection rounds, integrative elections, or auditing sub-circle records. Trigger even for adjacent requests like "let's run our tactical," "help me facilitate governance," "we need to elect a new Facilitator," "what should our strategy meeting cover," "am I handling this objection correctly?", or "help me process this tension." Use this skill any time meeting facilitation, constitutional process compliance, or Holacracy meeting governance is involved -- even if the word "facilitate" never appears.
 status: draft
-version: 1.1.3
+version: 2.0.0
 ---
 # Holacracy Facilitator
 
@@ -34,19 +34,19 @@ For the full constitutional duties reference, load `references/constitutional-du
 
 This skill operates in three modes depending on what is connected. Check available tooling at the start of each session and announce which mode is active.
 
-### Mode A -- Full Integration (GlassFrog + holacratic-ai-governance)
+### Mode A -- Full Integration (GlassFrog + self-org-ai-governance)
 
-When both this skill and the `holacratic-ai-governance` skill are available and GlassFrog MCP tools are connected, run in full integration mode:
+When both this skill and the `self-org-ai-governance` skill are available and GlassFrog MCP tools are connected, run in full integration mode:
 
-1. **Before any facilitation work**, use `holacratic-ai-governance` patterns to load governance context: identify the circle, fetch role portfolio, load checklist/metrics/projects, and surface any pre-existing tensions.
+1. **Before any facilitation work**, use `self-org-ai-governance` patterns to load governance context: identify the circle, fetch role portfolio, load checklist/metrics/projects, and surface any pre-existing tensions.
 2. **Use that context to pre-populate the meeting agenda** -- checklist items, metrics, and projects come from live GlassFrog data rather than being entered manually.
 3. **After the meeting**, use governance context to identify which adoption outputs require GlassFrog Secretary actions and which project status changes can be written back via API.
 
-*Why this pairing works*: `holacratic-ai-governance` specializes in governance-aware context loading and tension sensing. This skill specializes in the facilitation process itself. Together they cover the full facilitation lifecycle: context -> process -> capture.
+*Why this pairing works*: `self-org-ai-governance` specializes in governance-aware context loading and tension sensing. This skill specializes in the facilitation process itself. Together they cover the full facilitation lifecycle: context -> process -> capture.
 
-### Mode B -- Standalone (GlassFrog connected, no holacratic-ai-governance)
+### Mode B -- Standalone (GlassFrog connected, no self-org-ai-governance)
 
-When GlassFrog MCP tools are available but `holacratic-ai-governance` is not loaded:
+When GlassFrog MCP tools are available but `self-org-ai-governance` is not loaded:
 
 Load governance context directly using the GlassFrog tools listed below. The facilitation process is identical to Mode A; the difference is that context loading happens inline rather than via the companion skill's patterns.
 

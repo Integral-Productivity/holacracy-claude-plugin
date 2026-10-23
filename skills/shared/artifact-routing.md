@@ -43,7 +43,7 @@ Run this when a skill is about to produce an artifact whose home is a system of 
 
 Routing is scoped to **the role that owns the work**, not the whole org. Usually this is the role resolved by `actor-and-role-resolution.md`. If the artifact is authorized by a *different* role than the one operating (e.g., the actor is advising, or the work maps to a sister role's accountability per Pattern 4), route by *that owning* role — name the shift.
 
-If the owning role is itself ambiguous, that is a governance-rooting question, not a routing question — resolve it via `../holacratic-ai-governance/references/governance-rooting.md` first.
+If the owning role is itself ambiguous, that is a governance-rooting question, not a routing question — resolve it via `../self-org-ai-governance/references/governance-rooting.md` first.
 
 ### Step 2 — Read the owning role's domains (and policies) live
 
@@ -135,11 +135,11 @@ Probed live via `glassfrog_list_role_domains` / `glassfrog_search` to confirm th
 
 | If you're working in… | When routing applies |
 |---|---|
-| `holacratic-ai-governance` | Whenever a substantive artifact is about to be produced — the operating frame calibrates response *and* routes output. Pairs with Pattern 4 (Governance-Aware Response Calibration). |
-| `holacracy-lead-link` | Routing strategy/priority artifacts to the circle's strategy system of record; role-assignment records stay in GlassFrog. |
-| `holacracy-secretary` | Governance records → GlassFrog (L3); meeting outputs route by the owning role's domains. |
-| `holacracy-facilitator` | Governance-meeting outputs → GlassFrog; process artifacts route by owning role. |
-| `holacracy-rep-link` | Tensions carried across circles route to the owning role's backlog; cross-circle records route by domain. |
+| `self-org-ai-governance` | Whenever a substantive artifact is about to be produced — the operating frame calibrates response *and* routes output. Pairs with Pattern 4 (Governance-Aware Response Calibration). |
+| `self-org-lead-link` | Routing strategy/priority artifacts to the circle's strategy system of record; role-assignment records stay in GlassFrog. |
+| `self-org-secretary` | Governance records → GlassFrog (L3); meeting outputs route by the owning role's domains. |
+| `self-org-facilitator` | Governance-meeting outputs → GlassFrog; process artifacts route by owning role. |
+| `self-org-rep-link` | Tensions carried across circles route to the owning role's backlog; cross-circle records route by domain. |
 | Scheduled routines | A routine's artifact routes by its declared acting role's domains — read live at fire time, or, if disconnected, the routine names the limit in its draft rather than defaulting. |
 
 For most artifacts the SKILL.md body plus this procedure's Steps 1–5 are sufficient. The recognizer layers and multi-domain precedence are the parts to re-read when a role holds several system domains or a domain's signal is thin.

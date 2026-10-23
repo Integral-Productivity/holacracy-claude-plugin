@@ -448,7 +448,7 @@ pass
 # ---------------------------------------------------------------------------
 # 4k-4m. Project triage writes (#393).
 # ---------------------------------------------------------------------------
-# /holacracy:project-triage saves a state as a project tag and a reason as a
+# /self-org:project-triage saves a state as a project tag and a reason as a
 # note line. set_project_tags REPLACES the whole set and its live argument is
 # `tag_names`; a stub that merged, or that took `tags`, would let a command
 # pass an eval by doing something that fails or deletes tags in production.

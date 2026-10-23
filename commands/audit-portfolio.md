@@ -3,7 +3,7 @@ description: Audit a circle's checklist items and metrics against its purpose, a
 argument-hint: [circle name to audit, optional]
 ---
 
-# /holacracy:audit-portfolio
+# /self-org:audit-portfolio
 
 Run a **checklist & metric portfolio audit** on a circle. The command primes scope; the underlying `checklist-metric-audit` skill carries the method.
 
@@ -21,7 +21,7 @@ Run a **checklist & metric portfolio audit** on a circle. The command primes sco
 Checklist items and metrics are **operational, not governance** (Holacracy Constitution Art. 3.2 -- Tactical Meeting Checklist/Metrics Review). This command therefore **applies approved changes directly** through the GlassFrog MCP -- it does not open a governance proposal. Two guardrails hold:
 
 - **Per-change confirmation for destructive edits.** Deletes and merges require explicit approval per item; never merge or delete on an unconfirmed assumption.
-- **Governance escalation when warranted.** If a gap actually needs a new accountability or domain (no role is accountable for something the circle needs), that is a governance tension -- hand off to `/holacracy:capture-tension`, don't paper over it with a checklist item.
+- **Governance escalation when warranted.** If a gap actually needs a new accountability or domain (no role is accountable for something the circle needs), that is a governance tension -- hand off to `/self-org:capture-tension`, don't paper over it with a checklist item.
 
 ## Behaviour
 

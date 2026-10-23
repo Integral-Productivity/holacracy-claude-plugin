@@ -63,10 +63,10 @@ LABS="Integral-Productivity/marketplace-labs"
 # ---------------------------------------------------------------------------
 # Fixture builders
 # ---------------------------------------------------------------------------
-# entry REPO REF [EXTRA_JSON] -> one holacracy plugin entry
+# entry REPO REF [EXTRA_JSON] -> one self-org plugin entry
 entry() {
   jq -cn --arg repo "$1" --arg ref "$2" --argjson extra "${3:-{\}}" \
-    '{name:"holacracy", source:{source:"github", repo:$repo, ref:$ref}} + $extra'
+    '{name:"self-org", source:{source:"github", repo:$repo, ref:$ref}} + $extra'
 }
 # catalog PATH NAME ENTRY_JSON... -> writes a marketplace.json
 catalog() {
@@ -77,7 +77,7 @@ catalog() {
 world() {
   local d="$TMP/$1"
   mkdir -p "$d/fx"
-  catalog "$d/local.json" integral-productivity-holacracy "$(entry "$SELF" stable)"
+  catalog "$d/local.json" integral-productivity-self-org "$(entry "$SELF" stable)"
   catalog "$d/fx/Integral-Productivity__marketplace-labs.json" integral-productivity-labs \
     "$(jq -cn '{name:"other", source:{source:"github", repo:"o/other"}}')" "$(entry "$SELF" stable)"
   cat > "$d/README.md" <<EOF
@@ -89,14 +89,14 @@ world() {
 
 \`\`\`
 /plugin marketplace add $SELF
-/plugin install holacracy@integral-productivity-holacracy
+/plugin install self-org@integral-productivity-self-org
 \`\`\`
 
 **Members**
 
 \`\`\`
 /plugin marketplace add $LABS
-/plugin install holacracy@integral-productivity-labs
+/plugin install self-org@integral-productivity-labs
 \`\`\`
 
 ## What's included
@@ -162,7 +162,7 @@ out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
 
 # Valid JSON with a string .name but a string .plugins: jq cannot iterate it, so
 # judge() fails and the script must die "could not be parsed" (2), not judge.
-W="$(world s1h)"; printf '{"name":"integral-productivity-labs","plugins":"holacracy"}\n' > "$W/fx/Integral-Productivity__marketplace-labs.json"
+W="$(world s1h)"; printf '{"name":"integral-productivity-labs","plugins":"self-org"}\n' > "$W/fx/Integral-Productivity__marketplace-labs.json"
 out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
 { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'catalog could not be parsed'; } || fail "a catalog whose .plugins is a string must exit 2 at the parse die (rc=$rc): $out"; pass
 
@@ -183,14 +183,14 @@ p_judged() {  # p_judged SCRIPT LABEL ENTRY_JSON EXPECTED_TEXT -> 0 when the def
 }
 p_missing()  { local d o r; d="$(world "pm-$RANDOM")"
                catalog "$d/$LABSFX" integral-productivity-labs "$(jq -cn '{name:"x",source:{source:"github",repo:"o/x"}}')"
-               o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q 'no plugin named holacracy'; }
+               o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q 'no plugin named self-org'; }
 p_wrong_repo()   { p_judged "$1" repo "$(entry o/fork stable)" 'source repo is o/fork'; }
 p_wrong_ref()    { p_judged "$1" ref "$(entry "$SELF" main)" 'source ref is main'; }
-p_no_ref()       { p_judged "$1" noref "$(jq -cn --arg r "$SELF" '{name:"holacracy",source:{source:"github",repo:$r}}')" 'source ref is <none>'; }
+p_no_ref()       { p_judged "$1" noref "$(jq -cn --arg r "$SELF" '{name:"self-org",source:{source:"github",repo:$r}}')" 'source ref is <none>'; }
 p_version()      { p_judged "$1" ver "$(entry "$SELF" stable '{"version":"0.1.0"}')" 'pins version 0.1.0'; }
-p_not_github()   { p_judged "$1" url "$(jq -cn '{name:"holacracy",source:"./"}')" 'not a github source'; }
+p_not_github()   { p_judged "$1" url "$(jq -cn '{name:"self-org",source:"./"}')" 'not a github source'; }
 
-p_missing "$SCRIPT"    || fail "a catalog without holacracy must exit 1 naming it"; pass
+p_missing "$SCRIPT"    || fail "a catalog without self-org must exit 1 naming it"; pass
 p_wrong_repo "$SCRIPT" || fail "an entry sourced from another repo must exit 1"; pass
 p_wrong_ref "$SCRIPT"  || fail "an entry at ref main must exit 1"; pass
 p_no_ref "$SCRIPT"     || fail "an entry with no ref must exit 1"; pass
@@ -210,27 +210,27 @@ out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
 # 3. Cross-check between channels and install lines
 # ---------------------------------------------------------------------------
 p_bare_install() { local d o r; d="$(world "pb-$RANDOM")"
-  sed -i.bak 's#^/plugin install holacracy@integral-productivity-labs$#/plugin install holacracy#' "$d/README.md"
+  sed -i.bak 's#^/plugin install self-org@integral-productivity-labs$#/plugin install self-org#' "$d/README.md"
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q 'names no catalog'; }
 p_undeclared() { local d o r; d="$(world "pu-$RANDOM")"
-  sed -i.bak 's#holacracy@integral-productivity-labs#holacracy@integral-productivity-tools#' "$d/README.md"
+  sed -i.bak 's#self-org@integral-productivity-labs#self-org@integral-productivity-tools#' "$d/README.md"
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "integral-productivity-tools' follows '/plugin marketplace add $LABS', whose catalog is named integral-productivity-labs"; }
 # Swapped pairs: each name IS declared by some channel, so a set comparison
 # passes -- but every reader of either block is sent to the other's catalog.
 swap_installs() {
-  sed -i.bak -e 's#holacracy@integral-productivity-holacracy#holacracy@SWAP#' \
-             -e 's#holacracy@integral-productivity-labs#holacracy@integral-productivity-holacracy#' \
-             -e 's#holacracy@SWAP#holacracy@integral-productivity-labs#' "$1"
+  sed -i.bak -e 's#self-org@integral-productivity-self-org#self-org@SWAP#' \
+             -e 's#self-org@integral-productivity-labs#self-org@integral-productivity-self-org#' \
+             -e 's#self-org@SWAP#self-org@integral-productivity-labs#' "$1"
 }
 p_swapped() { local d o r; d="$(world "ps-$RANDOM")"; swap_installs "$d/README.md"
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] \
-    && echo "$o" | grep -q "integral-productivity-labs' follows '/plugin marketplace add $SELF', whose catalog is named integral-productivity-holacracy" \
-    && echo "$o" | grep -q "integral-productivity-holacracy' follows '/plugin marketplace add $LABS', whose catalog is named integral-productivity-labs"; }
+    && echo "$o" | grep -q "integral-productivity-labs' follows '/plugin marketplace add $SELF', whose catalog is named integral-productivity-self-org" \
+    && echo "$o" | grep -q "integral-productivity-self-org' follows '/plugin marketplace add $LABS', whose catalog is named integral-productivity-labs"; }
 p_no_channel() { local d o r; d="$(world "pc-$RANDOM")"
-  awk '/^\*\*Anyone\*\*$/ { print; print "/plugin install holacracy@integral-productivity-holacracy"; next } { print }' "$d/README.md" > "$d/R" && mv "$d/R" "$d/README.md"
+  awk '/^\*\*Anyone\*\*$/ { print; print "/plugin install self-org@integral-productivity-self-org"; next } { print }' "$d/README.md" > "$d/R" && mv "$d/R" "$d/README.md"
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "no '/plugin marketplace add' line above it"; }
 p_no_install() { local d o r; d="$(world "pi-$RANDOM")"; sed -i.bak '/^\/plugin install/d' "$d/README.md"
-  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "no '/plugin install holacracy@<catalog>' line"; }
+  o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "no '/plugin install self-org@<catalog>' line"; }
 # add_line DIR TEXT -> TEXT inserted into the Install section, after **Anyone**
 add_line() {
   awk -v l="$2" '/^\*\*Anyone\*\*$/ { print; print ""; print l; next } { print }' "$1/README.md" > "$1/R" && mv "$1/R" "$1/README.md"
@@ -240,13 +240,13 @@ p_unrecognised() {  # p_unrecognised SCRIPT LINE -> 0 when LINE is failed as unr
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -qF "unrecognised install instruction: '$2'"; }
 p_trailing_comment() { p_unrecognised "$1" '/plugin marketplace add Integral-Productivity/marketplace  # core'; }
 p_dup_heading() { local d o r; d="$(world "ph-$RANDOM")"
-  printf '\n## Installation\n\n/plugin marketplace add Integral-Productivity/marketplace\n/plugin install holacracy@integral-productivity-tools\n' >> "$d/README.md"
+  printf '\n## Installation\n\n/plugin marketplace add Integral-Productivity/marketplace\n/plugin install self-org@integral-productivity-tools\n' >> "$d/README.md"
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q "2 level-2 headings starting with '## Install'"; }
 p_orphan_channel() { local d o r; d="$(world "po-$RANDOM")"
-  sed -i.bak '/^\/plugin install holacracy@integral-productivity-labs$/d' "$d/README.md"
+  sed -i.bak '/^\/plugin install self-org@integral-productivity-labs$/d' "$d/README.md"
   o="$(run "$1" "$d" 2>&1)"; r=$?; [ "$r" -eq 1 ] && echo "$o" | grep -q 'catalog integral-productivity-labs is added but no'; }
 
-p_bare_install "$SCRIPT"   || fail "a bare '/plugin install holacracy' must exit 1"; pass
+p_bare_install "$SCRIPT"   || fail "a bare '/plugin install self-org' must exit 1"; pass
 p_undeclared "$SCRIPT"     || fail "an install target that is not its channel's catalog must exit 1"; pass
 p_swapped "$SCRIPT"        || fail "install lines swapped across blocks must exit 1, naming each wrong pair"; pass
 p_no_channel "$SCRIPT"     || fail "an install line with no channel above it must exit 1"; pass
@@ -257,11 +257,11 @@ p_dup_heading "$SCRIPT"    || fail "a second '## Install...' heading must exit 1
 # Unrecognised install instructions: each was silently dropped before, and each
 # sits next to a healthy channel, so dropping it would exit 0.
 p_trailing_comment "$SCRIPT" || fail "a channel line with a trailing comment must exit 1 as unrecognised"; pass
-p_unrecognised "$SCRIPT" 'Or run `/plugin marketplace add Integral-Productivity/marketplace` then `/plugin install holacracy`.' \
+p_unrecognised "$SCRIPT" 'Or run `/plugin marketplace add Integral-Productivity/marketplace` then `/plugin install self-org`.' \
   || fail "inline-code install prose must exit 1 as unrecognised"; pass
 p_unrecognised "$SCRIPT" 'claude plugin marketplace add Integral-Productivity/marketplace' \
   || fail "the 'claude plugin marketplace add' CLI form must exit 1 as unrecognised"; pass
-p_unrecognised "$SCRIPT" 'claude plugin install holacracy@integral-productivity-tools' \
+p_unrecognised "$SCRIPT" 'claude plugin install self-org@integral-productivity-tools' \
   || fail "the 'claude plugin install' CLI form must exit 1 as unrecognised"; pass
 p_unrecognised "$SCRIPT" "/plugin marketplace add $SELF@stable" \
   || fail "an owner/repo@ref channel must exit 1 as unrecognised"; pass
@@ -272,10 +272,10 @@ p_unrecognised "$SCRIPT" "/plugin marketplace add $SELF@stable" \
 W="$(world s4)"
 catalog "$W/fx/Integral-Productivity__marketplace.json" integral-productivity-tools
 jq '.plugins = []' "$W/fx/Integral-Productivity__marketplace.json" > "$W/t" && mv "$W/t" "$W/fx/Integral-Productivity__marketplace.json"
-printf '# t\n\n## Install\n\n```\n/plugin marketplace add Integral-Productivity/marketplace\n/plugin install holacracy\n```\n\nOr add this repo directly to your plugin sources.\n' > "$W/README.md"
+printf '# t\n\n## Install\n\n```\n/plugin marketplace add Integral-Productivity/marketplace\n/plugin install self-org\n```\n\nOr add this repo directly to your plugin sources.\n' > "$W/README.md"
 out="$(run "$SCRIPT" "$W" 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] || fail "#234's README must fail the check (rc=$rc): $out"
-echo "$out" | grep -q 'no plugin named holacracy in the catalog' || fail "#234 report should name the empty catalog: $out"
+echo "$out" | grep -q 'no plugin named self-org in the catalog' || fail "#234 report should name the empty catalog: $out"
 pass
 
 # ---------------------------------------------------------------------------
@@ -285,23 +285,23 @@ W="$(world s5)"; rm -r "$W/fx"
 out="$(bash "$SCRIPT" --readme "$W/README.md" --local-catalog "$W/local.json" --self-repo "$SELF" --local-only 2>&1)"; rc=$?
 [ "$rc" -eq 0 ] || fail "--local-only must not need the remote catalog (rc=$rc): $out"
 echo "$out" | grep -q "NOT MEASURED  $LABS" || fail "--local-only must name what it skipped: $out"
-echo "$out" | grep -q "NOT JUDGED    'holacracy@integral-productivity-labs' after $LABS" \
+echo "$out" | grep -q "NOT JUDGED    'self-org@integral-productivity-labs' after $LABS" \
   || fail "--local-only must say it did not judge the unmeasured channel's pair: $out"
 pass
 
 # A pair whose channel is the LOCAL one is still judged under --local-only.
 p_local_pair_judged() { local d o r; d="$(world "plp-$RANDOM")"; swap_installs "$d/README.md"
   o="$(run "$1" "$d" --local-only 2>&1)"; r=$?; [ "$r" -eq 1 ] \
-    && echo "$o" | grep -q "follows '/plugin marketplace add $SELF', whose catalog is named integral-productivity-holacracy"; }
+    && echo "$o" | grep -q "follows '/plugin marketplace add $SELF', whose catalog is named integral-productivity-self-org"; }
 p_local_pair_judged "$SCRIPT" || fail "--local-only must still judge a pair whose channel is the local one"; pass
 
 p_local_judged() { local d o r; d="$(world "pl-$RANDOM")"
-  catalog "$d/local.json" integral-productivity-holacracy "$(entry "$SELF" main)"
+  catalog "$d/local.json" integral-productivity-self-org "$(entry "$SELF" main)"
   o="$(run "$1" "$d" --local-only 2>&1)"; r=$?; [ "$r" -eq 1 ]; }
 p_local_judged "$SCRIPT" || fail "--local-only must still judge the local catalog"; pass
 
 p_nothing_measured() { local d o r; d="$(world "pn-$RANDOM")"
-  sed -i.bak "/marketplace add Integral-Productivity\/holacracy-claude-plugin/d; /integral-productivity-holacracy/d" "$d/README.md"
+  sed -i.bak "/marketplace add Integral-Productivity\/holacracy-claude-plugin/d; /integral-productivity-self-org/d" "$d/README.md"
   o="$(run "$1" "$d" --local-only 2>&1)"; r=$?; [ "$r" -eq 2 ] && echo "$o" | grep -q 'no channel was measured'; }
 p_nothing_measured "$SCRIPT" || fail "--local-only with no local channel measured nothing and must exit 2, not 0"; pass
 

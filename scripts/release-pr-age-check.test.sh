@@ -199,7 +199,7 @@ newstub() {  # newstub NAME -> echoes the dir
   printf '[]' > "$d/issues.json"
   printf '[]' > "$d/pr-comments.json"
   printf '{"nameWithOwner":"o/r"}' > "$d/repo.json"
-  printf '{"name":"holacracy","version":"0.11.1"}' | base64 > "$d/stable-plugin.b64"
+  printf '{"name":"self-org","version":"0.11.1"}' | base64 > "$d/stable-plugin.b64"
   printf '{".":"0.13.0"}' | base64 > "$d/pending-manifest.b64"
   printf '{".":"0.11.1"}' | base64 > "$d/main-manifest.b64"
   printf '[{"ref":"refs/tags/v0.11.1"}]' > "$d/tag-refs.json"
@@ -235,7 +235,7 @@ mkprs() {  # mkprs PATH BRANCH CREATED_ISO [NUMBER]
 EOF
 }
 
-RELEASE_BRANCH='release-please--branches--main--components--holacracy'
+RELEASE_BRANCH='release-please--branches--main--components--self-org'
 NOW='2026-08-06T00:00:00Z'          # fixtures date PRs relative to this instant
 
 # run SCRIPT STUBDIR [args...] -- always --dry-run, always a synthetic clock.
@@ -364,10 +364,10 @@ out="$(run "$SCRIPT" "$S3" --pr-json "$S3/prs.json" 2>&1)"; rc=$?
 # under-report the freeze, which is the exact quantity this alarm exists for.
 cat > "$S3/two.json" <<'EOF'
 [{"number": 200, "title": "chore(main): release 0.14.0",
-  "headRefName": "release-please--branches--main--components--holacracy",
+  "headRefName": "release-please--branches--main--components--self-org",
   "createdAt": "2026-08-04T00:00:00Z", "url": "https://github.com/o/r/pull/200"},
  {"number": 100, "title": "chore(main): release 0.13.0",
-  "headRefName": "release-please--branches--next--components--holacracy",
+  "headRefName": "release-please--branches--next--components--self-org",
   "createdAt": "2026-07-01T00:00:00Z", "url": "https://github.com/o/r/pull/100"}]
 EOF
 out="$(run "$SCRIPT" "$S3" --pr-json "$S3/two.json" 2>&1)"; rc=$?
@@ -621,7 +621,7 @@ p_tag_exact() {
   local script="$1" s out rc; s="$(newstub "tagexact-$$-$RANDOM")"; docsonly "$s"
   # stable matches main, so a wrongly "present" tag leaves no other cause to
   # fall into -- the promotion check must not mask this property.
-  printf '{"name":"holacracy","version":"0.2.0"}' | base64 > "$s/stable-plugin.b64"
+  printf '{"name":"self-org","version":"0.2.0"}' | base64 > "$s/stable-plugin.b64"
   printf '{".":"0.2.0"}' | base64 > "$s/main-manifest.b64"
   printf '[{"ref":"refs/tags/v0.2.01"}]' > "$s/tag-refs.json"
   out="$(run "$script" "$s" --pr-json "$NONE" 2>&1)"; rc=$?

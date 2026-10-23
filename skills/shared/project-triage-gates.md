@@ -2,9 +2,9 @@
 
 This is the canonical set of checks a GlassFrog **project** passes through during readiness triage. It is the project twin of `./triage-gates.md`, which is tension-specific; the two are kept apart because callers cite steps by number. Loaded by:
 
-- The `/holacracy:project-triage` slash command, the only surface that writes a triage state.
+- The `/self-org:project-triage` slash command, the only surface that writes a triage state.
 
-Triage answers one question per project: **what does this project need next before anyone can act on it?** It does not judge quality. The five critic lenses belong to `/holacracy:review-project`; triage never runs them and never drafts a reframe. See [ADR-0018](../../docs/adr/0018-separate-project-readiness-from-project-quality.md).
+Triage answers one question per project: **what does this project need next before anyone can act on it?** It does not judge quality. The five critic lenses belong to `/self-org:review-project`; triage never runs them and never drafts a reframe. See [ADR-0018](../../docs/adr/0018-separate-project-readiness-from-project-quality.md).
 
 Every step **drafts and never writes**. A write happens only after the user confirms that one project, and only in the shape Step 6 sets out.
 
@@ -34,7 +34,7 @@ Run the steps in order. **Stop at the first step that resolves the project.** St
 
 **Evidence.** The project's `role_id` no longer resolves (`glassfrog_get_role_context` returns not found).
 
-**Outcome.** Draft `status: archived` with a note line saying the role was removed. If the work still matters, say so and suggest `/holacracy:capture-tension` for the role that should hold it; triage does not move projects between roles.
+**Outcome.** Draft `status: archived` with a note line saying the role was removed. If the work still matters, say so and suggest `/self-org:capture-tension` for the role that should hold it; triage does not move projects between roles.
 
 **An unfilled role is not a gate failure.** Its work sits with the Circle Lead until the role is filled. Route it at Step 5 to `needs-info`, naming the Circle Lead as the role that decides.
 

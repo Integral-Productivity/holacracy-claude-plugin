@@ -11,7 +11,7 @@ body:
     id: surface
     attributes:
       label: Which skill, command, agent, or hook?
-      placeholder: e.g. /holacracy:capture-tension or holacracy-secretary
+      placeholder: e.g. /self-org:capture-tension or self-org-secretary
     validations:
       required: true
   - type: input

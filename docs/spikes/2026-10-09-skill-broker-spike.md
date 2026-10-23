@@ -15,7 +15,7 @@
 |---|---|---|---|
 | 1. Interactive | This session, acting as Product Management of Product | `listSkills(role_id)` → `getSkill` → followed "Draft release notes" against v0.24.0 as a dry run | 2 GlassFrog calls plus 2 `gh` calls, after role resolution |
 | 2. Headless | `claude -p`, write tools denied, dry run | Followed the skill correctly. Its draft caught #353, which the published v0.24.0 notes omit (`docs:` commits are excluded by Release Please). | 6 turns, 62 s, $1.35 |
-| 3. Pin to Git | Binding pinned to `skills/holacracy-facilitator` at `a692d0c`, fetched with `gh api` | `SKILL.md` fetched in about 1 s (16 KB), but it cites 5 `references/` files and 2 `../shared/` files | 1 API call per file |
+| 3. Pin to Git | Binding pinned to `skills/self-org-facilitator` at `a692d0c`, fetched with `gh api` | `SKILL.md` fetched in about 1 s (16 KB), but it cites 5 `references/` files and 2 `../shared/` files | 1 API call per file |
 | 4. GlassFrog unreachable | `claude -p --strict-mcp-config` with no MCP servers | Printed `BROKER_UNAVAILABLE` and stopped, without improvising the skill from memory | 3 turns, 27 s, $0.53 |
 
 ## Findings

@@ -68,7 +68,7 @@ done
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="$ROOT/hooks-handlers/session-start.sh"
 SERVICE="Claude Code-credentials"
-NOCRED="/nonexistent/holacracy-319/.credentials.json"
+NOCRED="/nonexistent/self-org-319/.credentials.json"
 
 [[ "${OSTYPE:-}" == darwin* ]] || { echo "macOS only: this verifies the Keychain path." >&2; exit 2; }
 for bin in security python3; do
@@ -96,7 +96,7 @@ hook_outcome() {
   local out
   out="$(env ${clear[@]+"${clear[@]}"} "$@" bash "$HOOK" </dev/null 2>/dev/null)"
   if [[ "$out" == *"role-grounding check (conditional directive)"* ]]; then echo conditional
-  elif [[ "$out" == *"Holacracy plugin: role-grounding directive"* ]]; then echo directive
+  elif [[ "$out" == *"self-org plugin: role-grounding directive"* ]]; then echo directive
   else echo none
   fi
 }

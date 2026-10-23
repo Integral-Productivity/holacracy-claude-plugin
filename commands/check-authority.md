@@ -3,7 +3,7 @@ description: Authority lookup against the Holacracy Constitution and the plugin'
 argument-hint: <scenario in plain language>
 ---
 
-# /holacracy:check-authority
+# /self-org:check-authority
 
 Answer a Holacratic authority question by reasoning from the Constitution and the plugin's `skills/shared/authority-boundaries.md` reference.
 
@@ -26,7 +26,7 @@ Answer a Holacratic authority question by reasoning from the Constitution and th
    - "No -- this would violate [principle], because [reason]. The correct path is [governance proposal / role assignment / etc.]."
    - "It depends -- if [condition], then [outcome A]; if [other condition], then [outcome B]."
 6. **Always cite** the specific section of `authority-boundaries.md` and (where applicable) the Holacracy Constitution provision (e.g., S.4.1.2 for Domain authority).
-7. **Always close with a plain-language summary** in the format from `holacracy-secretary` SKILL.md (Plain Language Summary).
+7. **Always close with a plain-language summary** in the format from `self-org-secretary` SKILL.md (Plain Language Summary).
 8. **Note appeal paths**: any party who disagrees with this reading can appeal to the Super-Circle Secretary for a formal constitutional ruling.
 
 ## Behaviour
@@ -41,4 +41,4 @@ Answer a Holacratic authority question by reasoning from the Constitution and th
 - The scenario involves disagreement between two Circle Members about interpretation.
 - The scenario touches Core Role authority interactions (these are the most appeal-prone).
 
-In those cases, suggest the user invoke `holacracy-secretary` to issue a formal ruling.
+In those cases, suggest the user invoke `self-org-secretary` to issue a formal ruling.

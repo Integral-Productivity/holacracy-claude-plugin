@@ -3,11 +3,11 @@ description: Sweep recent or session-filed tensions for supersession (S.5.5.1d).
 argument-hint: ['scope: "session" | "recent" | circle name, optional; default "session"']
 ---
 
-# /holacracy:supersession-sweep
+# /self-org:supersession-sweep
 
 End-of-session deduplication for filed tensions. Applies the constitutional supersession test from S.5.5.1d — *"would the tension still exist if the other were resolved?"* — to pairs of tensions in scope, and offers to archive or merge subsumed ones.
 
-This command is also offered implicitly by the `holacratic-ai-governance` skill when Claude detects session-closing signals ("done for now", "that's it for today"). Invoking it explicitly is an override or a manual trigger.
+This command is also offered implicitly by the `self-org-ai-governance` skill when Claude detects session-closing signals ("done for now", "that's it for today"). Invoking it explicitly is an override or a manual trigger.
 
 ## What this command does
 
@@ -56,7 +56,7 @@ This command is also offered implicitly by the `holacratic-ai-governance` skill 
 
 ## When the implicit offer fires
 
-The `holacratic-ai-governance` skill teaches Claude to recognize session-closing signals — "done for now", "that's it", "closing out", "wrapping up" — and offer the sweep before retro/closing:
+The `self-org-ai-governance` skill teaches Claude to recognize session-closing signals — "done for now", "that's it", "closing out", "wrapping up" — and offer the sweep before retro/closing:
 
 > *"Before we close, would you like me to sweep the tensions filed this session for supersession?"*
 
@@ -65,6 +65,6 @@ If the user assents, this command runs with default scope (`session`). If they d
 ## What this command does NOT do
 
 - It does not delete tensions. Archive is the only collapse mechanism.
-- It does not process tensions (`status: "processed"`) — that's for `/holacracy:tension-triage` and only for catch-up of tensions actually worked in meetings.
-- It does not file new tensions; if the sweep surfaces a *meta*-tension ("the inbox keeps getting these overlapping items because [structural reason]"), this command will note it but not file it — that's a job for `/holacracy:capture-tension` afterwards.
+- It does not process tensions (`status: "processed"`) — that's for `/self-org:tension-triage` and only for catch-up of tensions actually worked in meetings.
+- It does not file new tensions; if the sweep surfaces a *meta*-tension ("the inbox keeps getting these overlapping items because [structural reason]"), this command will note it but not file it — that's a job for `/self-org:capture-tension` afterwards.
 - It does not run automatically. Implicit offer + explicit command, both opt-in.

@@ -18,7 +18,7 @@ node_modules/
 # untracked in `git status` on every session otherwise.
 .claude/.reclaim-session.json
 
-# holacracy-coach draft output — governance/personnel content, never committed
+# self-org-coach draft output — governance/personnel content, never committed
 # (the coach defaults to a temp path outside the tree; this is the backstop)
 docs/drafts/
 *.draft.md

@@ -1,6 +1,6 @@
 {
-  "skill": "holacracy",
-  "surface": "/holacracy:project-triage",
+  "skill": "self-org",
+  "surface": "/self-org:project-triage",
   "status": "active",
   "note": "Synthetic org (evals/scenarios/project-triage.json). Eval 0 is read-only and judged: it checks the reality gates fire before any form critique and the resume rule skips a settled project. Eval 1 carries an advance go-ahead and checks the writes mechanically off the stub's log: the state tag keeps the project's other tag, the note is written before the tag, a gate failure closes through status, the duplicate survivor and the settled project are untouched, and no rubric verdict or status becomes a tag. Read the transcript before the score if the surface never engaged.",
   "evals": [

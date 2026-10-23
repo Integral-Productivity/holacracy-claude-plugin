@@ -5,6 +5,7 @@ This is the canonical rubric for judging whether a GlassFrog **project** is well
 - `/holacracy:review-project` -- the adversarial project-review panel (via `project-review-critics.md`, which turns each dimension below into a critic lens).
 - `/holacracy:capture-project` -- the capture-time guardrail, which loads Family A only (via the `project-capture` subagent).
 - `/holacracy:stalled-project-sweep` -- the stalled/blocked sweep, which owns the detection logic emitting this rubric's reserved `stale` and `blocked` states.
+- `/holacracy:project-triage` -- the readiness router, which loads the B3 executor-fit test only (via `project-triage-gates.md` Step 5) to choose between `ready-for-agent` and `ready-for-human`.
 
 Every project surface loads this file so "done enough" means one thing across the plugin. The rubric **describes**; it never auto-acts. Any fix it implies is drafted for a human to confirm.
 

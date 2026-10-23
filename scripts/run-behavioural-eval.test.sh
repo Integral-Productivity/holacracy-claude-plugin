@@ -656,7 +656,7 @@ for case_file in sorted((repo / "evals" / "cases").glob("*/evals.json")):
         fixture = json.loads((repo / case["fixture"]).read_text())
         known = set(fixture["key_map"].values())
         blob = json.dumps([a.get("check") for a in case["assertions"]])
-        for ident in re.findall(r'\b(?:role|ten|per|org)_[0-9a-f]{32}\b', blob):
+        for ident in re.findall(r'\b(?:role|ten|per|org|proj)_[0-9a-f]{32}\b', blob):
             seen += 1
             assert ident in known, (case_file.name, case["eval_name"], ident)
 assert seen, "no ids were checked; the guard is not exercising anything"

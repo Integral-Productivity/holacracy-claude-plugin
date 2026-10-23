@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.28.0...v0.28.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* attribute Constitution excerpts and add community health files ([#403](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/403)) ([38e6d4e](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/38e6d4e9b686add5d5d1e7f1703b46619fe048bb))
+
 ## [0.28.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.27.0...v0.28.0) (2026-10-22)
 
 

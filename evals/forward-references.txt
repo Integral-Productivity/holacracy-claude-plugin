@@ -22,4 +22,3 @@
 /self-org:process-tension  #160  the disposition router; triage hands off to it
 /self-org:policy:audit     #103  v0.5 policy command, named by agents/self-org-coach.md
 /self-org:policy:cascade   #103  v0.5 policy command, named by agents/self-org-coach.md
-/self-org:project-triage   #393  stateful project readiness walker; split from review-project by ADR-0018

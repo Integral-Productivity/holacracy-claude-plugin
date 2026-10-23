@@ -4,7 +4,7 @@ Date: 2026-10-22
 
 ## Status
 
-Proposed
+Accepted (2026-10-23; built in [#393](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/393))
 
 Amended by
 [ADR-0019](0019-the-triage-state-vocabulary-lives-in-the-plugin.md) —
@@ -130,7 +130,12 @@ separate commands.**
   confirmed. The candidates are a section of the project description under the
   DoD convention, or a role note; neither is chosen here. Until then, the saved
   state gives resume-by-bucket but not resume-by-question.
+  *Resolved in #393:* `glassfrog_update_project` accepts `note`, so each triage
+  write appends a timestamped line to the project note. See
+  [`project-triage-gates.md`](../../skills/shared/project-triage-gates.md) Step 6.
 - The exact gate list and the name of its shared reference file, decided in #393.
+  *Resolved:* four reality gates (outcome reached, duplicate, superseded, owner
+  role gone) in `skills/shared/project-triage-gates.md`.
 
 ## Related
 

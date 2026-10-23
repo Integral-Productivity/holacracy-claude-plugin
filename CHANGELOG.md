@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.28.1...v0.29.0) (2026-10-23)
+
+
+### Features
+
+* add /holacracy:project-triage, the project readiness router ([#405](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/405)) ([3268c63](https://github.com/Integral-Productivity/holacracy-claude-plugin/commit/3268c63e234d2c31ab20a73be0c2dc7e2030ab0f))
+
 ## [0.28.1](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v0.28.0...v0.28.1) (2026-10-23)
 
 

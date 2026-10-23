@@ -86,8 +86,9 @@ SPEC_KEYS = {"scenario", "purpose", "organization", "actor", "roles", "tensions"
 ROLE_SPEC_KEYS = {"key", "name", "purpose", "parent", "flags", "accountabilities",
                   "domains", "filled_by_actor", "original_role_id"}
 TENSION_SPEC_KEYS = {"key", "on", "status", "created_at", "updated_at", "body"}
-PROJECT_SPEC_KEYS = {"key", "on", "description", "status"}
-ACTION_SPEC_KEYS = {"key", "on", "project", "description", "status"}
+PROJECT_SPEC_KEYS = {"key", "on", "description", "status", "tags", "note",
+                     "created_at", "updated_at"}
+ACTION_SPEC_KEYS = {"key", "on", "project", "description", "status", "updated_at"}
 
 # The live status enum for projects and actions, read off the MCP input schema on
 # 2026-10-08 (#357). The stub rejects anything else, as the live server does.
@@ -244,13 +245,13 @@ def build(spec: dict) -> tuple:
             "has_sub_projects": False,
             "has_actions": key in has_actions,
             "parent_project_id": None,
-            "tags": [],
+            "tags": list(spec_project.get("tags", [])),
             "link": None,
-            "note": None,
+            "note": spec_project.get("note"),
             "value": None,
             "effort": None,
-            "created_at": DEFAULT_TS,
-            "updated_at": DEFAULT_TS,
+            "created_at": spec_project.get("created_at", DEFAULT_TS),
+            "updated_at": spec_project.get("updated_at", DEFAULT_TS),
             "legacy_id": legacy_id,
             "web_url": f"{WEB_HOST}/organizations/{org_legacy}/my/workspace/projects/"
                        f"{legacy_id}?tab=workspace_projects",
@@ -286,7 +287,7 @@ def build(spec: dict) -> tuple:
             "parent_project_id": projects_by_key[parent]["id"],
             "tags": [],
             "created_at": DEFAULT_TS,
-            "updated_at": DEFAULT_TS,
+            "updated_at": spec_action.get("updated_at", DEFAULT_TS),
             "legacy_id": legacy_id,
             "web_url": f"{WEB_HOST}/organizations/{org_legacy}/my/actions/"
                        f"{legacy_id}/edit?card=list&tab=workspace_next_actions",

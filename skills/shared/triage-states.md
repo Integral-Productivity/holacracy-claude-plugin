@@ -4,7 +4,7 @@ This is the closed list of triage states the plugin may write onto a GlassFrog p
 
 Loaded by:
 
-- `/self-org:project-triage` (#393, not built yet), the only surface that writes these states.
+- `/self-org:project-triage`, the only surface that writes these states. Its gates and routing live in `./project-triage-gates.md`.
 - Any surface that reads a project's triage state, such as a queue of `ready-for-agent` work.
 
 ## Step 1 -- The closed list
@@ -41,6 +41,8 @@ Before any `glassfrog_set_project_tags` call that sets a triage state:
 4. Send the result.
 
 Never send only the new state. That deletes every tag the project's owner set for another reason.
+
+The live argument is `tag_names`. Every state write also appends a dated reason line to the project note, before the tag write; the format and the order are in `./project-triage-gates.md` Step 6.
 
 ## Changing the list
 

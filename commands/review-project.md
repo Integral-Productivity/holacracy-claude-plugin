@@ -1,6 +1,6 @@
 ---
-description: Adversarial review of GlassFrog projects against the well-formedness rubric. Runs five critic lenses (actionability, goal-alignment, scope-authority, assignment-fit, red-team) over a project or a backlog, surfaces findings with drafted fixes, and applies additive fixes with a single per-item confirmation. Never auto-writes.
-argument-hint: [project name/id, or circle name — optional]
+description: Adversarial review of one GlassFrog project against the well-formedness rubric. Runs five critic lenses (actionability, goal-alignment, scope-authority, assignment-fit, red-team), surfaces findings with drafted fixes, and applies additive fixes with a single per-item confirmation. Never auto-writes. Backlog triage moved to /self-org:project-triage.
+argument-hint: [project name/id]
 ---
 
 # /self-org:review-project
@@ -22,22 +22,17 @@ Load three shared references at the start:
 1. **Resolve actor + role roster.** Follow `skills/shared/actor-and-role-resolution.md` Steps 1-2: `glassfrog_get_me`, then `glassfrog_list_my_roles`.
 
 2. **Arg gate -- pick the target set** from `$ARGUMENTS`:
-   - **No argument** -> the actor's own role projects. For each role, `glassfrog_list_role_projects(role_id, status: "current", include: ["actions"])`. This is the **backlog walk** (inline critic passes).
-   - **A circle name** -> that whole circle's projects: `list_role_projects` across the circle's roles + `glassfrog_list_sub_projects` for the recursive view. Still a **backlog walk** (inline passes).
+   - **No argument, or a circle name** -> **deprecated.** The backlog walk moved to `/self-org:project-triage` ([ADR-0018](../docs/adr/0018-separate-project-readiness-from-project-quality.md)). Say in one line: *"Backlog triage moved to /self-org:project-triage, which saves each project's route so the next pass resumes. Running it now."* Then run `/self-org:project-triage` with the same argument and stop here. This dispatch stays until a major release.
    - **A named/identified project** -> resolve one project (by id `proj_<32hex>`, or by matching the name against `list_role_projects(..., q: "<name>")`; if ambiguous, ask which one) and run the **deep single-project review** (independent critic subagents -- see "Deep review" below).
    - **A pasted GlassFrog URL** -> the legacy numeric ID in it has no direct lookup, and search does not index it. Follow `skills/shared/glassfrog-id-and-url-resolution.md`: ask for the item's title first and resolve that by search, fall back to that doc's legacy-ID scan on GlassFrog Extended only when the title is unavailable, and confirm whether it is a project or an action before running the rubric on it.
 
    If a target can't be resolved (no matching project, actor fills no role in the named circle), name the constraint honestly and stop.
 
-3. **Run the five lenses** against each target project, seeded from `project-review-critics.md`:
-   - **Backlog walk** -> inline sequential passes (cheap, scales per project).
-   - **Deep single-project** -> fan out one `project-critic` subagent per lens (see below).
+3. **Run the five lenses** against the target project, seeded from `project-review-critics.md`: fan out one `project-critic` subagent per lens (see "Deep review" below).
 
 4. **Dedupe, rank, cap.** Merge duplicate findings (same dimension + project -> keep highest severity), drop `low` findings (the floor), keep at most 6 per project (the cap).
 
-5. **Present per project.**
-   - **Backlog walk:** show a one-line verdict per project first -- its state (`well-formed`, `needs-outcome`, ...), where the verdict is the state of the highest-severity surviving finding. Expand the findings block **only for non-well-formed projects**. A `well-formed` project gets one line and no expansion.
-   - **Deep single-project:** always expand the full findings block.
+5. **Present the project.** Show its verdict -- the state (`well-formed`, `needs-outcome`, ...) of the highest-severity surviving finding -- and expand the full findings block.
 
 6. **The per-project findings block** (modeled on `/self-org:tension-triage`):
 
@@ -63,7 +58,7 @@ Load three shared references at the start:
    - **advisory-route** (scope-authority / assignment): see "Hand-off to tension capture" below.
    - Surface any write failure honestly -- never swallow it: *"I couldn't apply the fix -- GlassFrog returned [error]. The draft is still here; retry or adjust?"*
 
-8. **Summarize at the end.** Per the walk: projects reviewed, verdict distribution, actions created, goals linked, drafts handed to the user, tensions routed, findings skipped.
+8. **Summarize at the end.** The project reviewed, verdict distribution, actions created, goals linked, drafts handed to the user, tensions routed, findings skipped.
 
 ## Deep review (single named project)
 
@@ -72,8 +67,6 @@ When the argument resolves to one project, run the panel as **independent advers
 1. Gather the project data once: the project record, its actions (`include: ["actions"]`), the owning role's context (`glassfrog_get_role_context`), goals (`list_role_goals`), domains (`list_role_domains`), and fillers (`glassfrog_list_role_assignments` -- each carries `actor.kind`, which the assignment-fit lens's executor-fit check needs).
 2. Dispatch five `project-critic` subagents in parallel (`agents/project-critic.md`), one per lens, each seeded with that shared data + its lens name. Each returns findings in the schema.
 3. Merge, dedupe, rank, cap (step 4 above), then present the expanded findings block (step 6) and apply per step 7.
-
-The backlog walk does **not** use subagents -- its lenses run inline to keep a multi-project walk affordable.
 
 ## Hand-off to tension capture (scope-authority & assignment-fit)
 

@@ -40,6 +40,15 @@ glassfrog-mcp-server#123 comment 5149496749). A stub that accepted it would let 
 skill pass an eval by doing something that fails in production, which is worse
 than having no eval.
 
+PROJECT TAGS ARE REPLACED, NOT MERGED
+-------------------------------------
+`set_project_tags` takes `tag_names` and the array sent becomes the project's
+whole tag set, as on the live server (glassfrog-mcp-server
+src/tools/project_action_tags.ts). A call that sends `tags` is rejected: that is
+not the live argument name, and a stub that accepted it would let a command pass
+an eval with a write that fails in production. `update_project` merges `note`
+and `status`. Both update the in-memory project, so a later read sees them.
+
 LEGACY IDS ARE OPT-IN, AS LIVE
 ------------------------------
 Projects and actions are stored in the fixture with `legacy_id` and `web_url`
@@ -64,6 +73,7 @@ _seq = 0
 
 ROLES = {r["id"]: r for r in FIXTURE["roles"]}
 TENSIONS = {t["id"]: t for t in FIXTURE["tensions"]}
+PROJECTS = {p["id"]: p for p in FIXTURE.get("projects", [])}
 
 READ_TOOLS = {
     "glassfrog_get_me": "Return the authenticated actor, organization and membership.",
@@ -73,6 +83,7 @@ READ_TOOLS = {
     "glassfrog_list_role_tensions": "Tensions sensed directly on a role.",
     "glassfrog_list_subrole_tensions": "Tensions sensed on sub-roles of a role (documented recursive).",
     "glassfrog_get_tension": "Fetch one tension by id.",
+    "glassfrog_get_project": "Fetch one project by id.",
     "glassfrog_list_role_projects": "Projects on a role. Omit status for every status. "
                                     "include_legacy_id adds legacy_id, web_url, role_projects_url.",
     "glassfrog_list_role_actions": "Actions on a role. Omit status for every status. "
@@ -94,6 +105,9 @@ WRITE_TOOLS = {
     "glassfrog_update_tension": "Update a tension. Args: tension_id, and body and/or status.",
     "glassfrog_create_role_project": "Create a project on a role. Args: role_id, description, status, link (optional), note (optional).",
     "glassfrog_create_action": "Create an action. Args: role_id, description, parent_project_id, status.",
+    "glassfrog_set_project_tags": "Replace a project's whole tag set. Args: project_id, tag_names "
+                                  "(the full list after the write; [] clears every tag).",
+    "glassfrog_update_project": "Update a project. Args: project_id, and note and/or status.",
 }
 
 
@@ -104,6 +118,10 @@ def record_write(tool, args):
         with open(WRITE_LOG, "a") as fh:
             fh.write(json.dumps({"seq": _seq, "tool": tool, "args": args}) + "\n")
     return _seq
+
+
+def without_legacy(record):
+    return {k: v for k, v in record.items() if k not in LEGACY_FIELDS}
 
 
 def page(items, args, prefix):
@@ -184,7 +202,8 @@ def handle_tool(name, args):
         if status is not None and status not in WORK_STATUSES:
             return {"error": {"status": 400,
                               "message": f"status must be one of {', '.join(WORK_STATUSES)}"}}
-        pool = FIXTURE.get(WORK_LIST_TOOLS[name], [])
+        pool = list(PROJECTS.values()) if WORK_LIST_TOOLS[name] == "projects" \
+            else FIXTURE.get("actions", [])
         if name == "glassfrog_list_my_projects":
             mine = {r["id"] for r in FIXTURE["roles"] if r["fillers"]}
             found = [w for w in pool if w["role_id"] in mine]
@@ -192,7 +211,7 @@ def handle_tool(name, args):
             found = [w for w in pool if w["role_id"] == args.get("role_id")]
         found = [w for w in found if status is None or w["status"] == status]
         if not args.get("include_legacy_id"):
-            found = [{k: v for k, v in w.items() if k not in LEGACY_FIELDS} for w in found]
+            found = [without_legacy(w) for w in found]
         return page(found, args, "work")
 
     if name == "glassfrog_get_tension":
@@ -200,6 +219,34 @@ def handle_tool(name, args):
         if not tension:
             return {"error": {"status": 404, "message": "tension not found"}}
         return {"data": tension}
+
+    if name == "glassfrog_get_project":
+        project = PROJECTS.get(args.get("project_id"))
+        if not project:
+            return {"error": {"status": 404, "message": "project not found"}}
+        return {"data": without_legacy(project)}
+
+    if name == "glassfrog_set_project_tags":
+        if "tag_names" not in args or "tags" in args:
+            return {"error": {"status": 400,
+                              "message": "tag_names (string[]) is required; tags is not an argument"}}
+        seq = record_write(name, args)
+        project = PROJECTS.get(args.get("project_id"))
+        if not project:
+            return {"error": {"status": 404, "message": "project not found"}}
+        project["tags"] = list(args["tag_names"])
+        return {"data": {"id": project["id"], "tags": project["tags"]}, "_stub_write_seq": seq}
+
+    if name == "glassfrog_update_project":
+        seq = record_write(name, args)
+        project = PROJECTS.get(args.get("project_id"))
+        if not project:
+            return {"error": {"status": 404, "message": "project not found"}}
+        if "status" in args and args["status"] not in WORK_STATUSES:
+            return {"error": {"status": 400,
+                              "message": f"status must be one of {', '.join(WORK_STATUSES)}"}}
+        project.update({k: v for k, v in args.items() if k in ("note", "status")})
+        return {"data": without_legacy(project), "_stub_write_seq": seq}
 
     if name == "glassfrog_update_tension":
         if "meeting_type" in args:
@@ -252,6 +299,9 @@ def tool_list():
         if name == "glassfrog_get_tension":
             props["tension_id"] = s
             required = ["tension_id"]
+        if name == "glassfrog_get_project":
+            props["project_id"] = s
+            required = ["project_id"]
         if "tensions" in name:
             props["status"] = s
         if name in WORK_LIST_TOOLS:
@@ -260,6 +310,16 @@ def tool_list():
         props.update({"per_page": {"type": "integer"}, "cursor": s})
         out.append(entry(name, desc, props, required))
     for name, desc in WRITE_TOOLS.items():
+        if name == "glassfrog_set_project_tags":
+            out.append(entry(name, desc, {"project_id": s,
+                                          "tag_names": {"type": "array", "items": s}},
+                             ["project_id", "tag_names"]))
+            continue
+        if name == "glassfrog_update_project":
+            out.append(entry(name, desc, {"project_id": s, "note": s,
+                                          "status": {"type": "string", "enum": list(WORK_STATUSES)}},
+                             ["project_id"]))
+            continue
         props = {"role_id": s, "tension_id": s, "body": s, "status": s,
                  "description": s, "parent_project_id": s, "meeting_type": s}
         out.append(entry(name, desc, props, []))

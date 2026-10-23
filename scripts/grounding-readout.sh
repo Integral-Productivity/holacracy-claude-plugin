@@ -318,7 +318,7 @@ REMIT_RE = re.compile(r"remit|crosses into|role boundary", re.I)
 CHAPTER_RE = re.compile(r"mark_chapter")
 
 # The version the hook stamps into every payload it emits -- both the directive
-# ("_Directive emitted by holacracy-claude-plugin vX.Y.Z._") and the quiet
+# ("_Directive emitted by self-org plugin vX.Y.Z._") and the quiet
 # marker. Counted ONLY from hook records, for the same reason every other
 # signal here is provenance-scoped: a session that reads the hook source or
 # quotes a release note must not be reported as having run that version.
@@ -331,8 +331,11 @@ CHAPTER_RE = re.compile(r"mark_chapter")
 # Anchored to a semver core so the trailing "._" of the markdown italics stops
 # the match cleanly; "unknown" is what the hook emits when version.txt is
 # unreadable, and must be reported rather than dropped.
+#
+# Both names match: hooks before the self-org rename (ADR-0020) stamped
+# "holacracy-claude-plugin vX.Y.Z", and older transcripts still carry it.
 VERSION_RE = re.compile(
-    r"holacracy-claude-plugin v(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?|unknown)")
+    r"(?:self-org plugin|holacracy-claude-plugin) v(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?|unknown)")
 
 # Template metavariables that must never score. These are what the 2026-07-20
 # window's only assistant-emitted bold announcements actually were.

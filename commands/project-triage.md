@@ -51,7 +51,7 @@ Load two shared references at the start:
    Reason: [one line, the same text the note line will carry]
    [Duplicate: survivor is "<other project>", which stays]
 
-   Note line: Triage 2026-10-23T14:05Z: <draft> -- <reason>
+   Note line: Triage <UTC now, at write time>: <draft> -- <reason>
    Tags after: [the full tag_names array, other tags kept]   (state routes only)
 
      [w] write the route      -> note line, then tag read-modify-write

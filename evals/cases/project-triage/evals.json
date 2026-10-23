@@ -111,6 +111,22 @@
           }
         },
         {
+          "text": "No note write on the pricing-page project drops the owner's existing note text",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_acccad6fbc4ff848f24aaa15da3a960e"
+              },
+              "args_match": {
+                "note": "^(?![\\s\\S]*Shipped 2026-09-30)(?=[\\s\\S])"
+              }
+            }
+          }
+        },
+        {
           "text": "The duplicate guide-b project is archived",
           "discriminating": true,
           "check": {

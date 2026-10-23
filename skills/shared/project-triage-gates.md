@@ -22,7 +22,7 @@ Run the steps in order. **Stop at the first step that resolves the project.** St
 
 **Evidence.** Another `current` project in scope describes the same outcome. Compare outcomes, not wording.
 
-**Outcome.** Name **one survivor**: the member with a next action, otherwise the older one, otherwise the user's pick. Draft `status: archived` on the other member only, with a note line naming the survivor. Drop the survivor from the rest of the pass, and never close a project whose named survivor was completed or archived earlier in the same pass. Without this rule each member of a pair finds the other and both get archived.
+**Outcome.** Name **one survivor**: the member with a next action, otherwise the older one, otherwise the user's pick. Draft `status: archived` on the other member only, with a note line naming the survivor. Drop the survivor from the rest of the pass, and never close a project whose named survivor was completed or archived earlier in the same pass. When the project under walk **is** the survivor, this gate does not resolve it: note the other member for archive when it is reached, and continue this project to Steps 3-5. Without this rule each member of a pair finds the other and both get archived.
 
 ## Step 3 -- Is it superseded?
 
@@ -67,7 +67,7 @@ Triage 2026-10-23T14:07Z: needs-info -- which region launches first? (Operations
 Triage 2026-10-23T14:09Z: archived -- duplicate of "Onboarding guide published"
 ```
 
-The timestamp is UTC, to the minute. The part after `--` is the reason or the open question.
+The timestamp is UTC, to the minute, taken **at write time from a real clock** (for example `date -u +%Y-%m-%dT%H:%MZ` where a shell exists), never copied from a draft or from the examples above. Where no clock is available, write the note, read `updated_at` from the `glassfrog_update_project` response, and use that time. The movement rule compares against this timestamp, so a guessed one makes projects look moved or stuck. The part after `--` is the reason or the open question.
 
 ### The write pair
 

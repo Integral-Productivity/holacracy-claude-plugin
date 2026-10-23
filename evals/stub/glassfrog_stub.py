@@ -120,6 +120,10 @@ def record_write(tool, args):
     return _seq
 
 
+def without_legacy(record):
+    return {k: v for k, v in record.items() if k not in LEGACY_FIELDS}
+
+
 def page(items, args, prefix):
     """Cursor pagination matching the live envelope."""
     per_page = args.get("per_page", 50)
@@ -207,7 +211,7 @@ def handle_tool(name, args):
             found = [w for w in pool if w["role_id"] == args.get("role_id")]
         found = [w for w in found if status is None or w["status"] == status]
         if not args.get("include_legacy_id"):
-            found = [{k: v for k, v in w.items() if k not in LEGACY_FIELDS} for w in found]
+            found = [without_legacy(w) for w in found]
         return page(found, args, "work")
 
     if name == "glassfrog_get_tension":
@@ -220,7 +224,7 @@ def handle_tool(name, args):
         project = PROJECTS.get(args.get("project_id"))
         if not project:
             return {"error": {"status": 404, "message": "project not found"}}
-        return {"data": {k: v for k, v in project.items() if k not in LEGACY_FIELDS}}
+        return {"data": without_legacy(project)}
 
     if name == "glassfrog_set_project_tags":
         if "tag_names" not in args or "tags" in args:
@@ -242,8 +246,7 @@ def handle_tool(name, args):
             return {"error": {"status": 400,
                               "message": f"status must be one of {', '.join(WORK_STATUSES)}"}}
         project.update({k: v for k, v in args.items() if k in ("note", "status")})
-        return {"data": {k: v for k, v in project.items() if k not in LEGACY_FIELDS},
-                "_stub_write_seq": seq}
+        return {"data": without_legacy(project), "_stub_write_seq": seq}
 
     if name == "glassfrog_update_tension":
         if "meeting_type" in args:

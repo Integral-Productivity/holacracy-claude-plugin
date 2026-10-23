@@ -1,0 +1,171 @@
+{
+  "skill": "holacracy",
+  "surface": "/holacracy:project-triage",
+  "status": "active",
+  "note": "Synthetic org (evals/scenarios/project-triage.json). Eval 0 is read-only and judged: it checks the reality gates fire before any form critique and the resume rule skips a settled project. Eval 1 carries an advance go-ahead and checks the writes mechanically off the stub's log: the state tag keeps the project's other tag, the note is written before the tag, a gate failure closes through status, the duplicate survivor and the settled project are untouched, and no rubric verdict or status becomes a tag. Read the transcript before the score if the surface never engaged.",
+  "evals": [
+    {
+      "eval_id": 0,
+      "eval_name": "gates-before-form-and-resume-skips-settled",
+      "fixture": "evals/fixtures/glassfrog/project-triage.json",
+      "prompt": "Triage the current projects on my roles. Show me what you would do with each one, but don't change anything in GlassFrog yet.",
+      "ground_truth": "Two projects describe the same outcome (an onboarding guide for new members); the one with a next action survives and the other is a duplicate to archive. The pricing-page project's note says it shipped on 2026-09-30, so its outcome is reached and it should be completed, not reworded. The venue-contract project is already tagged ready-for-human and has not moved since its triage line, so it is counted and not walked. The regional-launch project is needs-info, and its owner answered later the same day it was triaged (updated_at 15:30Z against a 09:00Z triage line), so it has moved and is walked again. The supplier-sheet project has never been triaged; its next action (export and merge supplier lists) is agent-executable, so it routes to ready-for-agent, keeping its budget-q4 tag. No rubric verdict is proposed as a tag.",
+      "assertions": [
+        {
+          "text": "No GlassFrog write is issued, because the user asked for no changes",
+          "discriminating": false,
+          "why_kept": "Non-discriminating by design: the draft-and-confirm safeguard is a floor that must hold in every configuration, including without_skill. Mechanical, so it costs nothing and cannot drift.",
+          "check": {
+            "kind": "no_writes"
+          }
+        },
+        {
+          "text": "The response identifies the two onboarding-guide projects as duplicates and proposes closing only one of them, keeping the other",
+          "discriminating": true
+        },
+        {
+          "text": "The response proposes completing the pricing-page project because its note records that the outcome shipped, rather than critiquing or rewording its outcome",
+          "discriminating": true
+        },
+        {
+          "text": "The response does not walk the venue-contract project as an item needing a decision; at most it counts or mentions it as already routed to ready-for-human",
+          "discriminating": true
+        },
+        {
+          "text": "The response walks the regional-launch project again because its owner answered after it was triaged",
+          "discriminating": true
+        },
+        {
+          "text": "The response proposes exactly one triage state for the supplier-sheet project (ready-for-agent or ready-for-human) and does not propose a quality verdict such as needs-next-action or executor-mismatch as a tag",
+          "discriminating": true
+        }
+      ]
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "confirmed-writes-keep-tags-and-close-by-status",
+      "fixture": "evals/fixtures/glassfrog/project-triage.json",
+      "prompt": "Triage the current projects on my roles. I confirm in advance every route and closure you recommend, one project at a time, so go ahead and write each one to GlassFrog as you reach it. Where two projects duplicate each other, keep the one that already has a next action.",
+      "ground_truth": "The supplier-sheet project is routed to a state; its tag write keeps budget-q4 and is preceded by a note append on the same project. The pricing-page project is closed with status completed. The duplicate guide-b is archived; guide-a, the survivor, is not closed. The venue-contract project is not written at all. No tag is a rubric verdict or a status.",
+      "assertions": [
+        {
+          "text": "A state tag is written on the supplier-sheet project",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_set_project_tags",
+              "args_contain": {
+                "project_id": "proj_be11259f19a63fcf4e2bb718fb1c43c7"
+              }
+            }
+          }
+        },
+        {
+          "text": "No tag write on the supplier-sheet project drops its existing budget-q4 tag",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "tool": "glassfrog_set_project_tags",
+              "args_contain": {
+                "project_id": "proj_be11259f19a63fcf4e2bb718fb1c43c7"
+              },
+              "args_match": {
+                "tag_names": "^(?!.*budget-q4)"
+              }
+            }
+          }
+        },
+        {
+          "text": "The supplier-sheet note is appended before its tag is written",
+          "discriminating": true,
+          "check": {
+            "kind": "write_ordering",
+            "first": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_be11259f19a63fcf4e2bb718fb1c43c7"
+              }
+            },
+            "then": {
+              "tool": "glassfrog_set_project_tags",
+              "args_contain": {
+                "project_id": "proj_be11259f19a63fcf4e2bb718fb1c43c7"
+              }
+            }
+          }
+        },
+        {
+          "text": "The pricing-page project is closed with status completed",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_acccad6fbc4ff848f24aaa15da3a960e",
+                "status": "completed"
+              }
+            }
+          }
+        },
+        {
+          "text": "The duplicate guide-b project is archived",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_7f7bc0b76f1c3da71f0326ff05c8c45a",
+                "status": "archived"
+              }
+            }
+          }
+        },
+        {
+          "text": "The survivor guide-a project is not closed",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_0356169dfc12c46b1f80a9c0086a8b20"
+              },
+              "args_match": {
+                "status": "archived|completed|cancelled"
+              }
+            }
+          }
+        },
+        {
+          "text": "The venue-contract project, already ready-for-human with no movement, is not written",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "args_contain": {
+                "project_id": "proj_6ec03b1b9f657f31e6527dfa21006352"
+              }
+            }
+          }
+        },
+        {
+          "text": "No tag write carries a rubric verdict or a status as a tag",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "tool": "glassfrog_set_project_tags",
+              "args_match": {
+                "tag_names": "needs-next-action|needs-outcome|needs-owner|needs-goal|out-of-authority|executor-mismatch|archived|completed"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

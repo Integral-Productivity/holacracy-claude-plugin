@@ -1,6 +1,6 @@
 # Rep Link Constitutional Duties Reference
 
-Source: Holacracy Constitution v5.0
+Source: excerpts from the [Holacracy Constitution v5.0](https://www.holacracy.org/constitution/5-0/) by HolacracyOne, LLC, licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Integral Productivity LLC selected, reformatted, and annotated the excerpts. Because of the ShareAlike term, this file is licensed under CC BY-SA 4.0, not under the repository's MIT license. See [NOTICE](../../../NOTICE).
 
 ---
 

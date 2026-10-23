@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem privately
+    url: https://github.com/Integral-Productivity/holacracy-claude-plugin/security/advisories/new
+    about: Do not open a public issue for a vulnerability or a leak of live data.
+  - name: Problem with GlassFrog itself
+    url: https://www.glassfrog.com/
+    about: GlassFrog is a HolacracyOne product. This plugin cannot fix GlassFrog.

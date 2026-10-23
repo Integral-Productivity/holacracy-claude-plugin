@@ -1,0 +1,41 @@
+holacracy-claude-plugin
+Copyright (c) 2026 Integral Productivity LLC
+
+This repository is licensed under the MIT License (see LICENSE), with the
+exceptions listed below.
+
+-------------------------------------------------------------------------------
+Holacracy Constitution v5.0 excerpts (CC BY-SA 4.0)
+-------------------------------------------------------------------------------
+
+The files below contain excerpts from the Holacracy Constitution v5.0, by
+HolacracyOne, LLC:
+
+  https://www.holacracy.org/constitution/5-0/
+
+The Constitution is licensed under the Creative Commons Attribution-ShareAlike
+4.0 International License (CC BY-SA 4.0):
+
+  https://creativecommons.org/licenses/by-sa/4.0/
+
+Integral Productivity LLC selected, reformatted, and annotated the excerpts.
+Because of the ShareAlike term, each of these files as a whole is licensed
+under CC BY-SA 4.0, not under MIT:
+
+  skills/holacracy-rep-link/references/constitutional-duties.md
+  skills/holacracy-secretary/references/constitutional-reference.md
+
+If you add a file that quotes or closely adapts Constitution text, add the
+same attribution line to its header and list the file here.
+
+Other files in this repository cite the Constitution by article and section,
+or describe its rules in original words. They do not reproduce its text, and
+they stay under MIT.
+
+-------------------------------------------------------------------------------
+Trademarks
+-------------------------------------------------------------------------------
+
+Holacracy(R) is a registered trademark of HolacracyOne, LLC. GlassFrog is a
+product of HolacracyOne. This plugin is an independent project by Integral
+Productivity LLC. HolacracyOne does not make, endorse, or support it.

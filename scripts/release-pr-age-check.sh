@@ -122,7 +122,7 @@ RELEASABLE_TYPES='feat|fix|perf|revert|deps'
 
 # release-please derives its branch name from release-please-config.json
 # (branch + package-name), so it changes if that config changes. Today it is
-# `release-please--branches--main--components--holacracy`. Prefix-match, never
+# `release-please--branches--main--components--self-org`. Prefix-match, never
 # exact-match — this is the same precedent version-authority.yml sets.
 RELEASE_BRANCH_PREFIX='release-please--'
 

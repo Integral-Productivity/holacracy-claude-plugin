@@ -6,7 +6,7 @@ every PR; this half costs API calls and wall-clock, so it runs nightly and on
 demand.
 
 The split is the point. A lint can prove a path resolves and a cited step
-exists. It cannot prove that `/holacracy:tension-triage` actually asks the
+exists. It cannot prove that `/self-org:tension-triage` actually asks the
 authority question *before* it routes a tension to a venue — and that claim
 shipped unverified in [#166](https://github.com/Integral-Productivity/holacracy-claude-plugin/pull/166)
 precisely because there was nowhere to assert it.
@@ -30,9 +30,9 @@ evals/
 
 Cases are grouped by **surface**, not one file per case, so several golden cases
 that exercise the same command share a file. Three of the four live under
-`/holacracy:tension-triage`, because that is where the gates they test are
+`/self-org:tension-triage`, because that is where the gates they test are
 specified — including successor-before-archive, which reads like a job for
-`/holacracy:supersession-sweep` and is not: that command handles supersession
+`/self-org:supersession-sweep` and is not: that command handles supersession
 *between two tensions* and explicitly does not file new ones, while a tension
 superseded *structurally by a role* is Step 1 territory and triage's to act on.
 

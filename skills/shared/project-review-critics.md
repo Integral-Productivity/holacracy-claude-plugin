@@ -1,8 +1,8 @@
 # Project Review Critics -- Shared Reference
 
-The five critic lenses, the finding schema, and the severity/cap/dedupe rules for `/holacracy:review-project`. Written so **both** execution modes seed from one spec with no drift:
+The five critic lenses, the finding schema, and the severity/cap/dedupe rules for `/self-org:review-project`. Written so **both** execution modes seed from one spec with no drift:
 
-- **Inline mode** -- retired. The backlog walk moved to `/holacracy:project-triage`, which runs no lenses ([ADR-0018](../../docs/adr/0018-separate-project-readiness-from-project-quality.md)). A lens may still be run as a sequential reasoning pass in one context when no subagent mechanism exists.
+- **Inline mode** -- retired. The backlog walk moved to `/self-org:project-triage`, which runs no lenses ([ADR-0018](../../docs/adr/0018-separate-project-readiness-from-project-quality.md)). A lens may still be run as a sequential reasoning pass in one context when no subagent mechanism exists.
 - **Subagent mode** (deep single-project review) -- the `project-critic` subagent (`agents/project-critic.md`) runs one lens per dispatch and returns findings in the schema below.
 
 Every lens grounds on `project-well-formedness.md`. Load that rubric first; these lenses turn its dimensions into adversarial checks. When the review target arrived as a pasted GlassFrog URL, resolve it first per `skills/shared/glassfrog-id-and-url-resolution.md` -- that path also serves next-actions, and this rubric judges projects. The safeguard from the tension lifecycle holds here: **draft and confirm only** -- no critic writes anything; the command applies confirmed fixes per-item.
@@ -64,7 +64,7 @@ Flags:
 
 ### 3. Scope-authority (rubric B2) -- **advisory only**
 
-Reads: `get_role` / `glassfrog_get_role_context` / `list_role_domains`; reasons from `authority-boundaries.md` exactly as `/holacracy:check-authority` does.
+Reads: `get_role` / `glassfrog_get_role_context` / `list_role_domains`; reasons from `authority-boundaries.md` exactly as `/self-org:check-authority` does.
 
 Flags:
 - **B2 out-of-authority** -- scope exceeds the role's accountabilities/domains, or reaches into another role's domain. `drafted_fix: route-to-tension` (a sensed governance tension). `advisory-route`.

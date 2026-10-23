@@ -3,7 +3,7 @@ description: Resolve and display the actor's current Holacracy context (identity
 argument-hint: "[circle name to focus on, optional] [--inherited]"
 ---
 
-# /holacracy:context
+# /self-org:context
 
 Resolve and display the actor's Holacracy context for this session.
 
@@ -13,7 +13,7 @@ Resolve and display the actor's Holacracy context for this session.
 2. **Loads the actor's role roster** via `glassfrog_list_my_roles` (or the appropriate filtered query for an actor other than yourself).
 3. **Reports the resolved context** in a structured roster: each circle the actor participates in, with the roles they fill in that circle.
 4. **If an argument was provided** ($ARGUMENTS), narrows the report to that circle and lists every role the actor fills there. Also notes which Core Role positions (Facilitator, Secretary, Lead Link, Rep Link) the actor holds in that circle.
-5. **Reports operating constraints**: whether GlassFrog is connected, whether any role the actor fills has been retired or modified recently, whether any scheduled routines for this actor are currently registered with `mcp__scheduled-tasks__list_scheduled_tasks` (filtered to tasks whose title starts with `holacracy/`).
+5. **Reports operating constraints**: whether GlassFrog is connected, whether any role the actor fills has been retired or modified recently, whether any scheduled routines for this actor are currently registered with `mcp__scheduled-tasks__list_scheduled_tasks` (filtered to tasks whose title starts with `self-org/`, or the pre-1.0 `holacracy/`).
 
 ## Inherited context (opt-in `--inherited`)
 
@@ -58,9 +58,9 @@ GlassFrog connected. Roles loaded.
   - Rep Link (linking to General Company Circle)
 
 **Active scheduled routines (3):**
-- holacracy/secretary/pre-tactical-prep/operations-circle (fires Sundays 18:00)
-- holacracy/lead-link/quarterly-strategy-review/general-company-circle (fires quarterly)
-- holacracy/rep-link/pre-enclosing-circle-prep/marketing-circle (fires Tuesdays 09:00)
+- self-org/secretary/pre-tactical-prep/operations-circle (fires Sundays 18:00)
+- self-org/lead-link/quarterly-strategy-review/general-company-circle (fires quarterly)
+- self-org/rep-link/pre-enclosing-circle-prep/marketing-circle (fires Tuesdays 09:00)
 
 Tell me which scope you want to work in, or I'll resolve it when you describe the task.
 ```

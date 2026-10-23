@@ -41,7 +41,7 @@
 # literal from it here would break silently -- the same fail-silent class of
 # bug this instrument exists to detect. So the marker is read out of the hook
 # source at run time: the first non-empty line of the `DIRECTIVE` heredoc
-# (today: "**Holacracy plugin: role-grounding directive**"). If the heredoc or
+# (today: "**self-org plugin: role-grounding directive**"). If the heredoc or
 # a usable marker cannot be found, this script FAILS LOUDLY (exit 2) rather
 # than reporting a zero it cannot justify. Same principle as ADR-0007: derive
 # from live source, never a hard-coded table.
@@ -289,8 +289,24 @@ MARKER = derive_marker(hook_path)
 # The directive reaches a transcript nested inside JSON (a hook envelope inside
 # an attachment record), so the marker may appear raw, escaped once, or escaped
 # twice. Check all three rather than assuming plain ASCII survives.
-_e1 = _json.dumps(MARKER)[1:-1]
-MARKER_FORMS = tuple(dict.fromkeys((MARKER, _e1, _json.dumps(_e1)[1:-1])))
+#
+# The plugin was named `holacracy` before 1.0 (ADR-0020), and its hook emitted
+# these headers. They cannot be derived, because that hook source is gone from
+# HEAD, so they are listed here; without them every pre-rename session would
+# read as a session the directive never reached.
+LEGACY_MARKERS = (
+    "**Holacracy plugin: role-grounding directive**",
+    "**Holacracy plugin: role-grounding check (conditional directive)**",
+)
+
+
+def _forms(marker):
+    e1 = _json.dumps(marker)[1:-1]
+    return (marker, e1, _json.dumps(e1)[1:-1])
+
+
+MARKER_FORMS = tuple(dict.fromkeys(
+    f for m in (MARKER,) + LEGACY_MARKERS for f in _forms(m)))
 
 
 # --- Signal patterns -------------------------------------------------------

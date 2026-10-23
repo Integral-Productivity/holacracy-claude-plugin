@@ -3,11 +3,11 @@ description: Capture a Holacratic tension to a role's GlassFrog backlog via a dr
 argument-hint: [tension text, optional]
 ---
 
-# /holacracy:capture-tension
+# /self-org:capture-tension
 
 On-demand entry to the canonical tension capture flow. Dispatches the `tension-capture` subagent, which runs the full B-flow specified in `skills/shared/tension-capture-flow.md`.
 
-This is the **cross-role, out-of-meeting** capture surface. For in-tactical-meeting capture as Secretary, use [`/holacracy:tactical`](./tactical.md) instead — that flow has its own role-scoped, meeting-grounded consent contract (the Secretary captures what a Circle Member just named out loud during triage). Both surfaces call the same `glassfrog_create_tension(role_id, body)` primitive, but they belong to different conversational contexts.
+This is the **cross-role, out-of-meeting** capture surface. For in-tactical-meeting capture as Secretary, use [`/self-org:tactical`](./tactical.md) instead — that flow has its own role-scoped, meeting-grounded consent contract (the Secretary captures what a Circle Member just named out loud during triage). Both surfaces call the same `glassfrog_create_tension(role_id, body)` primitive, but they belong to different conversational contexts.
 
 ## What this command does
 
@@ -32,17 +32,17 @@ This is the **cross-role, out-of-meeting** capture surface. For in-tactical-meet
 
 ## When to use this command vs. other surfaces
 
-- **`/holacracy:capture-tension`** (this command) — explicit, cross-role, out-of-meeting. Use when you've sensed a tension and want to file it now.
-- **Ambient capture** (in `holacratic-ai-governance` Pattern 5) — Claude offers to capture when it detects tension language during other work. Same subagent, same flow; no slash command needed.
-- **`/holacracy:tactical`** — Secretary in-tactical-meeting flow. Use when running a Tactical Meeting; backlog-first capture during triage is documented in `skills/holacracy-secretary/SKILL.md`.
+- **`/self-org:capture-tension`** (this command) — explicit, cross-role, out-of-meeting. Use when you've sensed a tension and want to file it now.
+- **Ambient capture** (in `self-org-ai-governance` Pattern 5) — Claude offers to capture when it detects tension language during other work. Same subagent, same flow; no slash command needed.
+- **`/self-org:tactical`** — Secretary in-tactical-meeting flow. Use when running a Tactical Meeting; backlog-first capture during triage is documented in `skills/self-org-secretary/SKILL.md`.
 
 All three surfaces call the same `glassfrog_create_tension(role_id, body)` primitive. They differ in conversational shape and consent contract, not in what lands in GlassFrog.
 
 ## What this command does NOT do
 
-- It does not process tensions. Marking `status: "processed"` is for `/holacracy:tension-triage` (catch-up only, for tensions actually worked in real meetings).
+- It does not process tensions. Marking `status: "processed"` is for `/self-org:tension-triage` (catch-up only, for tensions actually worked in real meetings).
 - It does not delete tensions.
 - It does not file proposals or make governance changes.
 - It does not batch multiple tensions into one confirmation.
 
-For readiness assessment of the existing backlog, use `/holacracy:tension-triage`. For end-of-session deduplication, use `/holacracy:supersession-sweep`.
+For readiness assessment of the existing backlog, use `/self-org:tension-triage`. For end-of-session deduplication, use `/self-org:supersession-sweep`.

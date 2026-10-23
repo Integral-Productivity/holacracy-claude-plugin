@@ -1,13 +1,13 @@
 ---
-description: Capture a well-formed Holacratic project to a role's GlassFrog backlog via a draft-and-confirm flow. Soft-gates on the well-formedness rubric's Family A (outcome-framed / first next-action / clear owner), teaching the missing element with a drafted fix rather than hard-blocking. Files additively — the project plus its first next-action — with a single per-project confirmation, then a light skippable goal-link nudge. The capture-time twin of /holacracy:review-project.
+description: Capture a well-formed Holacratic project to a role's GlassFrog backlog via a draft-and-confirm flow. Soft-gates on the well-formedness rubric's Family A (outcome-framed / first next-action / clear owner), teaching the missing element with a drafted fix rather than hard-blocking. Files additively — the project plus its first next-action — with a single per-project confirmation, then a light skippable goal-link nudge. The capture-time twin of /self-org:review-project.
 argument-hint: "[project text, optional] [--source <url or label>, optional]"
 ---
 
-# /holacracy:capture-project
+# /self-org:capture-project
 
 On-demand entry to the canonical project capture flow. Dispatches the `project-capture` subagent, which runs the full P-flow specified in `skills/shared/project-capture-flow.md`.
 
-This is the **capture-time guardrail** for GlassFrog projects: it helps a role-filler state a project as an outcome with a first next-action *as they file it*, so the backlog fills with actionable work instead of thin stubs. It is the twin of [`/holacracy:review-project`](./review-project.md) — where review-project cleans up under-specified projects after the fact (the "belt"), this command prevents them at intake (the "lifestyle change"). Both load the same rubric, `skills/shared/project-well-formedness.md`, so "well-formed" means one thing across the plugin.
+This is the **capture-time guardrail** for GlassFrog projects: it helps a role-filler state a project as an outcome with a first next-action *as they file it*, so the backlog fills with actionable work instead of thin stubs. It is the twin of [`/self-org:review-project`](./review-project.md) — where review-project cleans up under-specified projects after the fact (the "belt"), this command prevents them at intake (the "lifestyle change"). Both load the same rubric, `skills/shared/project-well-formedness.md`, so "well-formed" means one thing across the plugin.
 
 ## What this command does
 
@@ -27,19 +27,19 @@ This is the **capture-time guardrail** for GlassFrog projects: it helps a role-f
 - The soft-gate **teaches but never enforces**: if the user chooses to file something still activity-framed, that is their call — the teaching happened. The command never hard-blocks and never pushes the user to the GlassFrog UI.
 - The additive write chain is ordered: the project is created first (returning its `proj_xxx` id), then the first next-action is attached to it via `parent_project_id`. A failure at either step is surfaced honestly — the command does not silently swallow a write error.
 - The subagent does not attempt to verify via `glassfrog_list_role_projects` — same-session list-back is unreliable. The `create_role_project` / `create_action` response ids are the only reliable confirmation.
-- **The source is provenance, not content.** It lands in the project's `link` and `note` fields, never in the description, so the project title stays about one line. Example: `/holacracy:capture-project Onboarding guide published to the wiki --source https://github.com/org/repo/pull/412`.
+- **The source is provenance, not content.** It lands in the project's `link` and `note` fields, never in the description, so the project title stays about one line. Example: `/self-org:capture-project Onboarding guide published to the wiki --source https://github.com/org/repo/pull/412`.
 - The constitutional safeguard from `skills/shared/project-capture-flow.md` applies: no file without explicit per-project confirmation.
 - If GlassFrog is not connected, the subagent will offer to draft a plain-text version for manual entry. This command honours that fallback.
 
 ## When to use this command vs. other surfaces
 
-- **`/holacracy:capture-project`** (this command) — capture-time. Use when you're filing a *new* project and want it well-formed from the start.
-- **[`/holacracy:review-project`](./review-project.md)** — after-the-fact. Use to review *existing* projects against the full rubric (Family A **and** Family B), with adversarial critics, advisory reframes, and additive fixes.
+- **`/self-org:capture-project`** (this command) — capture-time. Use when you're filing a *new* project and want it well-formed from the start.
+- **[`/self-org:review-project`](./review-project.md)** — after-the-fact. Use to review *existing* projects against the full rubric (Family A **and** Family B), with adversarial critics, advisory reframes, and additive fixes.
 - **Ambient capture** *(future)* — Claude offers to capture when it detects project-shaped language during other work. Same subagent, same flow; no slash command needed.
 
 ## What this command does NOT do
 
-- It does not review, reframe, re-own, or archive *existing* projects. That is `/holacracy:review-project`'s job.
+- It does not review, reframe, re-own, or archive *existing* projects. That is `/self-org:review-project`'s job.
 - It does not run Family B checks — no scope-authority ruling, no assignment-fit judgment. Those are often premature at a project's birth and belong to review-project.
 - It does not hard-block, force perfection, or push the user to the GlassFrog UI.
 - It does not delete projects.

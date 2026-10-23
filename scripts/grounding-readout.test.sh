@@ -375,7 +375,7 @@ import json,sys
 d=json.load(sys.stdin)
 m=d["directive_marker"]
 assert len(m)>=20, m
-assert "grounding" in m.lower() or "holacracy" in m.lower(), m
+assert "grounding" in m.lower() or "self-org" in m.lower(), m
 ' || fail "marker derived from the real hook looks wrong: $js"
 
 # 10. plugin_versions_seen -- which version actually RAN, read from the stamp
@@ -531,5 +531,28 @@ import json,sys
 d=json.load(sys.stdin)
 assert d["excluded"]["subagent_files"]==2, ("unwindowed runs count the whole corpus", d)
 ' || fail "unwindowed exclusion counts should cover the corpus: $js"
+
+# 13. The plugin was renamed from `holacracy` to `self-org` (ADR-0020). Sessions
+#     that ran the pre-rename hook carry the old headers, which no longer
+#     appear in any hook source. They still count as firings, or every
+#     pre-rename session would read as one the directive never reached.
+L="$TMP/legacy"; mkdir -p "$L"
+cat > "$L/old-directive.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"**Holacracy plugin: role-grounding directive**\"}"}
+JSONL
+cat > "$L/old-check.jsonl" <<'JSONL'
+{"type":"attachment","stdout":"{\"additionalContext\":\"**Holacracy plugin: role-grounding check (conditional directive)**\"}"}
+JSONL
+cat > "$L/quoted.jsonl" <<'JSONL'
+{"type":"assistant","text":"The old hook printed **Holacracy plugin: role-grounding directive** at the top."}
+JSONL
+js="$(CLAUDE_PROJECTS_DIR="$L" bash "$SCRIPT" --hook "$HOOK" --json)"
+echo "$js" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["sessions"]==3, d
+# Both legacy headers count; an assistant quoting one does not.
+assert d["directive_fired"]["count"]==2, d
+' || fail "legacy pre-rename markers must still count as firings: $js"
 
 echo "PASS: all grounding-readout tests"

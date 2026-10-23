@@ -112,7 +112,7 @@ _allowed() {  # $1 = citing file, $2 = candidate path
 #
 # Resolution is STRICT: the citing file's own directory, or the repo root. Not
 # "any plausible base". A permissive multi-base resolver would have accepted
-# `../shared/agentic-routines.md` inside skills/holacracy-secretary/references/
+# `../shared/agentic-routines.md` inside skills/self-org-secretary/references/
 # -- which resolves from the SKILL root but not from the file doing the loading,
 # and is therefore exactly the bug CLAUDE.md line 31 warns about. Being strict
 # is what makes this check able to find that class of defect at all.
@@ -331,7 +331,7 @@ check_version_bump() {
 # ---------------------------------------------------------------------------
 # Check 5 -- a referenced slash command exists, or is a TRACKED forward reference.
 #
-# #166 deliberately points at /holacracy:process-tension, which does not exist.
+# #166 deliberately points at /self-org:process-tension, which does not exist.
 # That was honest -- the alternative was to quietly widen triage's scope to fill
 # the gap, which is the exact conflation the PR existed to undo. But an honest
 # forward reference and a stale one are indistinguishable six months later.
@@ -348,7 +348,7 @@ check_command_refs() {
 
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
-    name="${ref#/holacracy:}"
+    name="${ref#/self-org:}"
     [ -f "$ROOT/commands/$name.md" ] && continue
 
     entry="$(grep -E "^${ref}[[:space:]]" "$ROOT/evals/forward-references.txt" 2>/dev/null | head -1)"
@@ -369,7 +369,7 @@ check_command_refs() {
       [ "$state" = "CLOSED" ] && finding 5 "evals/forward-references.txt" \
         "$ref is declared against $issue, which is now CLOSED -- ship the command or drop the reference"
     fi
-  done < <(_shipped_md | xargs grep -ohE '/holacracy:[a-z0-9:-]+' 2>/dev/null \
+  done < <(_shipped_md | xargs grep -ohE '/self-org:[a-z0-9:-]+' 2>/dev/null \
              | sed 's/[^a-z0-9:-]*$//' | sort -u)
 }
 
@@ -549,7 +549,7 @@ check_tool_names() {
 # listed one prefix, it had no GlassFrog tools in Cowork (#338); when its deny
 # list was kept by hand, it missed the two newest writes (#342).
 #
-# Two rules. (a) agents/holacracy-coach.md carries exactly the `tools:` and
+# Two rules. (a) agents/self-org-coach.md carries exactly the `tools:` and
 # `disallowedTools:` lines the generator prints, so its allowlist holds no
 # write and its deny list holds every write. (b) A fully-qualified
 # `mcp__<server>__glassfrog_*` name appears only on an agent's `tools:` or
@@ -559,7 +559,7 @@ check_tool_names() {
 # ---------------------------------------------------------------------------
 check_tool_grants() {
   skipped 10 && return 0
-  local coach="agents/holacracy-coach.md" prefixes="$ROOT/evals/glassfrog-server-prefixes.txt"
+  local coach="agents/self-org-coach.md" prefixes="$ROOT/evals/glassfrog-server-prefixes.txt"
   local want got f n line name prefix known_prefixes=""
   [ -f "$prefixes" ] && known_prefixes="$(grep -v '^#' "$prefixes" | awk 'NF {print $1}')"
 
@@ -624,6 +624,57 @@ check_state_names() {
     [ -n "$name" ] || continue
     grep -qxF "$name" <<< "$known" \
       || finding 11 "$f:$n" "$name is not in the closed list (skills/shared/triage-states.md) or the rubric's state table"
+  done <<< "$hits"
+}
+
+# ---------------------------------------------------------------------------
+# Check 12 -- no shipped surface names the plugin by its pre-1.0 name.
+#
+# The plugin was renamed from `holacracy` to `self-org` because HolacracyOne's
+# trademark terms bar the mark from a derivative work's name (ADR-0020). A
+# branch cut before the rename -- or a habit -- can reintroduce `/holacracy:x`
+# or `holacracy-secretary`, and every other check would pass it: the command
+# file exists under its new name only, but check 5 matches the command part.
+#
+# Matched: the old command prefix, the old MCP tool prefix, an install line
+# (`holacracy@`), a `"name": "holacracy"` manifest value, and any
+# `holacracy-<x>` / `holacratic-<x>` identifier. Not matched: the repository
+# slug `holacracy-claude-plugin`, which keeps its name until it is renamed on
+# GitHub, and an ADR filename inside a link (`0005-holacracy-...`), which is a
+# historical record. Descriptive prose ("Holacracy", "Holacratic") is not an
+# identifier and stays. A file that must name an old identifier -- the
+# migration note -- is allowlisted by pair in evals/legacy-names-allow.txt.
+# ---------------------------------------------------------------------------
+LEGACY_ALLOW="$(grep -vE '^\s*(#|$)' "$ROOT/evals/legacy-names-allow.txt" 2>/dev/null || true)"
+
+_legacy_allowed() {  # $1 = file, $2 = token
+  local src tok rest
+  while read -r src tok rest; do
+    [ -n "$src" ] || continue
+    [ "$src" = "$1" ] && [ "$tok" = "$2" ] && return 0
+  done <<< "$LEGACY_ALLOW"
+  return 1
+}
+
+_legacy_files() {
+  _live_md
+  git -C "$ROOT" ls-files 'CONTRIBUTING.md' 'SECURITY.md' '.claude-plugin/*.json' \
+      '.github/ISSUE_TEMPLATE/*' 'hooks/*.json' 2>/dev/null
+}
+
+check_legacy_names() {
+  skipped 12 && return 0
+  local line f n tok hits
+  hits="$(cd "$ROOT" && _legacy_files | xargs -r grep -noE \
+    '/holacracy:|mcp__plugin_holacracy_|holacracy@|"name": *"holacracy"|(^|[^/0-9A-Za-z-])holacra(cy|tic)-[a-z][a-z-]*' 2>/dev/null)"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    # Split by hand: `IFS=: read` would drop the trailing colon of `/holacracy:`.
+    f="${line%%:*}"; line="${line#*:}"; n="${line%%:*}"; tok="${line#*:}"
+    tok="${tok#"${tok%%[/m\"h]*}"}"   # drop the one leading boundary character
+    [ "$tok" = "holacracy-claude-plugin" ] && continue
+    _legacy_allowed "$f" "$tok" && continue
+    finding 12 "$f:$n" "$tok is the plugin's pre-1.0 name; use self-org (ADR-0020)"
   done <<< "$hits"
 }
 
@@ -782,6 +833,7 @@ check_upload_limits
 check_tool_names
 check_tool_grants
 check_state_names
+check_legacy_names
 check_surface_map
 
 check_common_summarize "skills-lint"

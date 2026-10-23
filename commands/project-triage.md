@@ -1,13 +1,13 @@
 ---
-description: Walk the actor's current GlassFrog projects and decide what each one needs next — retire the ones that fail a reality check (done, duplicate, superseded, owner role gone) and give every other project one saved route (needs-info, ready-for-agent, ready-for-human) that the next pass resumes from. Readiness only; the deep quality audit belongs to /holacracy:review-project.
+description: Walk the actor's current GlassFrog projects and decide what each one needs next — retire the ones that fail a reality check (done, duplicate, superseded, owner role gone) and give every other project one saved route (needs-info, ready-for-agent, ready-for-human) that the next pass resumes from. Readiness only; the deep quality audit belongs to /self-org:review-project.
 argument-hint: [circle name, optional]
 ---
 
-# /holacracy:project-triage
+# /self-org:project-triage
 
 Walk the `current` projects on the actor's roles and decide, for each one, **what it needs next before anyone can act on it**. Save that answer on the project, with its reason, so the next pass starts where this one stopped.
 
-Triage answers *"is this project still real, and who acts next?"* It does not answer *"is this project well written?"* — that is `/holacracy:review-project`'s question, and the two are separated deliberately ([ADR-0018](../docs/adr/0018-separate-project-readiness-from-project-quality.md)), the same split [ADR-0011](../docs/adr/0011-separate-tension-readiness-from-tension-disposition.md) made for tensions.
+Triage answers *"is this project still real, and who acts next?"* It does not answer *"is this project well written?"* — that is `/self-org:review-project`'s question, and the two are separated deliberately ([ADR-0018](../docs/adr/0018-separate-project-readiness-from-project-quality.md)), the same split [ADR-0011](../docs/adr/0011-separate-tension-readiness-from-tension-disposition.md) made for tensions.
 
 Load two shared references at the start:
 
@@ -26,7 +26,7 @@ Load two shared references at the start:
 
 2. **Resolve scope from $ARGUMENTS.**
    - **No argument** → the actor's own roles: `glassfrog_list_role_projects(role_id, status: "current")` for each.
-   - **A circle name** → that circle's projects: `glassfrog_list_subrole_projects(circle_role_id, status: "current")`, repeated for each sub-circle (`has_subroles == true`) and unioned. Treat the call as direct-children-only, as `list_subrole_tensions` is (see `/holacracy:tension-triage` step 3).
+   - **A circle name** → that circle's projects: `glassfrog_list_subrole_projects(circle_role_id, status: "current")`, repeated for each sub-circle (`has_subroles == true`) and unioned. Treat the call as direct-children-only, as `list_subrole_tensions` is (see `/self-org:tension-triage` step 3).
 
    If the circle cannot be resolved, name the constraint and stop.
 
@@ -57,7 +57,7 @@ Load two shared references at the start:
      [w] write the route      -> note line, then tag read-modify-write
      [c] complete             -> note line + status: completed   (gate failures only)
      [a] archive              -> note line + status: archived    (gate failures only)
-     [r] review it            -> hand this one project to /holacracy:review-project
+     [r] review it            -> hand this one project to /self-org:review-project
      [d] defer                -> no write
      [q] quit                 -> stop; the rest stay as they are
    ```
@@ -73,15 +73,15 @@ Load two shared references at the start:
 - **Gates before form.** A project that is already done, duplicated, or superseded does not need its outcome reworded. Asking the reality question first is what keeps the pass cheap.
 - **Archive is a status, not a tag.** `completed` when the outcome exists, `archived` otherwise. Both are reversible in GlassFrog. Deletion is permanent and this command does not offer it.
 - **No tag without a reason.** Every state write appends its note line first. A bare tag loses why the project was routed, and the next triager has to work it out again.
-- **Never write a rubric verdict as a tag.** `needs-next-action`, `needs-outcome`, `executor-mismatch` and the rest are findings from `/holacracy:review-project`. Triage writes only the four states in `triage-states.md`.
+- **Never write a rubric verdict as a tag.** `needs-next-action`, `needs-outcome`, `executor-mismatch` and the rest are findings from `/self-org:review-project`. Triage writes only the four states in `triage-states.md`.
 - **A past-tense title is not a status.** Projects are titled in past tense as an idiom. Gate 1 needs evidence, not grammar.
 - **The movement rule is a heuristic.** Say so when a `needs-info` project is skipped and the user expected to see it; they can name it and ask to reopen it as `needs-triage`.
-- `waiting`, `someday` and `scheduled` projects are out of scope. `/holacracy:stalled-project-sweep` owns `waiting`; the other two are deliberately not-now.
+- `waiting`, `someday` and `scheduled` projects are out of scope. `/self-org:stalled-project-sweep` owns `waiting`; the other two are deliberately not-now.
 
 ## Where this command stops
 
-Triage decides readiness. It does not reword an outcome, draft a next action, link a goal, or re-assign a role — those are quality findings, and `[r]` hands one project to `/holacracy:review-project` for them. It does not create a successor project either: a superseded project whose successor does not exist yet is routed to `needs-info` with the successor as the open question, and `/holacracy:capture-project` can file it.
+Triage decides readiness. It does not reword an outcome, draft a next action, link a goal, or re-assign a role — those are quality findings, and `[r]` hands one project to `/self-org:review-project` for them. It does not create a successor project either: a superseded project whose successor does not exist yet is routed to `needs-info` with the successor as the open question, and `/self-org:capture-project` can file it.
 
 ## Why this command exists
 
-Most current projects in a real org were found idle, and nothing told anyone which ones still mattered. `/holacracy:review-project`'s backlog walk ran five critic lenses on every project every time and saved nothing, so nobody ran it often. This command is the cheap, repeatable pass: retire what is no longer real, route the rest once, and resume from the saved route next time.
+Most current projects in a real org were found idle, and nothing told anyone which ones still mattered. `/self-org:review-project`'s backlog walk ran five critic lenses on every project every time and saved nothing, so nobody ran it often. This command is the cheap, repeatable pass: retire what is no longer real, route the rest once, and resume from the saved route next time.

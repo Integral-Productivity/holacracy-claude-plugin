@@ -2,7 +2,7 @@
 
 This document is shared across holacracy skills and commands. It defines how to load and render a role's **inherited context** — the governance that flows down from the enclosing circles: the enclosing-circle purpose chain to the Anchor Circle, the parent circle's policies, and the role's inherited strategy.
 
-Load this when an opt-in inherited-context load is requested — today via `/holacracy:context --inherited`; in future via a role skill that needs the enclosing-circle frame before doing role work (see issue #35).
+Load this when an opt-in inherited-context load is requested — today via `/self-org:context --inherited`; in future via a role skill that needs the enclosing-circle frame before doing role work (see issue #35).
 
 It assumes a **single already-resolved role** (`role_id`). Resolution of *which* role/circle the actor is operating from is the job of [`actor-and-role-resolution.md`](actor-and-role-resolution.md) — run that first; this procedure starts once one role is settled.
 
@@ -10,7 +10,7 @@ It assumes a **single already-resolved role** (`role_id`). Resolution of *which*
 
 ## Why this is a separate, opt-in load
 
-The base `/holacracy:context` resolution is deliberately cheap (identity + role roster; see [ADR-0003](../../docs/adr/0003-glassfrog-tension-api-adoption.md)). Inherited context is **not** loaded by default — it is requested explicitly. Two reasons:
+The base `/self-org:context` resolution is deliberately cheap (identity + role roster; see [ADR-0003](../../docs/adr/0003-glassfrog-tension-api-adoption.md)). Inherited context is **not** loaded by default — it is requested explicitly. Two reasons:
 
 1. **Cost.** Loading every role's context eagerly is large (`glassfrog_get_me(include_roles: true)` returns ~114k characters in a 75-role org). Inherited context is therefore always scoped to **one resolved role**, never the whole roster.
 2. **Relevance.** Inherited purpose and strategy matter when the actor is about to interpret governance or prioritize work (Constitution v5 Art 4.2, Art 2.3.3) — not for a quick "which hats do I wear?" check.
@@ -89,4 +89,4 @@ Mirror the disconnect convention used elsewhere in the plugin ([`commands/contex
 | `glassfrog_list_role_policies(role_id)` | Full policy bodies for a role (used by #35, not this procedure) |
 | `glassfrog_get_role_tree` / `glassfrog_get_org_tree` | **Descendants** only — not used for ancestor traversal |
 
-See [`../holacratic-ai-governance/references/glassfrog-api-constraints.md`](../holacratic-ai-governance/references/glassfrog-api-constraints.md) for the full read/write capability map.
+See [`../self-org-ai-governance/references/glassfrog-api-constraints.md`](../self-org-ai-governance/references/glassfrog-api-constraints.md) for the full read/write capability map.

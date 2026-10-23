@@ -2,10 +2,10 @@
 
 This is the canonical rubric for judging whether a GlassFrog **project** is well-formed and well-placed. It is the project-side analog of `triage-gates.md`. Loaded by:
 
-- `/holacracy:review-project` -- the adversarial project-review panel (via `project-review-critics.md`, which turns each dimension below into a critic lens).
-- `/holacracy:capture-project` -- the capture-time guardrail, which loads Family A only (via the `project-capture` subagent).
-- `/holacracy:stalled-project-sweep` -- the stalled/blocked sweep, which owns the detection logic emitting this rubric's reserved `stale` and `blocked` states.
-- `/holacracy:project-triage` -- the readiness router, which loads the B3 executor-fit test only (via `project-triage-gates.md` Step 5) to choose between `ready-for-agent` and `ready-for-human`.
+- `/self-org:review-project` -- the adversarial project-review panel (via `project-review-critics.md`, which turns each dimension below into a critic lens).
+- `/self-org:capture-project` -- the capture-time guardrail, which loads Family A only (via the `project-capture` subagent).
+- `/self-org:stalled-project-sweep` -- the stalled/blocked sweep, which owns the detection logic emitting this rubric's reserved `stale` and `blocked` states.
+- `/self-org:project-triage` -- the readiness router, which loads the B3 executor-fit test only (via `project-triage-gates.md` Step 5) to choose between `ready-for-agent` and `ready-for-human`.
 
 Every project surface loads this file so "done enough" means one thing across the plugin. The rubric **describes**; it never auto-acts. Any fix it implies is drafted for a human to confirm.
 
@@ -49,7 +49,7 @@ Run the dimensions in order. A project is **well-formed** when the first family 
 
 **B2. Scope within authority.** Does the project's scope fall within the owning role's accountabilities and domains?
 
-> *Test:* read the role's accountabilities/domains (`get_role` / `glassfrog_get_role_context` / `list_role_domains`) and reason as `/holacracy:check-authority` does (from `authority-boundaries.md`). If the outcome reaches beyond what the role is authorized to do, or into another role's domain -> **out-of-authority**. This is **advisory only**: it names a governance question, it does not edit the project.
+> *Test:* read the role's accountabilities/domains (`get_role` / `glassfrog_get_role_context` / `list_role_domains`) and reason as `/self-org:check-authority` does (from `authority-boundaries.md`). If the outcome reaches beyond what the role is authorized to do, or into another role's domain -> **out-of-authority**. This is **advisory only**: it names a governance question, it does not edit the project.
 
 **B3. Best-fit owner.** Given the scope, is this the right role -- and is its filler resourced?
 
@@ -80,7 +80,7 @@ A project's verdict is one state. When several apply, the verdict is the state o
 | `stale` | No movement over time | -- | **sweep (#76) only** |
 | `blocked` | Waiting on an external dependency | -- | **sweep (#76) only** |
 
-`stale` and `blocked` require signals (age, `status: "waiting"`, no recent action) that belong to the sweep. `/holacracy:review-project` never emits them.
+`stale` and `blocked` require signals (age, `status: "waiting"`, no recent action) that belong to the sweep. `/self-org:review-project` never emits them.
 
 ---
 

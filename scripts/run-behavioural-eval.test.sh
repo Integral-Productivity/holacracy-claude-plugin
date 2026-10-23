@@ -293,8 +293,8 @@ write_case() {  # $1 = destination
   mkdir -p "$(dirname "$1")"
   cat > "$1" <<EOF
 {
-  "skill": "holacracy",
-  "surface": "/holacracy:tension-triage",
+  "skill": "self-org",
+  "surface": "/self-org:tension-triage",
   "status": "fixture",
   "evals": [
     {
@@ -1585,7 +1585,7 @@ try:
     assert key_for(base, skill_dir) == baseline
 
     # 3c. commands/*.md -- the eval surface itself (e.g.
-    #     /holacracy:capture-tension) is implemented here, not under
+    #     /self-org:capture-tension) is implemented here, not under
     #     skills/<dir>, so nothing above this line reads it. Gated on
     #     skill_dirs being non-empty, mirroring without_skill's
     #     --plugin-dir-less execution never loading commands at all.
@@ -1827,7 +1827,7 @@ pass
 #     one. The leg executes fresh, and a new entry lands under the CURRENT
 #     key; the superseded old entry is left in place rather than deleted --
 #     only the key that matters now is the one main() looks up.
-FACILITATOR_SKILL_MD="$CACHE_ROOT/skills/holacracy-facilitator/SKILL.md"
+FACILITATOR_SKILL_MD="$CACHE_ROOT/skills/self-org-facilitator/SKILL.md"
 cp "$FACILITATOR_SKILL_MD" "$TMP/facilitator-SKILL.md.orig"
 python3 - "$FACILITATOR_SKILL_MD" <<'PY'
 import re, sys

@@ -230,7 +230,7 @@ pass
 # ---------------------------------------------------------------------------
 # Shaped after the real run-32111649427 evidence: a `with_skill` executor pass
 # whose visible turn used one model, but a Task subagent (dispatched by
-# /holacracy:capture-tension) billed a second -- `usage` only ever saw the
+# /self-org:capture-tension) billed a second -- `usage` only ever saw the
 # first, `modelUsage` saw both. No warning: this is the healthy case #279
 # exists to stop mislabelling as a discrepancy.
 HIDDENCALL="$TMP/hiddencall"

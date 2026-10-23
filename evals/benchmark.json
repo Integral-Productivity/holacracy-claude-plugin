@@ -13,7 +13,7 @@
   ],
   "generated_at": "2026-08-17T20:05:31Z",
   "metadata": {
-    "skill_name": "holacracy",
+    "skill_name": "self-org",
     "skill_path": "Integral-Productivity/holacracy-claude-plugin",
     "executor_model": "claude-sonnet-5",
     "analyzer_model": "claude-haiku-4-5-20251001",
@@ -70,22 +70,22 @@
   },
   "cases": [
     {
-      "surface": "/holacracy:tension-triage",
+      "surface": "/self-org:tension-triage",
       "eval_id": 0,
       "eval_name": "authority-gate-fires-before-venue-routing"
     },
     {
-      "surface": "/holacracy:tension-triage",
+      "surface": "/self-org:tension-triage",
       "eval_id": 1,
       "eval_name": "blended-tension-partitioned"
     },
     {
-      "surface": "/holacracy:tension-triage",
+      "surface": "/self-org:tension-triage",
       "eval_id": 2,
       "eval_name": "successor-written-before-archive"
     },
     {
-      "surface": "/holacracy:capture-tension",
+      "surface": "/self-org:capture-tension",
       "eval_id": 0,
       "eval_name": "person-tension-refused-and-routed-to-idr"
     }

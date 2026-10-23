@@ -1,6 +1,6 @@
 {
-  "skill": "holacracy",
-  "surface": "/holacracy:capture-tension",
+  "skill": "self-org",
+  "surface": "/self-org:capture-tension",
   "status": "active",
   "note": "The one fully synthetic golden case. The other three replay dispositions a human recorded on issue #120; this one has no live antecedent because the correct outcome is that nothing is written, and a tension that was never filed leaves no record to draw from. Run by scripts/run-behavioural-eval.py. Retexted under #208 after its first real graded run: assertions 2 and 4 as originally written failed the one session that executed the shipped spec correctly (it named the person half, applied the substitution test aloud, partitioned per triage-gates Step 2, and presented the confirmation block without writing) because they demanded the whole tension be classified person-only. triage-gates.md Step 2 explicitly licenses the partition path, so an assertion that penalises it was measuring the case, not the skill. The axis that actually separated the runs — and the one now asserted — is whether a reframe is surfaced or performed silently.",
   "evals": [

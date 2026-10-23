@@ -12,7 +12,7 @@
 # which predates the role-grounding directive entirely — while
 # `~/.claude/plugins/installed_plugins.json` reported **0.10.2**. The hook ran
 # every session and emitted nothing, for two weeks, invisibly. Of the 40 plugins
-# materialized into that directory, holacracy was the only stale one, and
+# materialized into that directory, holacracy (its pre-1.0 name) was the only stale one, and
 # nothing anywhere surfaced it.
 #
 # Drift had already recurred in a second channel unnoticed: the plugin cache sat
@@ -33,7 +33,7 @@
 #                     really ran, rather than what some file says it should.
 #   desktop app copy  …/local-agent-mode-sessions/*/rpm/plugin_*/ — the channel
 #                     that was stale in #122.
-#   plugin cache      ~/.claude/plugins/cache/…/holacracy/<version>/
+#   plugin cache      ~/.claude/plugins/cache/…/self-org/<version>/
 #   recorded install  ~/.claude/plugins/installed_plugins.json
 #
 # AN UNKNOWN LOADED VERSION IS SKEW, NEVER A PASS
@@ -68,7 +68,7 @@ READOUT="$HERE/grounding-readout.sh"
 DEFAULT_DAYS=1
 MARKER='<!-- plugin-version-skew-check:v1 -->'
 ISSUE_LABELS='["area:infra","main-health"]'
-PLUGIN_NAME='holacracy'
+PLUGIN_NAME='self-org'
 
 DAYS="${PLUGIN_SKEW_WINDOW_DAYS:-$DEFAULT_DAYS}"
 FIXTURE_ROOT=''
@@ -228,7 +228,7 @@ def read_json(path):
 # plugin that happens to ship skills or hooks.
 FINGERPRINT = (
     os.path.join("hooks-handlers", "session-start.sh"),
-    os.path.join("skills", "holacracy-facilitator"),
+    os.path.join("skills", "self-org-facilitator"),
 )
 
 NO_VERSION = "<unreadable>"

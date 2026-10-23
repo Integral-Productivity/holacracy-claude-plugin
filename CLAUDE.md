@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## What this repo is
 
-A public (MIT, public-repo) Claude Code plugin for engaging with [Holacracy](https://www.holacracy.org/) from inside Claude. It ships through two channels, both tracking `stable`: the private `integral-productivity-labs` marketplace (canonical, for Integral Productivity) and this repo's own one-plugin catalog, `.claude-plugin/marketplace.json` (for everyone else). The core `Integral-Productivity/marketplace` does not list it, by design. See [ADR-0016](docs/adr/0016-labs-is-the-canonical-channel-and-this-repo-self-hosts-the-public-one.md). The plugin bundles six skills (four Core Role co-pilots, a governance-aware operating frame, and a checklist & metric portfolio audit) and wires up the GlassFrog MCP as a connector.
+A public (MIT, public-repo) Claude Code plugin, named `self-org`, for engaging with [Holacracy](https://www.holacracy.org/) from inside Claude. It ships through two channels, both tracking `stable`: the private `integral-productivity-labs` marketplace (canonical, for Integral Productivity) and this repo's own one-plugin catalog, `.claude-plugin/marketplace.json` (for everyone else). The core `Integral-Productivity/marketplace` does not list it, by design. See [ADR-0016](docs/adr/0016-labs-is-the-canonical-channel-and-this-repo-self-hosts-the-public-one.md). The plugin bundles six skills (four Core Role co-pilots, a governance-aware operating frame, and a checklist & metric portfolio audit) and wires up the GlassFrog MCP as a connector.
 
 ## Layout
 
@@ -17,37 +17,51 @@ holacracy-claude-plugin/
 ├── README.md                      install + GlassFrog setup
 ├── CLAUDE.md                      this file
 └── skills/
-    ├── holacracy-facilitator/
-    ├── holacracy-secretary/
-    ├── holacracy-lead-link/
-    ├── holacracy-rep-link/
-    ├── holacratic-ai-governance/
+    ├── self-org-facilitator/
+    ├── self-org-secretary/
+    ├── self-org-lead-link/
+    ├── self-org-rep-link/
+    ├── self-org-ai-governance/
     ├── checklist-metric-audit/
     └── shared/
         └── authority-boundaries.md
 ```
 
+## The plugin's name
+
+The plugin was named `holacracy` until 1.0. It is `self-org` now, because
+HolacracyOne's trademark terms bar the mark from a derivative work's name, and
+two reference files adapt Constitution text ([ADR-0020](docs/adr/0020-the-plugin-name-carries-no-trademark.md)).
+Write "Holacracy" freely when it describes the method; never use it in a name
+the plugin ships. `skills-lint.sh` check 12 fails a `/holacracy:` command, a
+`holacracy-<x>` skill or agent name, the old MCP prefix, or a `holacracy@`
+install line in any shipped surface; a branch cut before the rename will meet
+it on its first CI run. Two things kept the old name on purpose: the
+`HOLACRACY_*` environment variables and the `~/.claude/holacracy/` ledger path
+are local configuration that working setups already reference, and the
+SessionStart hook still accepts routine titles under `holacracy/`.
+
 ## Shared reference
 
 `skills/shared/authority-boundaries.md` is loaded by the four role skills via the relative path `../shared/authority-boundaries.md`. If a role skill's `references/` file needs to load it, the path is `../../shared/authority-boundaries.md`. **This rule is now enforced** — `scripts/skills-lint.sh` check 1 resolves every backticked path from the file that cites it. It had been stated here for months and three files violated it anyway, with nine broken load paths sitting on `main` until the check found them.
 
-`skills/shared/triage-gates.md` holds the five gates every tension passes through, loaded by the `tension-capture` subagent, `/holacracy:capture-tension`, `/holacracy:tension-triage`, `/holacracy:supersession-sweep`, the `holacratic-ai-governance` skill, and the Rep Link's `references/tension-triage-guide.md` (which extends it and keeps its own filename). Callers cite gates by number, so renumbering the file means editing every caller — it was renamed from `tension-triage.md` and gained a new Step 1 in one pass ([ADR-0011](docs/adr/0011-separate-tension-readiness-from-tension-disposition.md)), which shifted all four original steps. **You no longer have to remember this**: `skills-lint.sh` check 2 asserts every `` `X.md` Step N `` citation names a heading that exists in `X.md`.
+`skills/shared/triage-gates.md` holds the five gates every tension passes through, loaded by the `tension-capture` subagent, `/self-org:capture-tension`, `/self-org:tension-triage`, `/self-org:supersession-sweep`, the `self-org-ai-governance` skill, and the Rep Link's `references/tension-triage-guide.md` (which extends it and keeps its own filename). Callers cite gates by number, so renumbering the file means editing every caller — it was renamed from `tension-triage.md` and gained a new Step 1 in one pass ([ADR-0011](docs/adr/0011-separate-tension-readiness-from-tension-disposition.md)), which shifted all four original steps. **You no longer have to remember this**: `skills-lint.sh` check 2 asserts every `` `X.md` Step N `` citation names a heading that exists in `X.md`.
 
-The plugin separates **tension readiness** (`/holacracy:tension-triage` — is this well-formed, non-duplicate, still real?) from **tension disposition** (`/holacracy:process-tension` — what output does it become?). Do not let a readiness surface start producing outputs; that conflation is what ADR-0011 exists to undo. `/holacracy:process-tension` and the authority-class write commands are not built yet — see [#120](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/120) and its child issues.
+The plugin separates **tension readiness** (`/self-org:tension-triage` — is this well-formed, non-duplicate, still real?) from **tension disposition** (`/self-org:process-tension` — what output does it become?). Do not let a readiness surface start producing outputs; that conflation is what ADR-0011 exists to undo. `/self-org:process-tension` and the authority-class write commands are not built yet — see [#120](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/120) and its child issues.
 
-`skills/shared/project-well-formedness.md` (the project-quality rubric) and `skills/shared/project-review-critics.md` (the five critic lenses + finding schema) are loaded by the `/holacracy:review-project` command and the `project-critic` subagent. The rubric is also loaded (Family A only) by the `/holacracy:capture-project` command and the `project-capture` subagent, and by `/holacracy:stalled-project-sweep` (which emits the rubric's reserved `stale`/`blocked` states — the sweep owns the detection logic that produces them). The rubric is the single source of truth for "well-formed enough"; keep it and the critic spec in sync.
+`skills/shared/project-well-formedness.md` (the project-quality rubric) and `skills/shared/project-review-critics.md` (the five critic lenses + finding schema) are loaded by the `/self-org:review-project` command and the `project-critic` subagent. The rubric is also loaded (Family A only) by the `/self-org:capture-project` command and the `project-capture` subagent, and by `/self-org:stalled-project-sweep` (which emits the rubric's reserved `stale`/`blocked` states — the sweep owns the detection logic that produces them). The rubric is the single source of truth for "well-formed enough"; keep it and the critic spec in sync.
 
-`skills/shared/triage-states.md` is the closed list of project triage states (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`), written onto a project as a GlassFrog tag by `/holacracy:project-triage` (#393). It lives here, not in `glassfrog-config`, whose vocabulary covers role tags only ([ADR-0019](docs/adr/0019-the-triage-state-vocabulary-lives-in-the-plugin.md)). A state is a route; the rubric's `needs-outcome`-style verdicts are findings and are never written. `skills-lint.sh` check 11 keeps the two lists disjoint and fails any `needs-*` or `ready-for-*` name found in neither.
+`skills/shared/triage-states.md` is the closed list of project triage states (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`), written onto a project as a GlassFrog tag by `/self-org:project-triage` (#393). It lives here, not in `glassfrog-config`, whose vocabulary covers role tags only ([ADR-0019](docs/adr/0019-the-triage-state-vocabulary-lives-in-the-plugin.md)). A state is a route; the rubric's `needs-outcome`-style verdicts are findings and are never written. `skills-lint.sh` check 11 keeps the two lists disjoint and fails any `needs-*` or `ready-for-*` name found in neither.
 
-`skills/shared/project-triage-gates.md` holds the four project reality gates (outcome reached, duplicate, superseded, owner role gone), the routing order, the timestamped note line, and the movement rule that decides when a `needs-info` project is shown again. It is loaded by `/holacracy:project-triage` and is the project twin of `triage-gates.md`, kept separate because callers cite steps by number.
+`skills/shared/project-triage-gates.md` holds the four project reality gates (outcome reached, duplicate, superseded, owner role gone), the routing order, the timestamped note line, and the movement rule that decides when a `needs-info` project is shown again. It is loaded by `/self-org:project-triage` and is the project twin of `triage-gates.md`, kept separate because callers cite steps by number.
 
-`skills/shared/project-capture-flow.md` (the draft-and-confirm P-flow for filing a well-formed project at intake) is loaded by the `/holacracy:capture-project` command and the `project-capture` subagent. It is the create-flow twin of `skills/shared/tension-capture-flow.md`; keep the two flows' constitutional-safeguard and confirmation-block conventions aligned.
+`skills/shared/project-capture-flow.md` (the draft-and-confirm P-flow for filing a well-formed project at intake) is loaded by the `/self-org:capture-project` command and the `project-capture` subagent. It is the create-flow twin of `skills/shared/tension-capture-flow.md`; keep the two flows' constitutional-safeguard and confirmation-block conventions aligned.
 
-`skills/checklist-metric-audit/` audits a circle's checklist items and metrics against its purpose, accountabilities, and domains, then remediates directly through the GlassFrog MCP. It leans on the constitutional distinction that checklist items and metrics are **operational, not governance** (Art. 3.2), so — unlike governance edits — it applies changes without a proposal. Its companion command is `/holacracy:audit-portfolio`. When an audit finding actually needs a new accountability or domain, it hands off to `/holacracy:capture-tension` rather than papering over the gap.
+`skills/checklist-metric-audit/` audits a circle's checklist items and metrics against its purpose, accountabilities, and domains, then remediates directly through the GlassFrog MCP. It leans on the constitutional distinction that checklist items and metrics are **operational, not governance** (Art. 3.2), so — unlike governance edits — it applies changes without a proposal. Its companion command is `/self-org:audit-portfolio`. When an audit finding actually needs a new accountability or domain, it hands off to `/self-org:capture-tension` rather than papering over the gap.
 
 ## GlassFrog MCP
 
-Wired in via `.mcp.json` at the repo root under the key `glassfrog-extended`, which puts every tool at `mcp__plugin_holacracy_glassfrog-extended__*`. The key must match `MCP_SERVER_NAME` in `scripts/run-behavioural-eval.py`, and `run-behavioural-eval.test.sh` fails if the two drift apart. Server is **GlassFrog Extended**, `https://ipllc-glassfrog-mcp-server.vercel.app/mcp`, hosted on Vercel by Integral Productivity LLC, OAuth-protected so each user brings their own GlassFrog API key. If that URL ever moves (e.g., to a canonical `mcp.glassfrog.*` once an official server lands), update `.mcp.json` and land it as a `feat:` commit — release-please computes the version bump. Do not hand-edit the version; see § Versioning.
+Wired in via `.mcp.json` at the repo root under the key `glassfrog-extended`, which puts every tool at `mcp__plugin_self-org_glassfrog-extended__*`. The key must match `MCP_SERVER_NAME` in `scripts/run-behavioural-eval.py`, and `run-behavioural-eval.test.sh` fails if the two drift apart. Server is **GlassFrog Extended**, `https://ipllc-glassfrog-mcp-server.vercel.app/mcp`, hosted on Vercel by Integral Productivity LLC, OAuth-protected so each user brings their own GlassFrog API key. If that URL ever moves (e.g., to a canonical `mcp.glassfrog.*` once an official server lands), update `.mcp.json` and land it as a `feat:` commit — release-please computes the version bump. Do not hand-edit the version; see § Versioning.
 
 ## Editing skills
 
@@ -68,9 +82,8 @@ content changed, referenced-command existence, orphaned shared references,
 role-roster delegation, descriptions inside Claude's upload limits (500
 characters for `plugin.json`, 1024 for a skill), GlassFrog tool names that
 exist on the server, GlassFrog tool grants generated from the inventory,
-triage-state names that are in the closed list, and a work-item surface map
-with no empty lifecycle cell. The upload-limit check exists because a
-rejected upload is silent: the org's claude.ai copy, which Cowork and scheduled
+triage-state names that are in the closed list, a work-item surface map with
+no empty lifecycle cell, and no pre-1.0 plugin name in a shipped surface. The upload-limit check exists because a rejected upload is silent: the org's claude.ai copy, which Cowork and scheduled
 cloud sessions load, keeps the last version it accepted and every later release
 misses those sessions ([#368](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/368)).
 `claude plugin validate` does not check these limits.
@@ -90,7 +103,7 @@ lines, in this order:
 
 ```bash
 python3 scripts/glassfrog-tool-inventory.py capture ../glassfrog-mcp-server > evals/glassfrog-tools.tsv
-python3 scripts/glassfrog-tool-inventory.py coach-frontmatter   # paste over agents/holacracy-coach.md's tools:/disallowedTools:
+python3 scripts/glassfrog-tool-inventory.py coach-frontmatter   # paste over agents/self-org-coach.md's tools:/disallowedTools:
 ```
 
 The coach lists every read tool once per server prefix in
@@ -171,7 +184,7 @@ Three things about the runner are worth knowing before you change it:
   of the five were live defects, not hypotheticals.
 - **The session's shape is checked, not assumed.** Read off the `system/init`
   event: the session must offer a `Skill` tool, `with_skill` must have at least
-  one `holacracy:` command registered, and the control must have none. Before
+  one `self-org:` command registered, and the control must have none. Before
   [#226](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/226)
   the harness could not tell "the plugin did not load" from "the plugin loaded
   and changed nothing" — both produce a healthy transcript and a scoreable
@@ -356,7 +369,7 @@ A `docs:`/`ci:`/`chore:`-only delta is not a stall and does not alarm; release-p
 
 ## The install path is a checked claim
 
-README's `## Install` section is verified, not trusted. `scripts/install-channel-check.sh` loads the catalog of every `/plugin marketplace add` channel it names and fails unless each lists `holacracy` from this repo at `ref: stable` with no `version`, and every channel has a matching `/plugin install holacracy@<catalog>` line. It exists because the README pointed at an empty catalog for months (#234).
+README's `## Install` section is verified, not trusted. `scripts/install-channel-check.sh` loads the catalog of every `/plugin marketplace add` channel it names and fails unless each lists `self-org` from this repo at `ref: stable` with no `version`, and every channel has a matching `/plugin install self-org@<catalog>` line. It exists because the README pointed at an empty catalog for months (#234).
 
 ```bash
 bash scripts/install-channel-check.sh --local-only   # the self-hosted channel; no credential

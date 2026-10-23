@@ -1,6 +1,6 @@
 # Project Capture Flow -- Shared Reference
 
-This document specifies the canonical **P-flow** used by every project capture in this plugin: the on-demand `/holacracy:capture-project` command and the `project-capture` subagent (and, later, ambient project-language detection and stalled-sweep escalation).
+This document specifies the canonical **P-flow** used by every project capture in this plugin: the on-demand `/self-org:capture-project` command and the `project-capture` subagent (and, later, ambient project-language detection and stalled-sweep escalation).
 
 The P-flow is **draft-and-confirm**: Claude proposes a complete project (owner role + outcome-framed description + a first next-action), soft-gates it against the well-formedness rubric's Family A, the human confirms or edits per-project, and only on explicit confirmation do the write calls fire. No auto-file. No silent file. Per-project confirmation, never batched.
 
@@ -10,7 +10,7 @@ This is the create-flow **twin of `./tension-capture-flow.md`**. Where tension c
 
 ## The Constitutional Safeguard
 
-> **Draft and confirm only.** Do not call `glassfrog_create_role_project`, `glassfrog_create_action`, or `glassfrog_link_goal_supporting_project` without explicit human confirmation. Do not review, reframe, archive, or re-own *existing* projects on the human's behalf -- that is `/holacracy:review-project`'s job. One project per invocation; never batch.
+> **Draft and confirm only.** Do not call `glassfrog_create_role_project`, `glassfrog_create_action`, or `glassfrog_link_goal_supporting_project` without explicit human confirmation. Do not review, reframe, archive, or re-own *existing* projects on the human's behalf -- that is `/self-org:review-project`'s job. One project per invocation; never batch.
 
 This is non-negotiable across every code path that files a project. The principle mirrors the tension boundary: Claude is a capture *assistant* and a *coach on form*; the human decides what actually lands. The soft-gate never becomes a hard gate -- a determined human can file an imperfect project, because the teaching already happened.
 
@@ -33,8 +33,8 @@ A well-formed project reads as an outcome **and** has at least one next-action d
 
 The flow can begin in three ways:
 
-1. **Explicit command.** User runs `/holacracy:capture-project` (optionally with the project text as `$ARGUMENTS`). Intent is clear; proceed.
-2. **Ambient detection.** *(future)* `holacratic-ai-governance` is loaded and Claude observes project-shaped language in conversation ("I need to get X done", "we should build Y", "my goal this quarter is Z"). Claude **pauses** and offers to capture: *"That sounds like a project worth filing -- want me to draft one?"* If the user assents, proceed. If they deflect, drop it.
+1. **Explicit command.** User runs `/self-org:capture-project` (optionally with the project text as `$ARGUMENTS`). Intent is clear; proceed.
+2. **Ambient detection.** *(future)* `self-org-ai-governance` is loaded and Claude observes project-shaped language in conversation ("I need to get X done", "we should build Y", "my goal this quarter is Z"). Claude **pauses** and offers to capture: *"That sounds like a project worth filing -- want me to draft one?"* If the user assents, proceed. If they deflect, drop it.
 3. **Stalled-sweep escalation.** *(future, #76)* The stalled-project sweep surfaces a role with no live projects and offers to capture one. User confirms or skips; proceed for those they confirm.
 
 Only the explicit path ships in this phase. The other two are named here as the extension seam -- the same P-flow serves them when they land.
@@ -132,7 +132,7 @@ On confirmation, two calls **in order** -- the action cannot attach until the pr
 - **Set `status: "current"` explicitly on both.** The `create_role_project` default "depends on org config"; do not rely on an unknown default. `current` is a member of the closed enum `archived | cancelled | completed | current | scheduled | someday | waiting` (verified live 2026-07-20).
 - **Pass `link` and `note` only when a source was recorded.** Both are optional fields of the live `create_role_project` schema. With no source, the call is the same as before. If GlassFrog rejects the `link` value, do not drop the source silently: retry once without `link`, keep the `note`, and say so in the result.
 - **`parent_project_id` is the attachment mechanism** -- it is what makes the action the project's first next-action (satisfying rubric A2). Feed the id returned by call 1 into call 2.
-- **Trust the returned ids. Do not list-back to verify.** `glassfrog_list_role_projects` / `list_project_actions` may not return the just-created records immediately (propagation/scoping) -- the create responses are the only reliable same-session confirmation. This is the same caveat documented for tensions in `../holacratic-ai-governance/references/glassfrog-api-constraints.md`.
+- **Trust the returned ids. Do not list-back to verify.** `glassfrog_list_role_projects` / `list_project_actions` may not return the just-created records immediately (propagation/scoping) -- the create responses are the only reliable same-session confirmation. This is the same caveat documented for tensions in `../self-org-ai-governance/references/glassfrog-api-constraints.md`.
 
 **On error:**
 
@@ -147,7 +147,7 @@ After a successful file, a **light, skippable** nudge:
 2. **If it returns ≥1 goal**, offer one line: *"Want to link this project to one of [Role]'s goals? [1] [Goal A]  [2] [Goal B]  [s] skip."* On a pick, call `glassfrog_link_goal_supporting_project(goal_id, proj_xxx)`. On skip, move on.
 3. **If it returns zero goals**, skip **silently** -- no "this role has no goals" noise.
 
-Scope-authority and assignment-fit are **out of scope** here -- those are `/holacracy:review-project`'s heavier, often-premature-at-birth checks.
+Scope-authority and assignment-fit are **out of scope** here -- those are `/self-org:review-project`'s heavier, often-premature-at-birth checks.
 
 Return a compact structured result:
 
@@ -169,7 +169,7 @@ Then continue the original conversation. Do not interrogate the user about next 
 - **No auto-file.** Every project passes through Step 6 confirmation, every time.
 - **No batched confirmation.** One project per invocation. If the user describes a second project mid-flow, finish or abort the current one, then surface the second separately.
 - **No hard block.** The soft-gate teaches and drafts fixes; it never refuses to file. A determined user can file an activity-framed project -- that's their call.
-- **No existing-project review.** Reviewing, reframing, re-owning, or archiving projects already on file is `/holacracy:review-project`'s job, not this flow's.
+- **No existing-project review.** Reviewing, reframing, re-owning, or archiving projects already on file is `/self-org:review-project`'s job, not this flow's.
 - **No scope-authority or assignment-fit check.** Those are Family B (review-project), deliberately deferred -- they are often premature at a project's birth.
 - **No deletion.** `glassfrog_delete_project` is permanent and out of scope here. Archiving (`status: "archived"`) is a review-project / sweep action, not a capture action.
 - **No push to the GlassFrog UI.** The whole point is to keep capture cheap and in-conversation.
@@ -186,9 +186,9 @@ Name it. Do not fabricate a `role_id` or `proj_id`. Tell the user: *"GlassFrog i
 
 | Surface | How it uses this flow |
 |---|---|
-| `/holacracy:capture-project` | Entry at Step 1.1 (explicit command). Runs Steps 2–8 via the `project-capture` subagent. The capture-time twin of the after-the-fact `/holacracy:review-project`. |
-| `/holacracy:review-project` | Operates on *existing* projects (Family A **and** B, adversarial critics, advisory reframes/archives). Where this flow prevents thin projects at intake, review-project cleans them up after the fact. Both load `./project-well-formedness.md` so "well-formed" means one thing. |
-| `holacratic-ai-governance` (ambient detection) | *(future)* Entry at Step 1.2 (ambient). On user assent, dispatches the `project-capture` subagent to run Steps 2–8. |
+| `/self-org:capture-project` | Entry at Step 1.1 (explicit command). Runs Steps 2–8 via the `project-capture` subagent. The capture-time twin of the after-the-fact `/self-org:review-project`. |
+| `/self-org:review-project` | Operates on *existing* projects (Family A **and** B, adversarial critics, advisory reframes/archives). Where this flow prevents thin projects at intake, review-project cleans them up after the fact. Both load `./project-well-formedness.md` so "well-formed" means one thing. |
+| `self-org-ai-governance` (ambient detection) | *(future)* Entry at Step 1.2 (ambient). On user assent, dispatches the `project-capture` subagent to run Steps 2–8. |
 | Stalled-project sweep (#76) | *(future)* Entry at Step 1.3 (escalation). A role with no live projects can route into this flow to capture one. |
 
 All surfaces that file a project call the same `create_role_project` -> `create_action(parent_project_id)` primitive with the same constitutional safeguard. They differ in conversational shape, not in what lands in GlassFrog.

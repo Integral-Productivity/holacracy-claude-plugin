@@ -69,7 +69,7 @@ _fixture() {  # $1 = destination dir
 description: A demo command.
 argument-hint: [thing, optional]
 ---
-# /holacracy:demo-cmd
+# /self-org:demo-cmd
 Loads `skills/shared/thing.md` Step 2 and links to [the skill](../skills/demo/SKILL.md).
 EOF
   cat > "$d/agents/demo-agent.md" <<'EOF'
@@ -123,7 +123,7 @@ EOF
   printf '# forward references\n' > "$d/evals/forward-references.txt"
   printf '# inventory\nglassfrog_get_me\tread\nglassfrog_list_my_roles\tread\nglassfrog_get_role\tread\nglassfrog_create_tension\twrite\nglassfrog_set_project_tags\twrite\n' \
     > "$d/evals/glassfrog-tools.tsv"
-  printf '# prefixes\nmcp__plugin_holacracy_glassfrog-extended__  plugin\nmcp__GlassFrog_Extended__  cowork\n' \
+  printf '# prefixes\nmcp__plugin_self-org_glassfrog-extended__  plugin\nmcp__GlassFrog_Extended__  cowork\n' \
     > "$d/evals/glassfrog-server-prefixes.txt"
   git -C "$d" init -q 2>/dev/null
   git -C "$d" config user.email t@t.t; git -C "$d" config user.name t
@@ -249,17 +249,17 @@ CASES=$((CASES + 1))
 
 # 5. A slash command referenced in prose that neither exists nor is declared.
 _fixture "$TMP/c5"
-printf '\nSee `/holacracy:ghost-command` for details.\n' >> "$TMP/c5/README.md"
+printf '\nSee `/self-org:ghost-command` for details.\n' >> "$TMP/c5/README.md"
 git -C "$TMP/c5" add -A && git -C "$TMP/c5" commit -qm c5
 _assert_load_bearing 5 "$TMP/c5" "reference to a nonexistent command"
 
 # 5b. Declaring it WITH a tracking issue clears it; declaring it WITHOUT one
 #     does not. An undated forward reference is indistinguishable from a stale
 #     one six months later, which is the whole point of requiring the issue.
-printf '/holacracy:ghost-command planned\n' >> "$TMP/c5/evals/forward-references.txt"
+printf '/self-org:ghost-command planned\n' >> "$TMP/c5/evals/forward-references.txt"
 SKILLS_LINT_ROOT="$TMP/c5" bash "$LINT" >/dev/null 2>&1 \
   && fail "check 5: a forward reference with no tracking issue was accepted"
-sedi 's|/holacracy:ghost-command planned|/holacracy:ghost-command #999 planned|' "$TMP/c5/evals/forward-references.txt"
+sedi 's|/self-org:ghost-command planned|/self-org:ghost-command #999 planned|' "$TMP/c5/evals/forward-references.txt"
 SKILLS_LINT_ROOT="$TMP/c5" bash "$LINT" >/dev/null 2>&1 \
   || fail "check 5: a forward reference declared against an issue was still flagged"
 CASES=$((CASES + 1))
@@ -306,14 +306,14 @@ SKILLS_LINT_ROOT="$TMP/c7b" bash "$LINT" >/dev/null 2>&1 \
 CASES=$((CASES + 1))
 
 # 7c. A frontmatter `tools:` grant is a capability, not a call description, and
-#     agents/holacracy-coach.md legitimately lists the tool there.
+#     agents/self-org-coach.md legitimately lists the tool there.
 _fixture "$TMP/c7c"
 cat > "$TMP/c7c/agents/granted.md" <<'EOF'
 ---
 name: granted
 description: agent with a tools grant
 model: inherit
-tools: Read, mcp__plugin_holacracy_glassfrog-extended__glassfrog_list_my_roles
+tools: Read, mcp__plugin_self-org_glassfrog-extended__glassfrog_list_my_roles
 ---
 Body that never mentions the roster call.
 EOF
@@ -389,11 +389,11 @@ CASES=$((CASES + 1))
 #     what the generator prints; each case below breaks them one way.
 _coach_fixture() {  # $1 = destination dir
   _fixture "$1"
-  { printf -- '---\nname: holacracy-coach\ndescription: coach\nmodel: inherit\n'
+  { printf -- '---\nname: self-org-coach\ndescription: coach\nmodel: inherit\n'
     GLASSFROG_INVENTORY_ROOT="$1" python3 "$HERE/glassfrog-tool-inventory.py" coach-frontmatter \
       || fail "coach fixture: generator failed"
     printf -- '---\nBody.\n'
-  } > "$1/agents/holacracy-coach.md"
+  } > "$1/agents/self-org-coach.md"
   git -C "$1" add -A && git -C "$1" commit -qm coach
 }
 
@@ -401,30 +401,30 @@ _coach_fixture() {  # $1 = destination dir
 _coach_fixture "$TMP/c10a"
 SKILLS_LINT_ROOT="$TMP/c10a" bash "$LINT" >/dev/null 2>&1 \
   || { SKILLS_LINT_ROOT="$TMP/c10a" bash "$LINT"; fail "check 10 flagged a coach generated from the inventory"; }
-grep '^tools:' "$TMP/c10a/agents/holacracy-coach.md" | grep -q 'create_tension\|set_project_tags' \
+grep '^tools:' "$TMP/c10a/agents/self-org-coach.md" | grep -q 'create_tension\|set_project_tags' \
   && fail "the generator put a write tool in the coach's allowlist"
-grep '^tools:' "$TMP/c10a/agents/holacracy-coach.md" | grep -q 'mcp__GlassFrog_Extended__glassfrog_get_role' \
+grep '^tools:' "$TMP/c10a/agents/self-org-coach.md" | grep -q 'mcp__GlassFrog_Extended__glassfrog_get_role' \
   || fail "the generator did not list reads under every prefix"
 CASES=$((CASES + 1))
 
 # 10b. A write tool added to the allowlist -- the one edit that breaks the
 #      coach's read-only guarantee.
 _coach_fixture "$TMP/c10b"
-sedi 's/^tools: Read,/tools: Read, mcp__plugin_holacracy_glassfrog-extended__glassfrog_create_tension,/' "$TMP/c10b/agents/holacracy-coach.md"
+sedi 's/^tools: Read,/tools: Read, mcp__plugin_self-org_glassfrog-extended__glassfrog_create_tension,/' "$TMP/c10b/agents/self-org-coach.md"
 git -C "$TMP/c10b" add -A && git -C "$TMP/c10b" commit -qm c10b
 _assert_load_bearing 10 "$TMP/c10b" "write tool in the coach allowlist"
 
 # 10c. The deny list misses a write. This is #342: two tag writes were added to
 #      the server and never to the hand-kept list.
 _coach_fixture "$TMP/c10c"
-sedi 's/, mcp__GlassFrog_Extended__glassfrog_set_project_tags//' "$TMP/c10c/agents/holacracy-coach.md"
+sedi 's/, mcp__GlassFrog_Extended__glassfrog_set_project_tags//' "$TMP/c10c/agents/self-org-coach.md"
 git -C "$TMP/c10c" add -A && git -C "$TMP/c10c" commit -qm c10c
 _assert_load_bearing 10 "$TMP/c10c" "write tool missing from the coach deny list"
 
 # 10d. A skill body names a tool by one server's prefix. That name is wrong on
 #      every other surface (#338).
 _fixture "$TMP/c10d"
-printf '\nCall `mcp__plugin_holacracy_glassfrog-extended__glassfrog_create_tension`.\n' >> "$TMP/c10d/skills/demo/SKILL.md"
+printf '\nCall `mcp__plugin_self-org_glassfrog-extended__glassfrog_create_tension`.\n' >> "$TMP/c10d/skills/demo/SKILL.md"
 git -C "$TMP/c10d" add -A && git -C "$TMP/c10d" commit -qm c10d
 _assert_load_bearing 10 "$TMP/c10d" "fully-qualified tool name in prose"
 
@@ -465,6 +465,35 @@ _states_fixture "$TMP/c11c"
 printf '| `needs-info` | also a verdict |\n' >> "$TMP/c11c/skills/shared/project-well-formedness.md"
 git -C "$TMP/c11c" add -A && git -C "$TMP/c11c" commit -qm c11c
 _assert_load_bearing 11 "$TMP/c11c" "name in both the state list and the verdict table"
+
+# 12. No pre-1.0 plugin name in a shipped surface (ADR-0020). The repo slug and
+#     an ADR filename in a link are not identifiers and must pass.
+_fixture "$TMP/c12a"
+printf '\nClone holacracy-claude-plugin; see [the seam](docs/adr/0005-holacracy-identity.md).\n' >> "$TMP/c12a/skills/demo/SKILL.md"
+mkdir -p "$TMP/c12a/docs/adr" && printf '# ADR\n' > "$TMP/c12a/docs/adr/0005-holacracy-identity.md"
+git -C "$TMP/c12a" add -A && git -C "$TMP/c12a" commit -qm c12a
+SKILLS_LINT_ROOT="$TMP/c12a" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c12a" bash "$LINT"; fail "check 12 flagged the repo slug or an ADR filename"; }
+CASES=$((CASES + 1))
+
+# 12b. An old skill name in prose -- nothing else in the lint looks at it.
+_fixture "$TMP/c12b"
+printf '\nHand off to the holacracy-secretary skill.\n' >> "$TMP/c12b/skills/demo/SKILL.md"
+git -C "$TMP/c12b" add -A && git -C "$TMP/c12b" commit -qm c12b
+_assert_load_bearing 12 "$TMP/c12b" "pre-1.0 skill name in a skill"
+
+# 12c. The allowlist is keyed on the pair: the README's migration note may name
+#      the old install line, and the same token in a skill still fails.
+_fixture "$TMP/c12c"
+printf '\nUpgrading: replace holacracy@labs with self-org@labs.\n' >> "$TMP/c12c/README.md"
+printf 'README.md holacracy@ migration note\n' > "$TMP/c12c/evals/legacy-names-allow.txt"
+git -C "$TMP/c12c" add -A && git -C "$TMP/c12c" commit -qm c12c
+SKILLS_LINT_ROOT="$TMP/c12c" bash "$LINT" >/dev/null 2>&1 \
+  || { SKILLS_LINT_ROOT="$TMP/c12c" bash "$LINT"; fail "check 12 ignored an allowlisted pair"; }
+CASES=$((CASES + 1))
+printf '\nInstall holacracy@labs.\n' >> "$TMP/c12c/skills/demo/SKILL.md"
+git -C "$TMP/c12c" add -A && git -C "$TMP/c12c" commit -qm c12c2
+_assert_load_bearing 12 "$TMP/c12c" "allowlisted token outside its file"
 
 # 13. The work-item surface map (ADR-0021). The fixture's map is 2 types x 2
 #     stages; Beta x Sweep is held only by #42, so it exercises the issue legs.
@@ -609,7 +638,7 @@ if [ "$(printf '%s\n' "$got" | grep -c .)" != 1 ] || ! grep -q 'Project × Readi
 fi
 CASES=$((CASES + 1))
 
-# 12. The real repository is clean. Fixtures prove the checks work; this proves
+# 14. The real repository is clean. Fixtures prove the checks work; this proves
 #    they are actually pointed at the plugin.
 bash "$LINT" >/dev/null 2>&1 || { bash "$LINT"; fail "the live repository does not pass its own lint"; }
 CASES=$((CASES + 1))

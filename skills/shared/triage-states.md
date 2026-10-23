@@ -4,7 +4,7 @@ This is the closed list of triage states the plugin may write onto a GlassFrog p
 
 Loaded by:
 
-- `/holacracy:project-triage`, the only surface that writes these states. Its gates and routing live in `./project-triage-gates.md`.
+- `/self-org:project-triage`, the only surface that writes these states. Its gates and routing live in `./project-triage-gates.md`.
 - Any surface that reads a project's triage state, such as a queue of `ready-for-agent` work.
 
 ## Step 1 -- The closed list
@@ -18,7 +18,7 @@ A project carries **at most one** of these tags. No tag means the project has ne
 | `ready-for-agent` | Well enough formed that an AI agent filler can take the next action | an agent filler |
 | `ready-for-human` | Well enough formed, but the next action needs a person | a human filler |
 
-**Archive is not a state.** A project that fails a reality gate (done, duplicate, superseded, owner role gone) leaves the list through its GlassFrog `status` (`archived`, or `completed` when the outcome exists), with the reason in its note. `/holacracy:stalled-project-sweep` already archives this way.
+**Archive is not a state.** A project that fails a reality gate (done, duplicate, superseded, owner role gone) leaves the list through its GlassFrog `status` (`archived`, or `completed` when the outcome exists), with the reason in its note. `/self-org:stalled-project-sweep` already archives this way.
 
 The names match the hand-set tags already found on live projects and the issue-triage labels in `docs/agents/triage-labels.md`, so one vocabulary covers both.
 

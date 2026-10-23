@@ -75,7 +75,7 @@ mkdir -p "$CRED_DIR"
 
 AUTHED_CRED="$CRED_DIR/authed.json"
 cat > "$AUTHED_CRED" <<'JSON'
-{"mcpOAuth":{"plugin:holacracy:glassfrog-extended|abc123":{"serverName":"plugin:holacracy:glassfrog-extended","serverUrl":"https://example/mcp","accessToken":"a-real-looking-token"}}}
+{"mcpOAuth":{"plugin:self-org:glassfrog-extended|abc123":{"serverName":"plugin:self-org:glassfrog-extended","serverUrl":"https://example/mcp","accessToken":"a-real-looking-token"}}}
 JSON
 
 # An OAuth flow begun and never completed. This is NOT a hypothetical shape:
@@ -83,7 +83,7 @@ JSON
 # like, and it is precisely why "an entry exists" cannot be the test.
 EMPTY_CRED="$CRED_DIR/empty-token.json"
 cat > "$EMPTY_CRED" <<'JSON'
-{"mcpOAuth":{"plugin:holacracy:glassfrog-extended|abc123":{"serverName":"plugin:holacracy:glassfrog-extended","serverUrl":"https://example/mcp","accessToken":"","discoveryState":{"oauthMetadataFound":true}}}}
+{"mcpOAuth":{"plugin:self-org:glassfrog-extended|abc123":{"serverName":"plugin:self-org:glassfrog-extended","serverUrl":"https://example/mcp","accessToken":"","discoveryState":{"oauthMetadataFound":true}}}}
 JSON
 
 OTHER_CRED="$CRED_DIR/other-server.json"
@@ -148,7 +148,7 @@ assert_conditional() {  # $1 = captured output, $2 = context
 # 1. A windowed entry whose packet_summary contains a triple-quote and a
 #    trailing backslash must still produce VALID JSON (heredoc-injection fix).
 cat > "$TMP/l1.jsonl" <<JSONL
-{"id":"a","title":"holacracy/secretary/pre-tactical-prep/ops","last_status":"ok","surface_from":"${WIN_FROM}","surface_until":"${WIN_UNTIL}","built_at":"${TODAY}T08:00:00Z","packet_summary":"weird \"\"\" tail\\\\","packet_path":"~/p/ops.md"}
+{"id":"a","title":"self-org/secretary/pre-tactical-prep/ops","last_status":"ok","surface_from":"${WIN_FROM}","surface_until":"${WIN_UNTIL}","built_at":"${TODAY}T08:00:00Z","packet_summary":"weird \"\"\" tail\\\\","packet_path":"~/p/ops.md"}
 JSONL
 out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/l1.jsonl" bash "$HOOK")"
 echo "$out" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' || fail "envelope is not valid JSON for adversarial packet_summary"
@@ -162,10 +162,23 @@ JSONL
 out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/l2.jsonl" bash "$HOOK")"
 echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/legacy" || fail "legacy entry did not surface"
 
+# 2b. The routine prefix was renamed with the plugin (ADR-0020). Titles under the
+#     new `self-org/` prefix and the pre-1.0 `holacracy/` prefix both surface; a
+#     title under any other prefix is somebody else's task and stays out.
+cat > "$TMP/l2b.jsonl" <<JSONL
+{"id":"b1","title":"self-org/secretary/pre-tactical-prep/new","next_fire":"${FIRE_TODAY}","last_status":"ok"}
+{"id":"b2","title":"holacracy/secretary/pre-tactical-prep/old","next_fire":"${FIRE_TODAY}","last_status":"ok"}
+{"id":"b3","title":"other-plugin/secretary/pre-tactical-prep/foreign","next_fire":"${FIRE_TODAY}","last_status":"ok"}
+JSONL
+out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/l2b.jsonl" bash "$HOOK")"
+echo "$out" | grep -q "self-org/secretary/pre-tactical-prep/new" || fail "self-org/ routine did not surface"
+echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/old" || fail "legacy holacracy/ routine did not surface"
+echo "$out" | grep -q "foreign" && fail "a routine under another prefix surfaced"
+
 # 3. An error-status entry surfaces under anomalies; a malformed line is ignored.
 cat > "$TMP/l3.jsonl" <<JSONL
 not-json
-{"id":"c","title":"holacracy/lead-link/audit/ops","last_status":"error","last_fire":"2026-06-17T09:00:00Z"}
+{"id":"c","title":"self-org/lead-link/audit/ops","last_status":"error","last_fire":"2026-06-17T09:00:00Z"}
 JSONL
 out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/l3.jsonl" bash "$HOOK")"
 echo "$out" | grep -q "last fire FAILED" || fail "error entry did not surface as anomaly"
@@ -177,10 +190,10 @@ assert_quiet "$out" "unreadable ledger"
 
 # 5. Out-of-window entry -> does not surface; quiet marker instead.
 cat > "$TMP/l5.jsonl" <<JSONL
-{"id":"d","title":"holacracy/secretary/pre-tactical-prep/x","surface_from":"2026-07-01T00:00:00Z","surface_until":"2026-07-01T23:59:59Z","last_status":"ok","packet_summary":"future"}
+{"id":"d","title":"self-org/secretary/pre-tactical-prep/x","surface_from":"2026-07-01T00:00:00Z","surface_until":"2026-07-01T23:59:59Z","last_status":"ok","packet_summary":"future"}
 JSONL
 out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/l5.jsonl" bash "$HOOK")"
-echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/x" \
+echo "$out" | grep -q "self-org/secretary/pre-tactical-prep/x" \
   && fail "out-of-window entry should not surface"
 assert_quiet "$out" "out-of-window entry"
 
@@ -199,10 +212,10 @@ assert_quiet "$out" "out-of-window entry"
 for _hms in 00:30:00 23:30:00; do
   _inst="$(_utc_for_local "$_hms")"
   cat > "$TMP/l6.jsonl" <<JSONL
-{"id":"e","title":"holacracy/secretary/tz-edge/${_hms}","next_fire":"${_inst}","last_status":"ok"}
+{"id":"e","title":"self-org/secretary/tz-edge/${_hms}","next_fire":"${_inst}","last_status":"ok"}
 JSONL
   out="$(HOLACRACY_ROUTINE_LEDGER="$TMP/l6.jsonl" bash "$HOOK")"
-  echo "$out" | grep -q "holacracy/secretary/tz-edge/${_hms}" \
+  echo "$out" | grep -q "self-org/secretary/tz-edge/${_hms}" \
     || fail "routine due today LOCAL at ${_hms} (UTC instant ${_inst}) did not surface -- _date() is comparing a UTC date against a local today"
 done
 
@@ -228,12 +241,12 @@ echo "$out" | grep -qi "grounding complete" && fail "directive must never claim 
 # G3. Grounding + briefing combine: both surface, leading with the directive,
 #     as a single valid-JSON envelope.
 cat > "$TMP/g3.jsonl" <<JSONL
-{"id":"g3","title":"holacracy/secretary/pre-tactical-prep/ops","next_fire":"${FIRE_TODAY}","last_status":"ok"}
+{"id":"g3","title":"self-org/secretary/pre-tactical-prep/ops","next_fire":"${FIRE_TODAY}","last_status":"ok"}
 JSONL
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE HOLACRACY_ROUTINE_LEDGER="$TMP/g3.jsonl" bash "$HOOK")"
 echo "$out" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' || fail "combined envelope is not valid JSON"
 echo "$out" | grep -q "role-grounding directive" || fail "combined output missing grounding directive"
-echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/ops" || fail "combined output missing routine briefing"
+echo "$out" | grep -q "self-org/secretary/pre-tactical-prep/ops" || fail "combined output missing routine briefing"
 
 # G4. Explicit off + no ledger -> silent (toggle works; existing behavior).
 out="$(cd "$TMP" && HOLACRACY_GROUNDING_DIRECTIVE=off HOLACRACY_ROUTINE_LEDGER="$MISSING" bash "$HOOK")"; rc=$?
@@ -327,7 +340,7 @@ echo "$out" | grep -q "include_roles" \
 #      measurement window instead of failing. Pin it: changing it should be a
 #      deliberate act that trips a test, not a side effect of rewording the body.
 marker="$(awk "/<<'DIRECTIVE'/{found=1; next} found{print; exit}" "$HOOK")"
-[ "$marker" = '**Holacracy plugin: role-grounding directive**' ] \
+[ "$marker" = '**self-org plugin: role-grounding directive**' ] \
   || fail "directive marker line drifted to: '$marker' -- this closes the current PDCA-1 measurement window; see ADR-0008 amendment A3"
 
 # --- Capability gate (issue #283) -----------------------------------------
@@ -405,7 +418,7 @@ assert_quiet "$out" "master toggle off must not emit the conditional directive"
 # G24. Conditional directive + a routine briefing combine into one valid
 #      envelope, briefing intact. Neither half may swallow the other.
 cat > "$TMP/g24.jsonl" <<JSONL
-{"id":"g24","title":"holacracy/secretary/pre-tactical-prep/ops","next_fire":"${FIRE_TODAY}","last_status":"ok"}
+{"id":"g24","title":"self-org/secretary/pre-tactical-prep/ops","next_fire":"${FIRE_TODAY}","last_status":"ok"}
 JSONL
 out="$(cd "$TMP" && env -u HOLACRACY_GROUNDING_DIRECTIVE \
   HOLACRACY_GROUNDING_CREDENTIALS_FILE="$MISSING_CRED" \
@@ -414,7 +427,7 @@ echo "$out" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' \
   || fail "conditional + briefing envelope is not valid JSON"
 echo "$out" | grep -q "role-grounding check (conditional directive)" \
   || fail "conditional directive missing when a briefing is also present"
-echo "$out" | grep -q "holacracy/secretary/pre-tactical-prep/ops" \
+echo "$out" | grep -q "self-org/secretary/pre-tactical-prep/ops" \
   || fail "briefing lost alongside the conditional directive"
 
 # G25. The conditional directive carries the running version, for the same

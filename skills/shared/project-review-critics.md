@@ -1,6 +1,6 @@
 # Project Review Critics -- Shared Reference
 
-The five critic lenses, the finding schema, and the severity/cap/dedupe rules for `/holacracy:review-project`. Written so **both** execution modes seed from one spec with no drift:
+The five critic lenses, the finding schema, and the severity/cap/dedupe rules for `/self-org:review-project`. Written so **both** execution modes seed from one spec with no drift:
 
 - **Inline mode** (backlog walk) -- the command adopts each lens as a sequential reasoning pass in one context.
 - **Subagent mode** (deep single-project review) -- the `project-critic` subagent (`agents/project-critic.md`) runs one lens per dispatch and returns findings in the schema below.
@@ -64,7 +64,7 @@ Flags:
 
 ### 3. Scope-authority (rubric B2) -- **advisory only**
 
-Reads: `get_role` / `glassfrog_get_role_context` / `list_role_domains`; reasons from `authority-boundaries.md` exactly as `/holacracy:check-authority` does.
+Reads: `get_role` / `glassfrog_get_role_context` / `list_role_domains`; reasons from `authority-boundaries.md` exactly as `/self-org:check-authority` does.
 
 Flags:
 - **B2 out-of-authority** -- scope exceeds the role's accountabilities/domains, or reaches into another role's domain. `drafted_fix: route-to-tension` (a sensed governance tension). `advisory-route`.

@@ -3,11 +3,11 @@
 This is the canonical set of gates any Holacratic tension passes through before the plugin captures, routes, or processes it. It is not a workflow -- it is the constitutional checks, in the order that makes each one worth asking. Loaded by:
 
 - The `tension-capture` subagent (every capture flow runs Gates 1--2 before drafting).
-- The `/holacracy:capture-tension` slash command.
-- The `/holacracy:tension-triage` slash command (readiness assessment over an existing backlog).
-- The `/holacracy:supersession-sweep` slash command (Step 4 is the supersession check).
-- The `holacratic-ai-governance` skill (proactive tension sensing during conversation).
-- The `holacracy-rep-link` skill, whose `../holacracy-rep-link/references/tension-triage-guide.md` extends this with Rep-Link-specific escalation logic.
+- The `/self-org:capture-tension` slash command.
+- The `/self-org:tension-triage` slash command (readiness assessment over an existing backlog).
+- The `/self-org:supersession-sweep` slash command (Step 4 is the supersession check).
+- The `self-org-ai-governance` skill (proactive tension sensing during conversation).
+- The `self-org-rep-link` skill, whose `../self-org-rep-link/references/tension-triage-guide.md` extends this with Rep-Link-specific escalation logic.
 
 Triage runs in sequence. **Stop at the first step that resolves the tension.**
 
@@ -49,7 +49,7 @@ This is a distinct class of inbox debt: **authority parked as though it needed s
 
 **Confirmation, not automation.** Recognising that authority exists is a reading; acting on it is a write. Surface the reading, let the user decide, and never convert or archive without an explicit per-item keystroke.
 
-> **Note on dispatch.** The disposition this gate produces -- "convert to project," "convert to action," "repair the artifact directly" -- is the province of `/holacracy:process-tension`, which does not exist yet ([#160](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/160)). Until it ships, hand the project case to `/holacracy:capture-project` and name the rest honestly for the user to act on.
+> **Note on dispatch.** The disposition this gate produces -- "convert to project," "convert to action," "repair the artifact directly" -- is the province of `/self-org:process-tension`, which does not exist yet ([#160](https://github.com/Integral-Productivity/holacracy-claude-plugin/issues/160)). Until it ships, hand the project case to `/self-org:capture-project` and name the rest honestly for the user to act on.
 
 ---
 
@@ -187,7 +187,7 @@ So if the user wants the venue encoded *in the record itself*, the mechanism is 
 
 Constitutional grounding: S.5.5.1d -- the test for whether a proposed objection is actually independent of an existing tension is "the tension would exist even if the Proposer's tension were already resolved." The same logic applies *between* tensions in the inbox: if Tension A would be fully addressed by resolving Tension B, then A is not a separate tension worth keeping.
 
-**Procedure** (especially for `/holacracy:supersession-sweep` and during `/holacracy:tension-triage`):
+**Procedure** (especially for `/self-org:supersession-sweep` and during `/self-org:tension-triage`):
 
 1. List existing unprocessed tensions on the same role (or, for broad sweeps, on related roles in the same circle).
 2. For each candidate pair, ask: "Would Tension A still exist as a felt gap if Tension B were resolved?"

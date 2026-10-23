@@ -231,7 +231,7 @@ This is the heart of the plugin's "proactive" stance: tensions are surfaced wher
 
 ### When to invoke
 
-Continuously, while the `holacratic-ai-governance` skill is loaded and the session is in interactive (non-routine) context. There is no separate command to run Pattern 5; it is an ambient attention pattern.
+Continuously, while the `self-org-ai-governance` skill is loaded and the session is in interactive (non-routine) context. There is no separate command to run Pattern 5; it is an ambient attention pattern.
 
 ### Trigger phrases
 
@@ -274,7 +274,7 @@ Pattern 5 is gentle. The user is *working*, not auditing tensions. One offer per
 - The user is in a focused execution mode (e.g., "stop talking and just do X"). Read the room.
 - The conversation is about something other than the user's own work -- e.g., the user is helping someone else, or analyzing a hypothetical. Tensions belong to the lived role-filler; if the user isn't the role-filler, capture is the wrong move.
 - The user has just declined a similar offer in this session. Give the pattern a few turns before re-attempting.
-- **The user is in an active Tactical Meeting** (invoked `/holacracy:tactical`, or the `holacracy-secretary` skill is the loaded skill driving live tactical capture). The Secretary's "Backlog-first tension capture" in `skills/holacracy-secretary/SKILL.md` is the right surface for in-meeting tension capture — Pattern 5 should not interrupt the meeting flow with parallel offers. Pattern 5 owns everything outside the active tactical-meeting context.
+- **The user is in an active Tactical Meeting** (invoked `/self-org:tactical`, or the `self-org-secretary` skill is the loaded skill driving live tactical capture). The Secretary's "Backlog-first tension capture" in `skills/self-org-secretary/SKILL.md` is the right surface for in-meeting tension capture — Pattern 5 should not interrupt the meeting flow with parallel offers. Pattern 5 owns everything outside the active tactical-meeting context.
 
 ### Session-closing offer
 
@@ -282,7 +282,7 @@ When the user signals session closing ("done for now", "that's it for today", "g
 
 > *"Before we close -- want me to sweep the tensions filed this session for supersession?"*
 
-If yes, run `/holacracy:supersession-sweep` with the default `session` scope. If no, close normally. Silent when no tensions were filed.
+If yes, run `/self-org:supersession-sweep` with the default `session` scope. If no, close normally. Silent when no tensions were filed.
 
 ---
 

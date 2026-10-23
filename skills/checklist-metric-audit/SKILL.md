@@ -3,7 +3,7 @@ name: checklist-metric-audit
 description: >
   Audit a Holacracy circle's operational tracking portfolio -- its checklist items and metrics -- against the circle's purpose, accountabilities, and domains, then propose and, on confirmation, apply improvements. Use whenever the user asks to review, audit, clean up, or improve the checklist items or metrics of a circle or role in GlassFrog; when they say a circle's tactical review feels noisy, redundant, or thin; when they ask "are we tracking the right things," "do our checklists match our accountabilities," "what's missing from this circle's checklist," or "our tactical takes too long"; or when a governance/tactical review surfaces that operational tracking has drifted from what the circle is accountable for. Also covers tiering a large portfolio so a weekly Tactical reads only what can trigger action. Checklist items and metrics are operational, not governance (Constitution Art. 3.2), so changes apply directly through the GlassFrog MCP after per-change confirmation, with no proposal.
 status: draft
-version: 0.2.1
+version: 0.3.0
 ---
 # Checklist & Metric Portfolio Audit
 
@@ -110,7 +110,7 @@ An audit that flags everything trains the user to ignore it. A mature portfolio 
 
 ## Boundaries
 
-- **This is not governance.** Do not route checklist/metric changes through a proposal or a governance meeting; that would be a category error (and slower). If an audit finding actually requires a new accountability or domain -- e.g., no role is accountable for something the circle needs -- *that* is a governance tension: surface it and hand off to `/holacracy:capture-tension`, don't try to fix it with a checklist item.
+- **This is not governance.** Do not route checklist/metric changes through a proposal or a governance meeting; that would be a category error (and slower). If an audit finding actually requires a new accountability or domain -- e.g., no role is accountable for something the circle needs -- *that* is a governance tension: surface it and hand off to `/self-org:capture-tension`, don't try to fix it with a checklist item.
 - **Announce, don't edit silently.** Name every change applied, and prefer surfacing new recurring items in a tactical meeting.
 - **Respect ownership.** Metrics are the Lead Link's accountability to define; the Secretary maintains the checklist. Operate as advisor/actor to those roles, and say so.
 - **Do not assess what the API cannot show.** Staleness, trend, and range are not readable from GlassFrog. Saying "this metric looks inactive" from a definition-only read is the same failure as reporting health from absent evidence.

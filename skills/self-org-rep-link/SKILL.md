@@ -1,7 +1,7 @@
 ---
-name: holacracy-rep-link
+name: self-org-rep-link
 status: draft
-version: 1.1.5
+version: 2.0.0
 description: >
   AI co-Rep Link for Holacracy-governed circles. Use this skill whenever someone is filling or supporting the Rep Link role in a Holacracy organization, wants help surfacing tensions to the enclosing circle, needs to prepare for an enclosing circle tactical or governance meeting, wants to triage which member tensions belong in the enclosing circle vs. staying local, needs help identifying or drafting proposals to remove constraints the broader organization is imposing on their sub-circle, or says things like "help me prep for the enclosing circle meeting," "should I escalate this tension?", "help me remove this constraint," or "what tensions should I carry?" Also trigger when someone asks what a Rep Link does, how to energize the Rep Link role, or wants to understand what crosses the circle boundary. Load GlassFrog context before beginning Rep Link work when the GlassFrog MCP is available.
 ---
@@ -44,9 +44,9 @@ When GlassFrog MCP tools are available, load live governance data before beginni
 | Triage support | `glassfrog_list_roles` for both circles to check accountability scope |
 | General context | `glassfrog_list_people` to confirm who fills what role |
 
-**Operating alongside `holacratic-ai-governance`:** If that skill is active in the same session, it has already loaded governance context. Use what it loaded -- don't re-fetch. Reference its data directly and layer Rep Link-specific analysis on top of it.
+**Operating alongside `self-org-ai-governance`:** If that skill is active in the same session, it has already loaded governance context. Use what it loaded -- don't re-fetch. Reference its data directly and layer Rep Link-specific analysis on top of it.
 
-**Operating alongside `holacracy-secretary`:** The Secretary holds the sub-circle's governance records. When both skills are active, the Secretary tracks what was decided; the Rep Link tracks what tensions need to cross the boundary. These are complementary, not overlapping.
+**Operating alongside `self-org-secretary`:** The Secretary holds the sub-circle's governance records. When both skills are active, the Secretary tracks what was decided; the Rep Link tracks what tensions need to cross the boundary. These are complementary, not overlapping.
 
 **If GlassFrog is not connected:** proceed with constitutional knowledge and user-provided context. Name this clearly: "I don't have live governance data, so I'm working from what you've shared." Ask the user to describe: active projects and their blockers, any metrics or checklist items they know are off-track, tensions that circle members have raised, and any enclosing circle policies or resource decisions that feel constraining.
 
@@ -257,7 +257,7 @@ For a library of common constraint patterns and worked proposal examples, load `
 
 | Availability | Behavior |
 |---|---|
-| GlassFrog + holacratic-ai-governance active | Use loaded governance context; layer Rep Link analysis on it |
+| GlassFrog + self-org-ai-governance active | Use loaded governance context; layer Rep Link analysis on it |
 | GlassFrog MCP connected (no companion skill) | Load governance context directly; follow GlassFrog integration table |
 | Neither available | Work from user-provided context; name the limitation clearly; offer same structured analysis with reduced data confidence |
 

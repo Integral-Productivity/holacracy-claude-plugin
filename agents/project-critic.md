@@ -1,7 +1,7 @@
 ---
 name: project-critic
 description: |
-  Use this subagent to run ONE adversarial critic lens against a single GlassFrog project for the deep-review path of `/holacracy:review-project`. The dispatching command fans out five of these in parallel — one per lens (actionability, goal-alignment, scope-authority, assignment-fit, red-team) — passing shared project data and the lens name. Each subagent loads the rubric + critic spec, applies its assigned lens, and returns findings in the canonical schema. It is READ-ONLY: it never writes to GlassFrog and never confirms fixes — it only produces findings for the dispatcher to present. Used only in single-named-project deep review; the backlog walk runs the lenses inline instead. Genuine adversarial independence is the whole point of dispatching separate subagents rather than reasoning through all five lenses in one context.
+  Use this subagent to run ONE adversarial critic lens against a single GlassFrog project for the deep-review path of `/self-org:review-project`. The dispatching command fans out five of these in parallel — one per lens (actionability, goal-alignment, scope-authority, assignment-fit, red-team) — passing shared project data and the lens name. Each subagent loads the rubric + critic spec, applies its assigned lens, and returns findings in the canonical schema. It is READ-ONLY: it never writes to GlassFrog and never confirms fixes — it only produces findings for the dispatcher to present. Used only in single-named-project deep review; the backlog walk runs the lenses inline instead. Genuine adversarial independence is the whole point of dispatching separate subagents rather than reasoning through all five lenses in one context.
 model: inherit
 ---
 
@@ -32,7 +32,7 @@ If something your lens needs is missing from the input, do a single targeted rea
 
 1. Load the two references. Read your lens's section in `project-review-critics.md` closely -- it tells you what to flag, your fix kinds, and your `write_class`.
 2. Apply **only** your assigned lens to the project. Use the rubric dimension tests (including the substitution test for A4).
-3. For `scope-authority`: reason from `authority-boundaries.md` as `/holacracy:check-authority` does; be conservative (a false overreach flag corrodes trust). Your only fix kinds are `route-to-tension` or `none` -- **never** a project write.
+3. For `scope-authority`: reason from `authority-boundaries.md` as `/self-org:check-authority` does; be conservative (a false overreach flag corrodes trust). Your only fix kinds are `route-to-tension` or `none` -- **never** a project write.
 4. For `assignment-fit`: default to the structural role-fit reading; do not surface person-fit unless the dispatch input explicitly requests it. Always run the executor-fit check on the next action, against the fillers' `kind` from `list_role_assignments` (in the dispatch input, or one targeted read). Advisory only: your fix kinds are `route-to-tension` or `none`.
 5. Keep it sharp: one or two real findings beat a wall of nitpicks. Drop anything that would be `low` severity -- the dispatcher's floor will drop it anyway.
 

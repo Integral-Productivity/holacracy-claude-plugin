@@ -1,15 +1,15 @@
 {
-  "name": "integral-productivity-holacracy",
+  "name": "integral-productivity-self-org",
   "owner": {
     "name": "Integral Productivity Tooling Team",
     "email": "devtools@integralproductivity.com"
   },
   "metadata": {
-    "description": "Public, self-hosted channel for the holacracy plugin. Integral Productivity's canonical channel is integral-productivity-labs (private); see ADR-0016."
+    "description": "Public, self-hosted channel for the self-org plugin. Integral Productivity's canonical channel is integral-productivity-labs (private); see ADR-0016."
   },
   "plugins": [
     {
-      "name": "holacracy",
+      "name": "self-org",
       "source": {
         "source": "github",
         "repo": "Integral-Productivity/holacracy-claude-plugin",

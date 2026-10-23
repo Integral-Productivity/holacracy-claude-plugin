@@ -4,6 +4,6 @@
 # `disallowedTools:`. A prefix not listed here gets no GlassFrog tools in the
 # coach: the agent fails closed (#338). Add a prefix when a new surface is
 # observed, then regenerate the coach lines.
-mcp__plugin_holacracy_glassfrog-extended__   plugin .mcp.json (key glassfrog-extended)
+mcp__plugin_self-org_glassfrog-extended__   plugin .mcp.json (key glassfrog-extended)
 mcp__GlassFrog_Extended__                    Cowork connector (reported 2026-10-08, plugin v0.22.0)
 mcp__glassfrog-extended__                    Claude Code user-scoped server (2026-10-08)

@@ -1,0 +1,11 @@
+# Pairs exempt from skills-lint.sh check 12 (no pre-1.0 plugin name in a
+# shipped surface). One entry per line: `<file> <token> <reason>`.
+#
+# Keyed on the PAIR, as evals/lint-allow-paths.txt is: the README's migration
+# note must name the old install line, and that does not excuse the same token
+# anywhere else. Every entry here is a file whose subject is the rename itself.
+
+README.md    holacracy@   the "Upgrading from holacracy" note names the old install line
+README.md    /holacracy:  the "Upgrading from holacracy" note names the old command prefix
+CLAUDE.md    /holacracy:  explains what check 12 guards against
+CLAUDE.md    holacracy@   explains what check 12 guards against

@@ -190,7 +190,7 @@ This document is referenced from multiple holacracy skills. The relevant section
 
 | If you're working in... | Most relevant sections |
 |------------------------|----------------------|
-| `holacracy-facilitator` | Authority During Meetings; Facilitator-Lead Link interaction; the anti-pattern table |
-| `holacracy-secretary` | Secretary-Lead Link interaction; Secretary-Facilitator interaction; constitutional rulings |
-| `holacracy-lead-link` | Role-Filler Autonomy Principle; Governance vs. Operational table; Domain Authority |
-| `holacratic-ai-governance` | All sections -- especially the Governance vs. Operational decision tree and Domain Authority |
+| `self-org-facilitator` | Authority During Meetings; Facilitator-Lead Link interaction; the anti-pattern table |
+| `self-org-secretary` | Secretary-Lead Link interaction; Secretary-Facilitator interaction; constitutional rulings |
+| `self-org-lead-link` | Role-Filler Autonomy Principle; Governance vs. Operational table; Domain Authority |
+| `self-org-ai-governance` | All sections -- especially the Governance vs. Operational decision tree and Domain Authority |

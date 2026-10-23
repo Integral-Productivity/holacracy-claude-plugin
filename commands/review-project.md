@@ -3,9 +3,9 @@ description: Adversarial review of GlassFrog projects against the well-formednes
 argument-hint: [project name/id, or circle name — optional]
 ---
 
-# /holacracy:review-project
+# /self-org:review-project
 
-Review GlassFrog **projects** for quality: is each one well-formed (an actionable outcome with a next-action and a clear owner) and well-placed (serving a goal, within the owner role's authority, on the best-fit role)? For each finding, Claude drafts a fix; the human confirms per-item; only additive fixes are written to GlassFrog. This is the project-side analog of `/holacracy:tension-triage`.
+Review GlassFrog **projects** for quality: is each one well-formed (an actionable outcome with a next-action and a clear owner) and well-placed (serving a goal, within the owner role's authority, on the best-fit role)? For each finding, Claude drafts a fix; the human confirms per-item; only additive fixes are written to GlassFrog. This is the project-side analog of `/self-org:tension-triage`.
 
 Load three shared references at the start:
 
@@ -39,7 +39,7 @@ Load three shared references at the start:
    - **Backlog walk:** show a one-line verdict per project first -- its state (`well-formed`, `needs-outcome`, ...), where the verdict is the state of the highest-severity surviving finding. Expand the findings block **only for non-well-formed projects**. A `well-formed` project gets one line and no expansion.
    - **Deep single-project:** always expand the full findings block.
 
-6. **The per-project findings block** (modeled on `/holacracy:tension-triage`):
+6. **The per-project findings block** (modeled on `/self-org:tension-triage`):
 
    ```
    Project [N of M]: [description excerpt]   (proj_xxx, owned by [Role] of [Circle])
@@ -81,7 +81,7 @@ A confirmed `advisory-route` finding is a *structural* gap -- the project is on 
 
 - Dispatch the `tension-capture` subagent (`agents/tension-capture.md`) with: the tension text (front-loaded topic, e.g. *"Scope-authority gap: [Role] owns project [X] whose scope reaches into [other role/domain] -- ..."*), the sensing role hint, and an attribution preamble if carried on someone's behalf.
 - The `tension-capture` subagent runs its own draft-and-confirm flow. It files a tension on a role's backlog; it does **not** touch the project.
-- Reason about scope-authority from `skills/shared/authority-boundaries.md`, exactly as `/holacracy:check-authority` does.
+- Reason about scope-authority from `skills/shared/authority-boundaries.md`, exactly as `/self-org:check-authority` does.
 
 Assignment-fit defaults to the structural role-fit reading. Only surface the person-fit reading when the user explicitly asks -- it's a Lead Link question.
 

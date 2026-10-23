@@ -1,5 +1,5 @@
 {
-  "name": "holacracy",
+  "name": "self-org",
   "version": "0.28.1",
   "author": {
     "name": "Kraig Parkinson",
@@ -24,5 +24,5 @@
     "checklist-audit",
     "metrics-audit"
   ],
-  "description": "Engage with Holacracy from inside Claude: role-aware co-pilots for the four Core Roles, a governance-aware operating frame, cross-role tension capture and triage, project capture with an adversarial project-review panel, a stalled-project sweep, a checklist and metric portfolio audit, a SessionStart role-grounding directive and routine briefing, and a read-only holacracy-coach subagent for Governance Meeting transcripts. Pairs with the GlassFrog MCP connector."
+  "description": "Engage with Holacracy from inside Claude: role-aware co-pilots for the four Core Roles, a governance-aware operating frame, cross-role tension capture and triage, project capture with an adversarial project-review panel, a stalled-project sweep, a checklist and metric portfolio audit, a SessionStart role-grounding directive and routine briefing, and a read-only self-org-coach subagent for Governance Meeting transcripts. Pairs with the GlassFrog MCP connector."
 }

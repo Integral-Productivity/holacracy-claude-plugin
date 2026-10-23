@@ -109,7 +109,7 @@ jobs:
           # Prefix match, not exact: release-please derives the branch name from
           # config (branch + package-name), so it changes if
           # release-please-config.json changes. Today it is
-          # release-please--branches--main--components--holacracy.
+          # release-please--branches--main--components--self-org.
           case "$HEAD_REF" in
             release-please--*) rp_branch=true ;;
             *)                 rp_branch=false ;;

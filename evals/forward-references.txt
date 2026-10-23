@@ -1,11 +1,11 @@
 # Slash commands referenced in shipped prose that do not exist yet.
-# Format: /holacracy:<name> #<issue> <reason>
+# Format: /self-org:<name> #<issue> <reason>
 #
 # Enforced by scripts/skills-lint.sh check 5.
 #
 # WHY THIS FILE EXISTS
 # --------------------
-# #166 deliberately points readers at /holacracy:process-tension, which has not
+# #166 deliberately points readers at /self-org:process-tension, which has not
 # been built. That was the honest choice: the alternative was to quietly widen
 # tension-triage's scope to fill the gap, which is the exact conflation that PR
 # existed to undo.
@@ -19,7 +19,7 @@
 # Issue state is verified in CI, where `gh` is authenticated. Locally the
 # declaration alone is accepted so the lint stays runnable offline.
 
-/holacracy:process-tension  #160  the disposition router; triage hands off to it
-/holacracy:policy:audit     #103  v0.5 policy command, named by agents/holacracy-coach.md
-/holacracy:policy:cascade   #103  v0.5 policy command, named by agents/holacracy-coach.md
-/holacracy:project-triage   #393  stateful project readiness walker; split from review-project by ADR-0018
+/self-org:process-tension  #160  the disposition router; triage hands off to it
+/self-org:policy:audit     #103  v0.5 policy command, named by agents/self-org-coach.md
+/self-org:policy:cascade   #103  v0.5 policy command, named by agents/self-org-coach.md
+/self-org:project-triage   #393  stateful project readiness walker; split from review-project by ADR-0018

@@ -1,8 +1,8 @@
 # Pre-Tactical-prep routine
 
-The Secretary's first agentic routine. It assembles a **draft** Tactical prep packet from live GlassFrog data ahead of a circle's expected Tactical cadence, and writes it to the routine ledger so the session-start hook and `/holacracy:tactical` can surface it. Draft only — the human still runs the meeting.
+The Secretary's first agentic routine. It assembles a **draft** Tactical prep packet from live GlassFrog data ahead of a circle's expected Tactical cadence, and writes it to the routine ledger so the session-start hook and `/self-org:tactical` can surface it. Draft only — the human still runs the meeting.
 
-Loaded as `../../shared/agentic-routines.md` defines the mechanism; this file defines the routine's content. The routine runs as a scheduled-task `SKILL.md` whose prompt is built from the template below at registration time (`/holacracy:routines`).
+Loaded as `../../shared/agentic-routines.md` defines the mechanism; this file defines the routine's content. The routine runs as a scheduled-task `SKILL.md` whose prompt is built from the template below at registration time (`/self-org:routines`).
 
 ## Routine prompt template
 

@@ -10,13 +10,13 @@ A routine rides three pieces, each doing the job it can do:
 
 1. **The `scheduled-tasks` MCP fires it.** A routine is registered as a scheduled task whose `SKILL.md` prompt runs as a fresh, full Claude session on the cadence. The fired session has normal tool access — it can read GlassFrog and write files (unlike the session-start hook, which is plain shell with no MCP). The MCP stores no per-fire output.
 2. **The routine writes its own output to the ledger.** Because the MCP stores nothing and the fired session has filesystem access, the routine's prompt appends/updates a line in the per-actor ledger as the last step of its run.
-3. **The surfaces read the ledger.** The session-start hook surfaces a summary; the owning role command (e.g. `/holacracy:tactical`) reads the same ledger and pull-builds on demand when no entry exists.
+3. **The surfaces read the ledger.** The session-start hook surfaces a summary; the owning role command (e.g. `/self-org:tactical`) reads the same ledger and pull-builds on demand when no entry exists.
 
 When the `scheduled-tasks` MCP is absent (it is not bundled by the plugin), there is no proactive fire — only the on-demand pull-build path. A routine must never depend on MCP output storage.
 
 ## Title convention
 
-Every routine title is `holacracy/<role>/<routine>/<scope>` — e.g. `holacracy/secretary/pre-tactical-prep/operations-circle`. The leading `holacracy/` is load-bearing: the session-start hook filters on it to find routine entries without scanning unrelated scheduled tasks. Use a kebab-cased circle slug for `<scope>`.
+Every routine title is `self-org/<role>/<routine>/<scope>` — e.g. `self-org/secretary/pre-tactical-prep/operations-circle`. The leading `self-org/` is load-bearing: the session-start hook filters on it to find routine entries without scanning unrelated scheduled tasks. Use a kebab-cased circle slug for `<scope>`.
 
 ## The prompt preamble
 
@@ -38,7 +38,7 @@ The full draft lives in the sidecar (`packet_path`), not inline, so the ledger l
 
 ## Lifecycle
 
-1. **Register** — a role command (e.g. `/holacracy:routines`) creates the scheduled task with the canonical title and a prompt carrying the preamble.
+1. **Register** — a role command (e.g. `/self-org:routines`) creates the scheduled task with the canonical title and a prompt carrying the preamble.
 2. **Fire** — the `scheduled-tasks` MCP runs the prompt on cadence as a fresh Claude session.
 3. **Read & compose** — the routine resolves its actor/role/circle (`actor-and-role-resolution.md`), reads the governance data it needs (scoped to the one role), and composes a draft.
 4. **Write** — the routine writes the sidecar full draft and appends/updates its ledger line (`packet_summary`, `packet_path`, `built_at`, window, `last_status: ok`; on failure, `last_status: error`).
@@ -55,7 +55,7 @@ The full draft lives in the sidecar (`packet_path`), not inline, so the ledger l
 The routine's prompt instructs Claude to append/update the ledger as its final step. The shape (illustrative, not prescriptive):
 
 ```jsonl
-{"id":"pretac-operations-circle","title":"holacracy/secretary/pre-tactical-prep/operations-circle","next_fire":"2026-06-22T09:00:00Z","last_fire":"2026-06-22T08:55:00Z","last_status":"ok","built_at":"2026-06-22T08:55:00Z","surface_from":"2026-06-22T00:00:00Z","surface_until":"2026-06-22T23:59:59Z","packet_summary":"Tactical expected weekly. 3 checklist items due, 1 metric out of range, 2 unprocessed tensions to triage.","packet_path":"~/.claude/holacracy/packets/pre-tactical-prep-operations-circle.md"}
+{"id":"pretac-operations-circle","title":"self-org/secretary/pre-tactical-prep/operations-circle","next_fire":"2026-06-22T09:00:00Z","last_fire":"2026-06-22T08:55:00Z","last_status":"ok","built_at":"2026-06-22T08:55:00Z","surface_from":"2026-06-22T00:00:00Z","surface_until":"2026-06-22T23:59:59Z","packet_summary":"Tactical expected weekly. 3 checklist items due, 1 metric out of range, 2 unprocessed tensions to triage.","packet_path":"~/.claude/holacracy/packets/pre-tactical-prep-operations-circle.md"}
 ```
 
 Append a new line per fire (or rewrite the matching `id`'s line). Write the full draft to `packet_path` first, then the ledger line — so the hook never points at a half-written sidecar.
@@ -64,7 +64,7 @@ Append a new line per fire (or rewrite the matching `id`'s line). Write the full
 
 Validate the mechanism with a **stub routine** before wiring real content, so the write→surface path is proven independent of GlassFrog or the real packet:
 
-- **Stub prompt:** "Write the sidecar `~/.claude/holacracy/packets/stub.md` with the text `stub packet`, then append a ledger line titled `holacracy/secretary/pre-tactical-prep/stub` with `last_status: ok`, today's `surface_from`/`surface_until`, a `built_at`, a `packet_summary` of `stub`, and that `packet_path`."
+- **Stub prompt:** "Write the sidecar `~/.claude/holacracy/packets/stub.md` with the text `stub packet`, then append a ledger line titled `self-org/secretary/pre-tactical-prep/stub` with `last_status: ok`, today's `surface_from`/`surface_until`, a `built_at`, a `packet_summary` of `stub`, and that `packet_path`."
 - **(a) Write→surface:** run the stub, open a fresh session, confirm the session-start hook surfaces the stub summary; confirm a legacy entry (only the original five fields) still renders unchanged.
 - **(b) Fire path:** register the stub through the live `scheduled-tasks` MCP (a one-time `fireAt` a minute out) and confirm it produces the same ledger line when actually triggered — a green (a) never substitutes for an unproven (b).
 

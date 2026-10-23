@@ -75,7 +75,7 @@ absolute path on the same disk in both configurations, and a `find /` gets to it
 `contamination_error` fails any control run whose visible tool calls name the
 checkout.
 
-That is a reduction, not a proof. `Task` is offered — `/holacracy:capture-tension`
+That is a reduction, not a proof. `Task` is offered — `/self-org:capture-tension`
 dispatches a subagent and withholding it would measure a crippled plugin — and a
 subagent's own tool calls do not surface in the parent event stream, so a control
 run that delegated a filesystem search would not be caught. Stated rather than
@@ -127,7 +127,7 @@ PLUGIN_NAME = json.loads(
 
 # The built-in tools an eval session may use. `Skill` is the point of the list:
 # without it the plugin's skills are unreachable however they are loaded (#226).
-# `Task` is here because /holacracy:capture-tension dispatches a subagent.
+# `Task` is here because /self-org:capture-tension dispatches a subagent.
 # `Bash`, `Glob`, `Grep` and `Write` are deliberately absent — see the module
 # docstring's note on what the control can reach.
 EVAL_TOOLS = "Skill,Task,Read"
@@ -178,7 +178,7 @@ DEFAULT_CONFIGS = ("with_skill", "without_skill")
 #                       discovered the same way skills-lint.sh check 1 proves
 #                       a load path resolves (see discover_shared_references).
 #   commands/*.md       every eval's `surface` field names a slash command
-#                       (e.g. `/holacracy:capture-tension`), implemented here
+#                       (e.g. `/self-org:capture-tension`), implemented here
 #                       -- not under skills/<dir>, so nothing above hashes it.
 #                       Hashed as one whole-directory digest rather than a
 #                       per-surface mapping, matching the with_skill
@@ -491,7 +491,7 @@ def resolve_skill_dirs_for_leg(config: str, repo: Path = REPO) -> list[Path]:
     documented-valid input for exactly that case (see compute_cache_key's
     docstring: "an empty tuple is valid for a leg that engages none"). A
     with_skill leg can reach any skill this plugin ships: the case files'
-    `skill` field names the PLUGIN ("holacracy"), not a skills/<dir>, and
+    `skill` field names the PLUGIN ("self-org"), not a skills/<dir>, and
     there is no per-case mapping onto a narrower set. Rather than guess one,
     this hashes every shipped skill directory, which is coarser than a
     precise per-case mapping would be but never UNDER-hashes -- a change to
@@ -741,7 +741,7 @@ def probe_session(config: str, timeout: int = 120) -> tuple[bool, str]:
     The process is killed the moment init arrives, so a machine that DOES hold
     ANTHROPIC_API_KEY is not billed for a turn either.
     """
-    sandbox = Path(tempfile.mkdtemp(prefix="holacracy-probe-"))
+    sandbox = Path(tempfile.mkdtemp(prefix="self-org-probe-"))
     config_dir = sandbox / "claude-config"
     workdir = sandbox / "work"
     config_dir.mkdir()
@@ -846,7 +846,7 @@ def execute(prompt: str, config: str, run_dir: Path, fixture: Path,
     # inside the repo would hand every run the repo's own CLAUDE.md through
     # auto-discovery, and hand the control a path to the plugin it is supposed
     # not to have.
-    sandbox = Path(tempfile.mkdtemp(prefix="holacracy-eval-"))
+    sandbox = Path(tempfile.mkdtemp(prefix="self-org-eval-"))
     if REPO == sandbox or REPO in sandbox.parents:
         shutil.rmtree(sandbox, ignore_errors=True)
         return {"error": f"the sandbox {sandbox} is inside the checkout; set TMPDIR "
@@ -1333,7 +1333,7 @@ def grade_judged(assertions: list[dict], transcript: str, writes: list[dict],
     # tools and no plugin, but it would otherwise inherit the operator's global
     # CLAUDE.md and hooks — and a grader reading this repo's own CLAUDE.md would
     # be told what the runner is supposed to conclude.
-    sandbox = Path(tempfile.mkdtemp(prefix="holacracy-grader-"))
+    sandbox = Path(tempfile.mkdtemp(prefix="self-org-grader-"))
     config_dir = sandbox / "claude-config"
     workdir = sandbox / "work"
     config_dir.mkdir()

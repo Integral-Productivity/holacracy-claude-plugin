@@ -1,6 +1,6 @@
 # Tension Capture Flow -- Shared Reference
 
-This document specifies the canonical **B-flow** used by every tension capture in this plugin: the on-demand `/holacracy:capture-tension` command, the ambient detection in `holacratic-ai-governance`, and the `tension-capture` subagent.
+This document specifies the canonical **B-flow** used by every tension capture in this plugin: the on-demand `/self-org:capture-tension` command, the ambient detection in `self-org-ai-governance`, and the `tension-capture` subagent.
 
 The B-flow is **draft-and-confirm**: Claude proposes a complete tension (sensing role + body + suggested meeting venue), the human confirms or edits per-tension, and only on explicit confirmation does the API call fire. No auto-file. No silent file. Per-tension confirmation, never batched. The "suggested meeting venue" is an annotation for the user's own mental routing — there is no `meeting_type` field on tensions in the GlassFrog API ([glassfrog-mcp-server#58](https://github.com/Integral-Productivity/glassfrog-mcp-server/issues/58)); all filed tensions go to a role's durable backlog.
 
@@ -32,9 +32,9 @@ If you reach the end of your turn with a drafted tension and no answer, the corr
 
 The flow can begin in three ways:
 
-1. **Explicit command.** User runs `/holacracy:capture-tension` (optionally with the tension text as `$ARGUMENTS`). Intent is clear; proceed.
-2. **Ambient detection.** `holacratic-ai-governance` is loaded and Claude observes tension language in conversation ("I keep hitting...", "no one owns...", "we can't get...", "I'm frustrated by..."). Claude **pauses** and offers to capture: *"That sounds like a tension worth filing -- want me to draft one?"* If the user assents, proceed. If they deflect, drop it and continue the original work.
-3. **Pattern 3 follow-up.** A tension surfaced by data-mining tension sensing (`../holacratic-ai-governance/references/engagement-patterns.md` Pattern 3) is offered for capture. User confirms or skips; proceed for those they confirm.
+1. **Explicit command.** User runs `/self-org:capture-tension` (optionally with the tension text as `$ARGUMENTS`). Intent is clear; proceed.
+2. **Ambient detection.** `self-org-ai-governance` is loaded and Claude observes tension language in conversation ("I keep hitting...", "no one owns...", "we can't get...", "I'm frustrated by..."). Claude **pauses** and offers to capture: *"That sounds like a tension worth filing -- want me to draft one?"* If the user assents, proceed. If they deflect, drop it and continue the original work.
+3. **Pattern 3 follow-up.** A tension surfaced by data-mining tension sensing (`../self-org-ai-governance/references/engagement-patterns.md` Pattern 3) is offered for capture. User confirms or skips; proceed for those they confirm.
 
 Never proceed past Step 1 without the user's clear assent to capture.
 
@@ -118,7 +118,7 @@ The signature is body-only — `label` and `meeting_type` are not part of the st
 
 If `create_tension` fails (network, permissions, role no longer exists), surface the error honestly: *"I couldn't file the tension -- GlassFrog returned [error]. The draft is still here; want me to retry or adjust?"*
 
-**Capture the returned tension ID into the session-tension cache.** This is required because `glassfrog_list_role_tensions` may not return the just-created tension immediately (propagation/scoping). The cache is what `/holacracy:supersession-sweep` reads when its scope is `session`. Format: `{ tension_id, role_id, role_name, circle_name, body, suggested_venue, filed_at }`.
+**Capture the returned tension ID into the session-tension cache.** This is required because `glassfrog_list_role_tensions` may not return the just-created tension immediately (propagation/scoping). The cache is what `/self-org:supersession-sweep` reads when its scope is `session`. Format: `{ tension_id, role_id, role_name, circle_name, body, suggested_venue, filed_at }`.
 
 ### Step 8 -- Acknowledge and return
 
@@ -140,7 +140,7 @@ Then continue the original conversation. Do not interrogate the user about the n
 - **No auto-file.** Every tension passes through Step 6 confirmation, every time.
 - **No batched confirmation.** Even if Claude detects three tensions in one conversation, each gets its own confirmation.
 - **No AI-agent self-filing.** Scheduled routines that fire as AI agents collect candidate tensions for human review in the next session; they do not call `create_tension` themselves.
-- **No processing.** Claude does not mark tensions `processed` on the human's behalf. That happens when a human runs a governance or tactical meeting and processes the tension. (`update_tension(status: "processed")` is available to the human via `/holacracy:tension-triage` for meeting-day catch-up, but only under explicit instruction.)
+- **No processing.** Claude does not mark tensions `processed` on the human's behalf. That happens when a human runs a governance or tactical meeting and processes the tension. (`update_tension(status: "processed")` is available to the human via `/self-org:tension-triage` for meeting-day catch-up, but only under explicit instruction.)
 - **No deletion.** `glassfrog_delete_tension` is permanent. Prefer `status: "archived"` for false positives or superseded tensions. Deletion is reserved for cases where the user explicitly chooses it.
 
 ---
@@ -149,9 +149,9 @@ Then continue the original conversation. Do not interrogate the user about the n
 
 | Surface | How it uses this flow |
 |---|---|
-| `/holacracy:capture-tension` | Entry at Step 1.1 (explicit command). Runs Steps 2–8 via the subagent. The cross-role, out-of-meeting companion to `/holacracy:tactical`. |
-| `/holacracy:tactical` (Secretary in-meeting) | Has its own in-meeting capture path documented in `skills/holacracy-secretary/SKILL.md` Backlog-first tension capture. Same `create_tension(role_id, body)` primitive, different conversational shape (live tactical triage with the proposer naming the body in real time). |
-| `holacratic-ai-governance` (ambient detection) | Entry at Step 1.2 (ambient). On user assent, dispatches the `tension-capture` subagent to run Steps 2–8. |
-| `/holacracy:tension-triage` | Skips Steps 1–6 (the tension already exists). Sweeps circle by circle via `glassfrog_list_subrole_tensions` (older tensions, not same-session) and uses `glassfrog_update_tension` to archive, edit body, mark processed, or defer. Assesses readiness only — disposition belongs to `/holacracy:process-tension`. There is no API-level meeting_type routing; suggested venue is a user-facing annotation only. |
-| `/holacracy:supersession-sweep` | Runs `./triage-gates.md` Step 4 (supersession). For `session` scope, reads the session-tension cache populated at Step 7. For `recent` or per-circle scope, reads via `glassfrog_list_role_tensions`. On confirmation, archives subsumed tensions via `glassfrog_update_tension(status: "archived")`. |
-| `holacratic-ai-governance` Pattern 3 (Tension Sensing) | Detects candidate tensions from data patterns. For each, can route into this flow at Step 1.3 (Pattern 3 follow-up). |
+| `/self-org:capture-tension` | Entry at Step 1.1 (explicit command). Runs Steps 2–8 via the subagent. The cross-role, out-of-meeting companion to `/self-org:tactical`. |
+| `/self-org:tactical` (Secretary in-meeting) | Has its own in-meeting capture path documented in `skills/self-org-secretary/SKILL.md` Backlog-first tension capture. Same `create_tension(role_id, body)` primitive, different conversational shape (live tactical triage with the proposer naming the body in real time). |
+| `self-org-ai-governance` (ambient detection) | Entry at Step 1.2 (ambient). On user assent, dispatches the `tension-capture` subagent to run Steps 2–8. |
+| `/self-org:tension-triage` | Skips Steps 1–6 (the tension already exists). Sweeps circle by circle via `glassfrog_list_subrole_tensions` (older tensions, not same-session) and uses `glassfrog_update_tension` to archive, edit body, mark processed, or defer. Assesses readiness only — disposition belongs to `/self-org:process-tension`. There is no API-level meeting_type routing; suggested venue is a user-facing annotation only. |
+| `/self-org:supersession-sweep` | Runs `./triage-gates.md` Step 4 (supersession). For `session` scope, reads the session-tension cache populated at Step 7. For `recent` or per-circle scope, reads via `glassfrog_list_role_tensions`. On confirmation, archives subsumed tensions via `glassfrog_update_tension(status: "archived")`. |
+| `self-org-ai-governance` Pattern 3 (Tension Sensing) | Detects candidate tensions from data patterns. For each, can route into this flow at Step 1.3 (Pattern 3 follow-up). |

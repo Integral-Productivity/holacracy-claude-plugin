@@ -1,6 +1,6 @@
 {
-  "skill": "holacracy",
-  "surface": "/holacracy:tension-triage",
+  "skill": "self-org",
+  "surface": "/self-org:tension-triage",
   "status": "active",
   "note": "Three golden cases whose correct disposition a human reached and recorded on issue #120 during the 2026-08-01 backlog run. Run by scripts/run-behavioural-eval.py. Prompts are natural language, identical across with_skill and without_skill, so the delta measures what the plugin changes rather than how the surface was invoked. If a case fails because the surface never engaged, that is a triggering finding for #172, not a behavioural one — read the transcript before reading the score.",
   "evals": [

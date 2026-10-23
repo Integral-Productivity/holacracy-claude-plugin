@@ -52,7 +52,7 @@ pass() { CASES=$((CASES + 1)); }
 # its pass_rate is the string "+0.50", not a stats dict.
 cat > "$TMP/real.json" <<'EOF'
 {
-  "metadata": { "skill_name": "holacracy", "executor_model": "claude-sonnet-5" },
+  "metadata": { "skill_name": "self-org", "executor_model": "claude-sonnet-5" },
   "run_summary": {
     "with_skill": {
       "pass_rate": { "mean": 0.9375, "stddev": 0.125, "min": 0.75, "max": 1.0 },

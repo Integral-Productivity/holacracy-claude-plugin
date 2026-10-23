@@ -3,11 +3,11 @@ description: Sweep a role's or circle's GlassFrog projects for stall. Surfaces u
 argument-hint: ['scope: "mine" | "recent" | circle name, optional; default "mine"']
 ---
 
-# /holacracy:stalled-project-sweep
+# /self-org:stalled-project-sweep
 
 Back-of-loop lifecycle sweep for GlassFrog **projects**. It surfaces projects that have stopped moving and offers, one at a time, to **re-energize** them (draft a concrete next-action) or **archive** them (`status: "archived"` — the soft-collapse the plugin prefers over deletion). It is the "suspenders" of the project-triage effort: the guardrail keeps new projects well-formed and the review panel audits their form, but neither watches for *decay over time* — this does.
 
-This is the project-side twin of `/holacracy:supersession-sweep` (which sweeps filed tensions). Where that sweep dedups, this one re-energizes or retires.
+This is the project-side twin of `/self-org:supersession-sweep` (which sweeps filed tensions). Where that sweep dedups, this one re-energizes or retires.
 
 Load the rubric `skills/shared/project-well-formedness.md` at the start — it defines the `stale` and `blocked` states this sweep emits (states it reserves specifically for this sweep) and the closed project-status enum. This command owns the *detection* logic that produces those states; the rubric owns their meaning.
 
@@ -75,14 +75,14 @@ Load the rubric `skills/shared/project-well-formedness.md` at the start — it d
 ## What this command does NOT do
 
 - It does **not** delete projects. Archive (`status: "archived"`) is the only collapse mechanism.
-- It does **not** edit project descriptions, re-frame outcomes, re-assign roles, or make governance changes — those are `/holacracy:review-project`'s job. This sweep is lifecycle-only: restart it, or retire it.
+- It does **not** edit project descriptions, re-frame outcomes, re-assign roles, or make governance changes — those are `/self-org:review-project`'s job. This sweep is lifecycle-only: restart it, or retire it.
 - It does **not** auto-archive, batch, or act without a per-item human keystroke.
 - It does **not** invent a last-touched timestamp. It infers staleness and says so.
 
-### Deliberate divergence from `/holacracy:review-project`
+### Deliberate divergence from `/self-org:review-project`
 
-`/holacracy:review-project` refuses to call `glassfrog_update_project` at all — there, archive is an *advisory draft* the human applies themselves, to protect the role-filler's authorship of their own project *wording*. **This sweep diverges on purpose:** it performs `update_project(status: "archived")` on per-item confirm. Archiving is a *lifecycle transition*, not a rewrite of the role-filler's words, and lifecycle management is this command's entire reason to exist. Re-energize (`create_action`) is additive and matches review-project exactly. Do not "reconcile" the two surfaces by making this sweep advisory-only — the difference is the design.
+`/self-org:review-project` refuses to call `glassfrog_update_project` at all — there, archive is an *advisory draft* the human applies themselves, to protect the role-filler's authorship of their own project *wording*. **This sweep diverges on purpose:** it performs `update_project(status: "archived")` on per-item confirm. Archiving is a *lifecycle transition*, not a rewrite of the role-filler's words, and lifecycle management is this command's entire reason to exist. Re-energize (`create_action`) is additive and matches review-project exactly. Do not "reconcile" the two surfaces by making this sweep advisory-only — the difference is the design.
 
 ## Scheduling
 
-This sweep can run as a scheduled, draft-only **agentic routine** so stall-catching stops depending on anyone remembering to run it. The routine assembles a stalled-project review *packet* to the routine ledger for the session-start hook to surface; it never archives or drafts actions itself — those writes stay behind this command's per-item confirm. See `skills/holacracy-secretary/references/stalled-sweep-routine.md` for the routine content and `/holacracy:routines register stalled-sweep <circle>` to turn it on.
+This sweep can run as a scheduled, draft-only **agentic routine** so stall-catching stops depending on anyone remembering to run it. The routine assembles a stalled-project review *packet* to the routine ledger for the session-start hook to surface; it never archives or drafts actions itself — those writes stay behind this command's per-item confirm. See `skills/self-org-secretary/references/stalled-sweep-routine.md` for the routine content and `/self-org:routines register stalled-sweep <circle>` to turn it on.

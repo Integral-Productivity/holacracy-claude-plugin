@@ -24,7 +24,7 @@ This is not just terminology -- GlassFrog's data model treats people and agents 
 | Interactive session, user is logged into Claude with their GlassFrog credentials | `glassfrog_get_me` returns the human actor. This is the default. |
 | Interactive session, user is helping a different person | User states the actor explicitly: "I'm helping Alex prep for tactical." The skill operates as if the actor is Alex (Observer/Advisor mode -- see below). |
 | Scheduled routine fires | The routine's prompt declares the acting AI agent at creation time. The skill trusts that declaration and operates as that agent. |
-| Slash command invoked | Same resolution as the underlying session context. `/holacracy:context` is the explicit override. |
+| Slash command invoked | Same resolution as the underlying session context. `/self-org:context` is the explicit override. |
 
 ### What the plugin does NOT do
 
@@ -72,7 +72,7 @@ A circle is itself a role (`has_subroles: true`), which is why this is an id→r
 
 ### Step 3 -- Resolve to a single role + circle
 
-The skill's purpose narrows the resolution. For example, `holacracy-secretary` cares only about roles named "Secretary" (or sub-circle Secretary equivalents). For each role skill, there is a target role name.
+The skill's purpose narrows the resolution. For example, `self-org-secretary` cares only about roles named "Secretary" (or sub-circle Secretary equivalents). For each role skill, there is a target role name.
 
 Apply the **silent-when-obvious + ascertain-vs-ask + announce-the-result** policy:
 
@@ -83,7 +83,7 @@ Apply the **silent-when-obvious + ascertain-vs-ask + announce-the-result** polic
 | Actor does not fill the target role anywhere | Name it clearly. Offer Advisor or Observer mode: "You don't currently fill the [Role] role in any circle. Do you want to (a) explore how the role works, (b) prepare for taking on the role, or (c) advise someone else who fills it?" |
 | The named role does not exist in the organization at all | **Do not fall through to Observer mode.** Run Step 3a below. A role the user speaks of as real but that governance has never created is a different condition from a role they simply do not fill, and it needs a different answer. |
 | The user named the circle in their prompt | Use it as the resolution signal. Validate against the actor's role roster: if it's a circle the actor fills the role in, use it silently; if not, name the mismatch. |
-| User explicitly overrides via `/holacracy:context` | Use the override. Announce the override is active. |
+| User explicitly overrides via `/self-org:context` | Use the override. Announce the override is active. |
 
 ### Step 3a -- When the named role does not exist
 
@@ -122,7 +122,7 @@ If the same session continues past a major turn (e.g., the user pivots to a diff
 
 ## Three Engagement Modes (Where Resolved Context Lands)
 
-Once the actor and role are resolved, the skill operates in one of three modes from `holacratic-ai-governance` SKILL.md. The mode determines what the skill *does* with the resolved context.
+Once the actor and role are resolved, the skill operates in one of three modes from `self-org-ai-governance` SKILL.md. The mode determines what the skill *does* with the resolved context.
 
 | Mode | Actor relationship | Example |
 |---|---|---|
@@ -155,7 +155,7 @@ constitutional rulings, or modify governance. Produce output for human review.
 [Then the routine-specific task...]
 ```
 
-The plugin prefix `holacracy/` (or `holacracy:`) appears in the routine's task title so the SessionStart hook can filter to its own routines without scanning every scheduled task on the system. Example title: `holacracy/secretary/pre-tactical-prep/operations-circle`.
+The plugin prefix `self-org/` appears in the routine's task title so the SessionStart hook can filter to its own routines without scanning every scheduled task on the system. Example title: `self-org/secretary/pre-tactical-prep/operations-circle`. Titles that still use the pre-1.0 prefix `holacracy/` are also accepted (ADR-0020).
 
 ---
 
@@ -167,7 +167,7 @@ A skill can still operate without GlassFrog, but it must:
 2. **Ask the user to declare the context**: "Whose role should I treat as primary? In which circle?"
 3. **Not silently assume** the human is the actor or that the canonical role definition matches their current accountabilities.
 
-This is the same pattern as the existing `holacratic-ai-governance` SKILL.md "Required: GlassFrog MCP Tools" section -- it doesn't refuse to operate, it names the constraint.
+This is the same pattern as the existing `self-org-ai-governance` SKILL.md "Required: GlassFrog MCP Tools" section -- it doesn't refuse to operate, it names the constraint.
 
 ---
 
@@ -177,12 +177,12 @@ This document is referenced from multiple holacracy skills. The relevant section
 
 | If you're working in... | Most relevant sections |
 |---|---|
-| `holacracy-facilitator` | Steps 1-4 (resolution); Engagement Modes (Facilitator is Actor in meetings, Advisor outside) |
-| `holacracy-secretary` | Steps 1-5 (especially Step 5 re: meeting-day staleness); Scheduled Routines preamble |
-| `holacracy-lead-link` | Steps 1-4; Engagement Modes (most Lead Link work is Actor or Advisor) |
-| `holacracy-rep-link` | Steps 1-4; Engagement Modes (Rep Link mostly Advisor when carrying tensions) |
-| `holacratic-ai-governance` | All sections -- this skill is the operating frame; resolution is foundational |
-| `holacracy-policy-steward` (v0.4) | Steps 1-4; resolution may target a circle scope rather than a single role |
-| `holacracy-circle-member` (v0.4) | Steps 1-3 (often the actor fills many roles in the circle; resolve circle scope, then list all roles the actor fills there) |
+| `self-org-facilitator` | Steps 1-4 (resolution); Engagement Modes (Facilitator is Actor in meetings, Advisor outside) |
+| `self-org-secretary` | Steps 1-5 (especially Step 5 re: meeting-day staleness); Scheduled Routines preamble |
+| `self-org-lead-link` | Steps 1-4; Engagement Modes (most Lead Link work is Actor or Advisor) |
+| `self-org-rep-link` | Steps 1-4; Engagement Modes (Rep Link mostly Advisor when carrying tensions) |
+| `self-org-ai-governance` | All sections -- this skill is the operating frame; resolution is foundational |
+| `self-org-policy-steward` (v0.4) | Steps 1-4; resolution may target a circle scope rather than a single role |
+| `self-org-circle-member` (v0.4) | Steps 1-3 (often the actor fills many roles in the circle; resolve circle scope, then list all roles the actor fills there) |
 | Scheduled routines (v0.3+) | Scheduled Routines section is the canonical prompt-preamble spec |
-| `/holacracy:context` slash command | Whole document -- this command is the user's surface for the resolution machinery |
+| `/self-org:context` slash command | Whole document -- this command is the user's surface for the resolution machinery |

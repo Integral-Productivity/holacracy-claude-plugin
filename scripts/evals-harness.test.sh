@@ -445,4 +445,89 @@ sys.exit(0 if enum(sys.argv[1]) == enum(sys.argv[2]) else 1)
 PY
 pass
 
+# ---------------------------------------------------------------------------
+# 4k-4m. Project triage writes (#393).
+# ---------------------------------------------------------------------------
+# /holacracy:project-triage saves a state as a project tag and a reason as a
+# note line. set_project_tags REPLACES the whole set and its live argument is
+# `tag_names`; a stub that merged, or that took `tags`, would let a command
+# pass an eval by doing something that fails or deletes tags in production.
+TRIAGE="$REPO/evals/fixtures/glassfrog/project-triage.json"
+SHEET="$(key proj:supplier-sheet "$TRIAGE")"
+PRICING="$(key proj:pricing-page "$TRIAGE")"
+
+# 4k. Optional project and action fields flow from the spec into the fixture,
+#     and a misspelled one fails generation instead of being dropped.
+python3 - "$TRIAGE" <<'PY' || fail "project-triage fixture does not carry tags/note/timestamps"
+import json, sys
+fx = json.load(open(sys.argv[1]))
+by = {p["id"]: p for p in fx["projects"]}
+km = fx["key_map"]
+s = by[km["proj:supplier-sheet"]]
+assert s["tags"] == ["budget-q4"] and s["created_at"] == "2026-09-01T00:00:00Z", s
+r = by[km["proj:regional-launch"]]
+assert r["tags"] == ["needs-info"] and r["updated_at"] == "2026-10-20T15:30:00Z", r
+assert r["note"].startswith("Triage 2026-10-20T09:00Z: needs-info"), r["note"]
+a = {x["id"]: x for x in fx["actions"]}[km["actn:book-signing"]]
+assert a["updated_at"] == "2026-10-01T10:00:00Z", a
+PY
+python3 - "$REPO/evals/scenarios/project-triage.json" "$TMP/typo.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1]))
+s["projects"][0]["tag"] = ["x"]
+json.dump(s, open(sys.argv[2], "w"))
+PY
+if python3 "$GEN" "$TMP/typo.json" --stdout >/dev/null 2>&1; then
+  fail "a misspelled project spec key ('tag') was accepted"
+fi
+pass
+
+# 4l. set_project_tags replaces the set; update_project merges note/status;
+#     both are logged in order and a later read sees them; get_project is not
+#     logged as a write; the pre-live argument name `tags` is rejected.
+LOG="$TMP/triage-writes.jsonl"
+rpc() {  # $1 id, $2 tool, $3 JSON arguments
+  printf '{"jsonrpc":"2.0","id":%s,"method":"tools/call","params":{"name":"%s","arguments":%s}}\n' "$1" "$2" "$3"
+}
+{
+  rpc 1 glassfrog_get_project "{\"project_id\":\"$SHEET\"}"
+  rpc 2 glassfrog_set_project_tags "{\"project_id\":\"$SHEET\",\"tag_names\":[\"budget-q4\",\"ready-for-agent\"]}"
+  rpc 3 glassfrog_set_project_tags "{\"project_id\":\"$SHEET\",\"tag_names\":[\"ready-for-agent\"]}"
+  rpc 4 glassfrog_update_project "{\"project_id\":\"$PRICING\",\"note\":\"Shipped.\"}"
+  rpc 5 glassfrog_update_project "{\"project_id\":\"$PRICING\",\"status\":\"completed\"}"
+  rpc 6 glassfrog_update_project "{\"project_id\":\"$PRICING\",\"status\":\"archived\"}"
+  rpc 7 glassfrog_get_project "{\"project_id\":\"$PRICING\"}"
+  rpc 8 glassfrog_set_project_tags "{\"project_id\":\"$SHEET\",\"tags\":[\"ready-for-agent\"]}"
+} | STUB_FIXTURE="$TRIAGE" stub_call "$LOG" > "$TMP/triage-out.jsonl"
+python3 - "$TMP/triage-out.jsonl" "$LOG" <<'PY' || fail "set_project_tags/update_project do not model the live semantics"
+import json, sys
+r = [json.loads(json.loads(l)["result"]["content"][0]["text"]) for l in open(sys.argv[1])]
+assert r[0]["data"]["tags"] == ["budget-q4"], r[0]
+assert r[1]["data"]["tags"] == ["budget-q4", "ready-for-agent"], r[1]
+assert r[2]["data"]["tags"] == ["ready-for-agent"], r[2]
+assert r[3]["data"]["note"] == "Shipped." and r[3]["data"]["status"] == "current", r[3]
+assert r[4]["data"]["status"] == "completed" and r[4]["data"]["note"] == "Shipped.", r[4]
+assert r[6]["data"]["note"] == "Shipped." and r[6]["data"]["status"] == "archived", r[6]
+assert r[7]["error"]["status"] == 400, r[7]
+log = [json.loads(l) for l in open(sys.argv[2])]
+tools = [e["tool"] for e in log]
+assert "glassfrog_get_project" not in tools, tools
+assert tools[:5] == ["glassfrog_set_project_tags"] * 2 + ["glassfrog_update_project"] * 3, tools
+assert log[0]["args"]["tag_names"] == ["budget-q4", "ready-for-agent"], log[0]
+PY
+pass
+
+# 4m. tools/list advertises the three triage tools with the live argument names.
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' | STUB_FIXTURE="$TRIAGE" stub_call | python3 -c "
+import json,sys
+tools={t['name']:t['inputSchema'] for t in json.load(sys.stdin)['result']['tools']}
+st=tools['glassfrog_set_project_tags']
+assert st['properties']['tag_names']['type']=='array' and 'tags' not in st['properties'], st
+assert set(st['required'])=={'project_id','tag_names'}, st
+up=tools['glassfrog_update_project']['properties']
+assert {'project_id','note','status'} <= set(up), up
+assert tools['glassfrog_get_project']['required']==['project_id'], tools['glassfrog_get_project']" \
+  || fail "tools/list does not advertise the project triage tools"
+pass
+
 echo "evals-harness.test.sh: $CASES cases passed"

@@ -1,0 +1,87 @@
+{
+  "scenario": "project-triage",
+  "purpose": "A role-filler runs /holacracy:project-triage over their own role. Two projects describe the same outcome (one has an action, so it survives); one project's note says its outcome already shipped; one is already tagged ready-for-human and has not moved, so it is counted and not walked; one is needs-info and its owner answered later the same day it was triaged, so it is walked again; one has never been triaged and carries an unrelated tag that a state write must keep.",
+  "organization": "Example Org",
+  "actor": {
+    "name": "Alex Example",
+    "email": "alex@example.invalid"
+  },
+  "roles": [
+    {
+      "key": "circle",
+      "name": "Example Circle",
+      "purpose": "Run the example business"
+    },
+    {
+      "key": "ops",
+      "name": "Operations Steward",
+      "parent": "circle",
+      "purpose": "Keep the example business running smoothly",
+      "accountabilities": ["Keeping supplier and member records current"],
+      "filled_by_actor": true
+    }
+  ],
+  "projects": [
+    {
+      "key": "guide-a",
+      "on": "ops",
+      "description": "Onboarding guide published for new members"
+    },
+    {
+      "key": "guide-b",
+      "on": "ops",
+      "description": "New-member onboarding guide published"
+    },
+    {
+      "key": "pricing-page",
+      "on": "ops",
+      "description": "Pricing page refreshed with the autumn rates",
+      "note": "Shipped 2026-09-30: the autumn rates are live on the pricing page."
+    },
+    {
+      "key": "venue-contract",
+      "on": "ops",
+      "description": "Venue contract signed for the spring gathering",
+      "tags": ["ready-for-human"],
+      "note": "Triage 2026-10-01T10:00Z: ready-for-human -- the next action needs a signature from a person.",
+      "updated_at": "2026-10-01T10:00:00Z"
+    },
+    {
+      "key": "regional-launch",
+      "on": "ops",
+      "description": "Member newsletter launched in the first region",
+      "tags": ["needs-info"],
+      "note": "Triage 2026-10-20T09:00Z: needs-info -- which region launches first?\nOwner answer: the coastal region launches first.",
+      "updated_at": "2026-10-20T15:30:00Z"
+    },
+    {
+      "key": "supplier-sheet",
+      "on": "ops",
+      "description": "Supplier list consolidated into one shared sheet",
+      "tags": ["budget-q4"],
+      "created_at": "2026-09-01T00:00:00Z",
+      "updated_at": "2026-09-01T00:00:00Z"
+    }
+  ],
+  "actions": [
+    {
+      "key": "draft-guide",
+      "on": "ops",
+      "project": "guide-a",
+      "description": "Draft the first section of the onboarding guide"
+    },
+    {
+      "key": "book-signing",
+      "on": "ops",
+      "project": "venue-contract",
+      "description": "Sign the venue contract in person",
+      "updated_at": "2026-10-01T10:00:00Z"
+    },
+    {
+      "key": "export-suppliers",
+      "on": "ops",
+      "project": "supplier-sheet",
+      "description": "Export the three supplier lists to CSV and merge them into one sheet"
+    }
+  ]
+}

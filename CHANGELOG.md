@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/Integral-Productivity/self-org-claude-plugin/compare/v1.1.0...v1.1.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **hooks:** stamp the session-start directive as "self-org plugin" ([#417](https://github.com/Integral-Productivity/self-org-claude-plugin/issues/417)) ([873e407](https://github.com/Integral-Productivity/self-org-claude-plugin/commit/873e4079f5287fe673fcb8f7635ae46387dce74c))
+
 ## [1.1.0](https://github.com/Integral-Productivity/holacracy-claude-plugin/compare/v1.0.0...v1.1.0) (2026-10-23)
 
 

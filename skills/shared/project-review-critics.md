@@ -2,7 +2,7 @@
 
 The five critic lenses, the finding schema, and the severity/cap/dedupe rules for `/holacracy:review-project`. Written so **both** execution modes seed from one spec with no drift:
 
-- **Inline mode** (backlog walk) -- the command adopts each lens as a sequential reasoning pass in one context.
+- **Inline mode** -- retired. The backlog walk moved to `/holacracy:project-triage`, which runs no lenses ([ADR-0018](../../docs/adr/0018-separate-project-readiness-from-project-quality.md)). A lens may still be run as a sequential reasoning pass in one context when no subagent mechanism exists.
 - **Subagent mode** (deep single-project review) -- the `project-critic` subagent (`agents/project-critic.md`) runs one lens per dispatch and returns findings in the schema below.
 
 Every lens grounds on `project-well-formedness.md`. Load that rubric first; these lenses turn its dimensions into adversarial checks. When the review target arrived as a pasted GlassFrog URL, resolve it first per `skills/shared/glassfrog-id-and-url-resolution.md` -- that path also serves next-actions, and this rubric judges projects. The safeguard from the tension lifecycle holds here: **draft and confirm only** -- no critic writes anything; the command applies confirmed fixes per-item.

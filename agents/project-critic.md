@@ -1,7 +1,7 @@
 ---
 name: project-critic
 description: |
-  Use this subagent to run ONE adversarial critic lens against a single GlassFrog project for the deep-review path of `/holacracy:review-project`. The dispatching command fans out five of these in parallel — one per lens (actionability, goal-alignment, scope-authority, assignment-fit, red-team) — passing shared project data and the lens name. Each subagent loads the rubric + critic spec, applies its assigned lens, and returns findings in the canonical schema. It is READ-ONLY: it never writes to GlassFrog and never confirms fixes — it only produces findings for the dispatcher to present. Used only in single-named-project deep review; the backlog walk runs the lenses inline instead. Genuine adversarial independence is the whole point of dispatching separate subagents rather than reasoning through all five lenses in one context.
+  Use this subagent to run ONE adversarial critic lens against a single GlassFrog project for the deep-review path of `/holacracy:review-project`. The dispatching command fans out five of these in parallel — one per lens (actionability, goal-alignment, scope-authority, assignment-fit, red-team) — passing shared project data and the lens name. Each subagent loads the rubric + critic spec, applies its assigned lens, and returns findings in the canonical schema. It is READ-ONLY: it never writes to GlassFrog and never confirms fixes — it only produces findings for the dispatcher to present. Used only in single-named-project deep review. Genuine adversarial independence is the whole point of dispatching separate subagents rather than reasoning through all five lenses in one context.
 model: inherit
 ---
 

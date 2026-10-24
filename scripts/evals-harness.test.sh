@@ -530,4 +530,25 @@ assert tools['glassfrog_get_project']['required']==['project_id'], tools['glassf
   || fail "tools/list does not advertise the project triage tools"
 pass
 
+# 4n. The needs-info resolution mode reads `waiting` projects (ADR-0022, #414).
+#     The fixture must carry a `waiting` project tagged needs-info with a
+#     `waits on` triage line, and a status-filtered list must return it; a stub
+#     or fixture that dropped either would let the mode pass an eval it fails
+#     in production, where `waiting` projects are a separate list call.
+NI="$REPO/evals/fixtures/glassfrog/project-triage-needs-info.json"
+NI_OPS="$(key role:ops "$NI")"
+NI_WAIT="$(key proj:queue-waiting "$NI")"
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"glassfrog_list_role_projects","arguments":{"role_id":"%s","status":"waiting"}}}\n' "$NI_OPS" \
+  | STUB_FIXTURE="$NI" stub_call \
+  | python3 -c "
+import json,sys
+d=json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['items']
+ps={p['id']:p for p in d}
+p=ps['$NI_WAIT']
+assert p['status']=='waiting' and p['tags']==['needs-info'], p
+assert '(waits on ' in p['note'] and p['note'].startswith('Triage 2026-09-15T10:00Z: needs-info'), p['note']
+assert all(x['status']=='waiting' for x in d), d" \
+  || fail "needs-info fixture does not carry a waiting needs-info project the mode can list"
+pass
+
 echo "evals-harness.test.sh: $CASES cases passed"

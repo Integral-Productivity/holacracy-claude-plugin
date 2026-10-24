@@ -14,9 +14,11 @@ A project carries **at most one** of these tags. No tag means the project has ne
 | State | Meaning | Who acts next |
 |---|---|---|
 | `needs-triage` | Not yet assessed, or reopened because something moved | the triager |
-| `needs-info` | The owner role must answer a recorded question before anyone can act | the owner role |
+| `needs-info` | A named role or party must answer a recorded question before anyone can act | the role or party the note line names |
 | `ready-for-agent` | Well enough formed that an AI agent filler can take the next action | an agent filler |
 | `ready-for-human` | Well enough formed, but the next action needs a person | a human filler |
+
+**`needs-info` and status.** The project stays `current` when the owner role must answer, and moves to `waiting` when another role, circle, or outside party must (ADR-0022). The tag is the same in both cases, so one tag lists the whole queue.
 
 **Archive is not a state.** A project that fails a reality gate (done, duplicate, superseded, owner role gone) leaves the list through its GlassFrog `status` (`archived`, or `completed` when the outcome exists), with the reason in its note. `/self-org:stalled-project-sweep` already archives this way.
 

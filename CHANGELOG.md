@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/Integral-Productivity/self-org-claude-plugin/compare/v1.1.1...v1.2.0) (2026-10-24)
+
+
+### Features
+
+* **project-triage:** needs-info split and resolution mode (ADR-0022, [#414](https://github.com/Integral-Productivity/self-org-claude-plugin/issues/414)) ([#419](https://github.com/Integral-Productivity/self-org-claude-plugin/issues/419)) ([31f8eef](https://github.com/Integral-Productivity/self-org-claude-plugin/commit/31f8eef13a46eedae3ffddb00ce1d26b7c5475bc))
+
 ## [1.1.1](https://github.com/Integral-Productivity/self-org-claude-plugin/compare/v1.1.0...v1.1.1) (2026-10-23)
 
 

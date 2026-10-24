@@ -72,8 +72,8 @@ Every write carries its reason. Append one line to the project's `note` (read th
 Triage 2026-10-23T14:05Z: ready-for-human -- the next action needs a signature from a person
 Triage 2026-10-23T14:07Z: needs-info -- which region launches first? (Operations Steward)
 Triage 2026-10-23T14:08Z: needs-info -- is the budget approved? (waits on Finance circle: budget sign-off)
-Triage 2026-10-23T14:10Z: needs-info -- answered; add first action: draft the launch checklist (Operations Steward)
 Triage 2026-10-23T14:09Z: archived -- duplicate of "Onboarding guide published"
+Triage 2026-10-23T14:10Z: needs-info -- answered; add first action: draft the launch checklist (Operations Steward)
 ```
 
 The timestamp is UTC, to the minute, taken **at write time from a real clock** (for example `date -u +%Y-%m-%dT%H:%MZ` where a shell exists), never copied from a draft or from the examples above. Where no clock is available, write the note, read `updated_at` from the `glassfrog_update_project` response, and use that time. The movement rule compares against this timestamp, so a guessed one makes projects look moved or stuck. The part after `--` is the reason or the open question. A `needs-info` line ends with who must answer: `(<owner role>)` for the owner or the Circle Lead, or `(waits on <party>: <what it waits for>)` for anyone else. A line that starts `needs-info -- answered; add first action:` records an answer from the `needs-info` resolution mode that left the project without a next action; the drafted action is a draft, never created.

@@ -35,10 +35,10 @@ Load two shared references at the start:
 
    If the circle cannot be resolved, name the constraint and stop.
 
-3. **Check that state writes can work.** `glassfrog_set_project_tags` is offered only when the GlassFrog MCP server enables project tag writes, and it accepts only the account that holds the server's web session. If the tool is not in your tool list, or the first tag write is refused, say so once and continue with state routes as **drafts only**. Status closures (step 6, `[c]`/`[a]`) still work through `glassfrog_update_project`. Name it again in the summary.
+3. **Check that state writes can work.** `glassfrog_set_project_tags` is offered only when the GlassFrog MCP server enables project tag writes, and it accepts only the account that holds the server's web session. If the tool is not in your tool list, or the first tag write is refused, say so once and continue with state tags as **drafts only**. The note line and every status change it carries (closures `[c]`/`[a]`, a move to `waiting`, a return to `current`) still write through `glassfrog_update_project`, because the note line is the record (`project-triage-gates.md` Step 6). Name it again in the summary.
 
 4. **Filter (resume rule).** Read each project's `tags` and `note`, and the role's actions once with `glassfrog_list_role_actions(role_id)` (circle scope: `glassfrog_list_subrole_actions`), grouped by `parent_project_id`. Then:
-   - no state tag, or `needs-triage` → walk it;
+   - no state tag, or `needs-triage` → walk it, unless the last triage line routes a state: then treat that route as the tag (a failed or unavailable tag write leaves only the line);
    - `needs-info` → walk it only if it has moved, per `project-triage-gates.md` Step 6;
    - `ready-for-agent` or `ready-for-human` → count it, do not walk it.
 

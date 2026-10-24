@@ -222,6 +222,22 @@
           }
         },
         {
+          "text": "The outcome-unclear project is routed to needs-info by a note write, so the owner half of the split is exercised, not skipped",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_56d1c273129e08abc67ba5563db87f86"
+              },
+              "args_match": {
+                "note": "needs-info"
+              }
+            }
+          }
+        },
+        {
           "text": "The budget-signoff project is tagged needs-info",
           "discriminating": true,
           "check": {

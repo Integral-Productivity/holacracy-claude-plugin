@@ -4,7 +4,8 @@ Date: 2026-10-23
 
 ## Status
 
-Proposed (2026-10-23). Kraig Parkinson chose the option; this record awaits his acceptance.
+Accepted (2026-10-24). Kraig Parkinson chose the option on 2026-10-23 and accepted
+it by merging PR #416.
 
 Amends [ADR-0019](0019-the-triage-state-vocabulary-lives-in-the-plugin.md): adds
 a status rule to the `needs-info` state. The closed list of four states is
@@ -83,7 +84,7 @@ Rules that follow from this:
 - Two surfaces now touch `needs-info` projects: triage (for `current`) and the
   stall sweep (for `waiting`). The resolution pass in #414 must read both
   statuses.
-- Not built yet. The follow-up changes `skills/shared/project-triage-gates.md`
-  Step 5 and its write table, `commands/project-triage.md`, and
-  `skills/shared/triage-states.md`, each with an eval or lint case. Tracked in
-  #414.
+- Built with #414: `skills/shared/project-triage-gates.md` Step 5 and its
+  write table, `commands/project-triage.md` (including the `needs-info`
+  resolution mode), and `skills/shared/triage-states.md`, with evals 2 to 4 in
+  `evals/cases/project-triage/evals.json`.

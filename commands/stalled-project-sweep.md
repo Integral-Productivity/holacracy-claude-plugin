@@ -33,6 +33,7 @@ Load the rubric `skills/shared/project-well-formedness.md` at the start — it d
    - **`stale` — primary signal:** a `current` project with **zero attached actions**. This is rubric dimension A2 restated: *a project without a next-action is stalled by definition.* No-action is the trigger.
    - **Age — corroborating only:** an old `created_at` (default **90 days**; override via the scope/threshold argument) *raises confidence* and is shown in the finding, but **never trips `stale` on its own.** A project with a live next-action is not stale no matter how old it is; an action-less project two weeks old is a weaker `stale` than an action-less project a year old, and the finding says so.
    - **`blocked`:** `status: "waiting"` — a first-class signal the rubric reserves for this sweep. Present it as `blocked`, not `stale`: the project isn't neglected, it's waiting on something. The re-energize/archive offer still applies (the dependency may be dead), but the framing is different.
+     When a `waiting` project carries the `needs-info` triage tag, or its last triage line routes `needs-info`, it is waiting on an answer `/self-org:project-triage` recorded (ADR-0022). Show that line's question and who must answer, and point to `/self-org:project-triage needs-info`, which records the answer and moves the project back to `current`. `[e]` here adds an action but leaves the project `waiting`; only the resolution mode moves it.
    - **Exempt — never flagged:** `status: "someday"` and `status: "scheduled"`. These are *deliberately* not-now; treating them as stalled would punish correct backlog hygiene.
 
    **Be honest about the heuristic.** GlassFrog exposes **no last-touched timestamp** for a project. Staleness here is *inferred* from `created_at` plus action-absence — it cannot see a project that was actively discussed yesterday but never had an action attached. Say this out loud when presenting findings: a long-horizon project (a multi-quarter outcome that legitimately moves slowly) can look identical to an abandoned one. The user's per-item judgment is the real filter; the heuristic only decides what to *show* them.
@@ -45,6 +46,7 @@ Load the rubric `skills/shared/project-well-formedness.md` at the start — it d
      [description excerpt]              (proj_xxx, owned by [Role] of [Circle])
      Verdict:  stale | blocked
      Signals:  no next-action · created [date] (~[age]) · status "[status]"
+     Asks:     [open question] -> [who must answer]   (waiting + needs-info only; answer it with /self-org:project-triage needs-info)
      Caveat:   inferred from age + action-absence; no last-touched timestamp —
                if this is a legitimately slow long-horizon project, defer it.
 

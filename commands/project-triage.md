@@ -1,6 +1,6 @@
 ---
 description: Walk the actor's current GlassFrog projects and decide what each one needs next — retire the ones that fail a reality check (done, duplicate, superseded, owner role gone) and give every other project one saved route (needs-info, ready-for-agent, ready-for-human) that the next pass resumes from. With a leading `needs-info`, walk the needs-info queue instead and record each answer. Readiness only; the deep quality audit belongs to /self-org:review-project.
-argument-hint: [needs-info] [circle name, optional]
+argument-hint: "[needs-info] [circle name, optional]"
 ---
 
 # /self-org:project-triage

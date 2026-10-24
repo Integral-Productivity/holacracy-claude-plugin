@@ -1,0 +1,82 @@
+{
+  "scenario": "project-triage-needs-info",
+  "purpose": "ADR-0022 and the needs-info resolution mode (#414). On one role the actor fills: one untriaged project with no action whose note says it is blocked until another circle confirms the budget, so a needs-info route moves it to waiting; one untriaged project with no action and no note, so its question is for the owner and it stays current; one needs-info project, current, triaged on 2026-10-01 and not moved since, with no action; one needs-info project, waiting on an outside supplier, triaged on 2026-09-15, which gained an action after that line; and one project already ready-for-agent.",
+  "organization": "Example Org",
+  "actor": {
+    "name": "Alex Example",
+    "email": "alex@example.invalid"
+  },
+  "roles": [
+    {
+      "key": "circle",
+      "name": "Example Circle",
+      "purpose": "Run the example business"
+    },
+    {
+      "key": "ops",
+      "name": "Operations Steward",
+      "parent": "circle",
+      "purpose": "Keep the example business running smoothly",
+      "accountabilities": ["Keeping supplier and member records current"],
+      "filled_by_actor": true
+    }
+  ],
+  "projects": [
+    {
+      "key": "budget-signoff",
+      "on": "ops",
+      "description": "Event hall booked for the members' winter gathering",
+      "note": "Blocked until the Finance circle confirms the winter event budget.",
+      "created_at": "2026-10-10T00:00:00Z",
+      "updated_at": "2026-10-10T00:00:00Z"
+    },
+    {
+      "key": "outcome-unclear",
+      "on": "ops",
+      "description": "Website things",
+      "created_at": "2026-10-12T00:00:00Z",
+      "updated_at": "2026-10-12T00:00:00Z"
+    },
+    {
+      "key": "queue-current",
+      "on": "ops",
+      "description": "Volunteer rota published for the winter season",
+      "tags": ["needs-info"],
+      "note": "Triage 2026-10-01T10:00Z: needs-info -- which weekends need volunteer cover? (Operations Steward)",
+      "updated_at": "2026-10-01T10:00:00Z"
+    },
+    {
+      "key": "queue-waiting",
+      "on": "ops",
+      "description": "Bulk paper discount agreed with the supplier",
+      "status": "waiting",
+      "tags": ["needs-info"],
+      "note": "Triage 2026-09-15T10:00Z: needs-info -- will the supplier honour last year's rate? (waits on Paper supplier: a written quote)",
+      "updated_at": "2026-09-15T10:00:00Z"
+    },
+    {
+      "key": "queue-ready",
+      "on": "ops",
+      "description": "Member directory exported to the shared drive",
+      "tags": ["ready-for-agent"],
+      "note": "Triage 2026-10-02T10:00Z: ready-for-agent -- the export is a scripted step",
+      "updated_at": "2026-10-02T10:00:00Z"
+    }
+  ],
+  "actions": [
+    {
+      "key": "sign-quote",
+      "on": "ops",
+      "project": "queue-waiting",
+      "description": "Sign the supplier's written quote and return it by post",
+      "updated_at": "2026-09-20T10:00:00Z"
+    },
+    {
+      "key": "export-directory",
+      "on": "ops",
+      "project": "queue-ready",
+      "description": "Export the member directory to CSV and upload it to the shared drive",
+      "updated_at": "2026-10-02T10:00:00Z"
+    }
+  ]
+}

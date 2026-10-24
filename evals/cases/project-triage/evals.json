@@ -2,7 +2,7 @@
   "skill": "self-org",
   "surface": "/self-org:project-triage",
   "status": "active",
-  "note": "Synthetic org (evals/scenarios/project-triage.json). Eval 0 is read-only and judged: it checks the reality gates fire before any form critique and the resume rule skips a settled project. Eval 1 carries an advance go-ahead and checks the writes mechanically off the stub's log: the state tag keeps the project's other tag, the note is written before the tag, a gate failure closes through status, the duplicate survivor and the settled project are untouched, and no rubric verdict or status becomes a tag. Read the transcript before the score if the surface never engaged.",
+  "note": "Synthetic org (evals/scenarios/project-triage.json). Eval 0 is read-only and judged: it checks the reality gates fire before any form critique and the resume rule skips a settled project. Eval 1 carries an advance go-ahead and checks the writes mechanically off the stub's log: the state tag keeps the project's other tag, the note is written before the tag, a gate failure closes through status, the duplicate survivor and the settled project are untouched, and no rubric verdict or status becomes a tag. Read the transcript before the score if the surface never engaged. Evals 2 to 4 use evals/scenarios/project-triage-needs-info.json for ADR-0022 and the needs-info resolution mode (#414): eval 2 checks the waiting split off the write log, eval 3 judges the read-only mode walk, and eval 4 checks that an answered waiting project returns to current and an answer with no action is recorded, not turned into an action.",
   "evals": [
     {
       "eval_id": 0,
@@ -177,6 +177,224 @@
               "tool": "glassfrog_set_project_tags",
               "args_match": {
                 "tag_names": "needs-next-action|needs-outcome|needs-owner|needs-goal|out-of-authority|executor-mismatch|archived|completed"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "needs-info-split-by-who-must-answer",
+      "fixture": "evals/fixtures/glassfrog/project-triage-needs-info.json",
+      "prompt": "Triage the current projects on my roles. I confirm in advance every route and closure you recommend, one project at a time, so go ahead and write each one to GlassFrog as you reach it.",
+      "ground_truth": "The budget-signoff project has no next action and its note says it is blocked until the Finance circle confirms the budget, so it routes to needs-info addressed to the Finance circle; because someone other than the owner must answer, its note write also sets status waiting, and the note line names who it waits on. The outcome-unclear project has no next action and no note; its question is for the owner role, so it routes to needs-info and stays current. The queue-current project is needs-info and has not moved since its 2026-10-01 triage line, so it is not walked. The queue-waiting project has status waiting and is out of the standard pass's scope. The queue-ready project is already ready-for-agent and is counted, not walked.",
+      "assertions": [
+        {
+          "text": "The budget-signoff project's note write also sets status waiting, in the same call",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_de72acc6d012cc5b4d7fe2631fe2cb29",
+                "status": "waiting"
+              },
+              "args_match": {
+                "note": "needs-info"
+              }
+            }
+          }
+        },
+        {
+          "text": "The outcome-unclear project, whose question is for its owner, is never set to waiting",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_56d1c273129e08abc67ba5563db87f86",
+                "status": "waiting"
+              }
+            }
+          }
+        },
+        {
+          "text": "The outcome-unclear project is routed to needs-info by a note write, so the owner half of the split is exercised, not skipped",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_56d1c273129e08abc67ba5563db87f86"
+              },
+              "args_match": {
+                "note": "needs-info"
+              }
+            }
+          }
+        },
+        {
+          "text": "The budget-signoff project is tagged needs-info",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_set_project_tags",
+              "args_contain": {
+                "project_id": "proj_de72acc6d012cc5b4d7fe2631fe2cb29"
+              },
+              "args_match": {
+                "tag_names": "needs-info"
+              }
+            }
+          }
+        },
+        {
+          "text": "The queue-current project, needs-info and not moved since its triage line, is not written",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "args_contain": {
+                "project_id": "proj_bfd89f20bc6155b5c1a1f79510f906aa"
+              }
+            }
+          }
+        },
+        {
+          "text": "The response names who the budget-signoff project waits on (the Finance circle) and the outcome-unclear project's question as one for its owner role",
+          "discriminating": true
+        }
+      ]
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "needs-info-mode-walks-the-queue-read-only",
+      "fixture": "evals/fixtures/glassfrog/project-triage-needs-info.json",
+      "prompt": "/self-org:project-triage needs-info -- show me each open question in my needs-info queue and what you would draft, but don't change anything in GlassFrog yet.",
+      "ground_truth": "The mode walks every needs-info project in scope, current and waiting, regardless of movement, oldest triage line first: queue-waiting (triaged 2026-09-15, status waiting, waits on the Paper supplier for a written quote) before queue-current (triaged 2026-10-01, current, a question for the Operations Steward). It shows each question and who must answer. queue-current has no next action, so any suggested first step is labeled a draft. queue-ready is ready-for-agent and is not walked. The two untriaged projects are not part of the needs-info queue. Nothing is written.",
+      "assertions": [
+        {
+          "text": "No GlassFrog write is issued, because the user asked for no changes",
+          "discriminating": false,
+          "why_kept": "Non-discriminating by design: the draft-and-confirm safeguard is a floor that must hold in every configuration, including without_skill. Mechanical, so it costs nothing and cannot drift.",
+          "check": {
+            "kind": "no_writes"
+          }
+        },
+        {
+          "text": "The response walks the waiting paper-discount project (queue-waiting) as well as the current volunteer-rota project (queue-current), and presents the paper-discount project first",
+          "discriminating": true
+        },
+        {
+          "text": "For each walked project the response shows its open question and who must answer it: the Paper supplier for the paper discount, the Operations Steward for the volunteer rota",
+          "discriminating": true
+        },
+        {
+          "text": "The response does not walk the member-directory project, which is already ready-for-agent",
+          "discriminating": true
+        },
+        {
+          "text": "Any first step suggested for the volunteer-rota project is labeled as a draft or suggestion, not stated as an existing action",
+          "discriminating": true
+        }
+      ]
+    },
+    {
+      "eval_id": 4,
+      "eval_name": "needs-info-mode-records-answers",
+      "fixture": "evals/fixtures/glassfrog/project-triage-needs-info.json",
+      "prompt": "/self-org:project-triage needs-info -- here are my answers in advance. Paper discount: the supplier sent the written quote and it honours last year's rate, so the signing action already on the project is the next step. Volunteer rota: the first and third weekend of each month need cover. I confirm in advance every write you recommend, one project at a time, so write each one to GlassFrog as you reach it.",
+      "ground_truth": "queue-waiting has its answer and a current next action (sign the quote, which needs a person), so it routes to ready-for-human: its note write appends a new triage line and sets status back to current, then its tag write replaces needs-info with ready-for-human. queue-current has its answer but still no next action, so its note gets a line recording the answer and a drafted first action (needs-info -- answered; add first action: ...), it stays current and keeps needs-info, and no action is created. queue-ready is not written.",
+      "assertions": [
+        {
+          "text": "The queue-waiting project's note write sets status back to current",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_051dbc8a25d7bbcb9954d300703f64ba",
+                "status": "current"
+              }
+            }
+          }
+        },
+        {
+          "text": "The queue-waiting note is appended before its tag is written",
+          "discriminating": true,
+          "check": {
+            "kind": "write_ordering",
+            "first": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_051dbc8a25d7bbcb9954d300703f64ba"
+              }
+            },
+            "then": {
+              "tool": "glassfrog_set_project_tags",
+              "args_contain": {
+                "project_id": "proj_051dbc8a25d7bbcb9954d300703f64ba"
+              }
+            }
+          }
+        },
+        {
+          "text": "No tag write leaves the answered queue-waiting project tagged needs-info",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "tool": "glassfrog_set_project_tags",
+              "args_contain": {
+                "project_id": "proj_051dbc8a25d7bbcb9954d300703f64ba"
+              },
+              "args_match": {
+                "tag_names": "needs-info"
+              }
+            }
+          }
+        },
+        {
+          "text": "The queue-current project gets a note line that records the answer and the drafted first action",
+          "discriminating": true,
+          "check": {
+            "kind": "write_present",
+            "match": {
+              "tool": "glassfrog_update_project",
+              "args_contain": {
+                "project_id": "proj_bfd89f20bc6155b5c1a1f79510f906aa"
+              },
+              "args_match": {
+                "note": "needs-info -- answered; add first action"
+              }
+            }
+          }
+        },
+        {
+          "text": "No action is created anywhere: the mode drafts a first action and never writes one",
+          "discriminating": false,
+          "why_kept": "A scope floor from the settled no-action-create decision (#161 owns action creation); a model without the skill may also not create one, so it may not discriminate. Mechanical and free; relabel per the graded run if it proves to discriminate.",
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "tool": "glassfrog_create_action"
+            }
+          }
+        },
+        {
+          "text": "The queue-ready project, already ready-for-agent, is not written",
+          "discriminating": true,
+          "check": {
+            "kind": "no_write_of",
+            "match": {
+              "args_contain": {
+                "project_id": "proj_304315e4fef28c0deb9a53e06b2882b7"
               }
             }
           }

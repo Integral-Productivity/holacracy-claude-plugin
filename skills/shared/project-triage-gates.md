@@ -2,7 +2,7 @@
 
 This is the canonical set of checks a GlassFrog **project** passes through during readiness triage. It is the project twin of `./triage-gates.md`, which is tension-specific; the two are kept apart because callers cite steps by number. Loaded by:
 
-- The `/self-org:project-triage` slash command, the only surface that writes a triage state.
+- The `/self-org:project-triage` slash command, the only surface that writes a triage state, in both its standard pass and its `needs-info` resolution mode.
 
 Triage answers one question per project: **what does this project need next before anyone can act on it?** It does not judge quality. The five critic lenses belong to `/self-org:review-project`; triage never runs them and never drafts a reframe. See [ADR-0018](../../docs/adr/0018-separate-project-readiness-from-project-quality.md).
 
@@ -45,6 +45,13 @@ Run the steps in order. **Stop at the first step that resolves the project.** St
 A project that passes Steps 1-4 is routed to **exactly one** state from `./triage-states.md` Step 1, in this order:
 
 1. **No next action** (no `current` action whose `parent_project_id` is this project), an outcome the owner must clarify, a missing successor (Step 3), or an unfilled owner role (Step 4) -> `needs-info`. The open question goes in the note line, addressed to the role that must answer it.
+
+   **Who must answer sets the status** (ADR-0022):
+   - the owner role, or the Circle Lead when the owner role is unfilled -> status stays `current`;
+   - another role, another circle, or an outside party -> draft `status: waiting`, because the project is blocked on someone else;
+   - unclear -> the owner role, so the project stays `current`.
+
+   The `needs-info` tag is written in both cases, so one tag lists the whole queue.
 2. Otherwise, apply executor-fit (`./project-well-formedness.md` B3) to the next action: if an AI agent can carry it out without further human judgment -> `ready-for-agent`; if it needs a person for judgment, relationship, or access -> `ready-for-human`.
 
 `needs-triage` is written only when the user asks to reopen a project. Deferring writes nothing.
@@ -64,28 +71,32 @@ Every write carries its reason. Append one line to the project's `note` (read th
 ```
 Triage 2026-10-23T14:05Z: ready-for-human -- the next action needs a signature from a person
 Triage 2026-10-23T14:07Z: needs-info -- which region launches first? (Operations Steward)
+Triage 2026-10-23T14:08Z: needs-info -- is the budget approved? (waits on Finance circle: budget sign-off)
 Triage 2026-10-23T14:09Z: archived -- duplicate of "Onboarding guide published"
+Triage 2026-10-23T14:10Z: needs-info -- answered; add first action: draft the launch checklist (Operations Steward)
 ```
 
-The timestamp is UTC, to the minute, taken **at write time from a real clock** (for example `date -u +%Y-%m-%dT%H:%MZ` where a shell exists), never copied from a draft or from the examples above. Where no clock is available, write the note, read `updated_at` from the `glassfrog_update_project` response, and use that time. The movement rule compares against this timestamp, so a guessed one makes projects look moved or stuck. The part after `--` is the reason or the open question.
+The timestamp is UTC, to the minute, taken **at write time from a real clock** (for example `date -u +%Y-%m-%dT%H:%MZ` where a shell exists), never copied from a draft or from the examples above. Where no clock is available, write the note, read `updated_at` from the `glassfrog_update_project` response, and use that time. The movement rule compares against this timestamp, so a guessed one makes projects look moved or stuck. The part after `--` is the reason or the open question. A `needs-info` line ends with who must answer: `(<owner role>)` for the owner or the Circle Lead, or `(waits on <party>: <what it waits for>)` for anyone else. A line that starts `needs-info -- answered; add first action:` records an answer from the `needs-info` resolution mode that left the project without a next action; the drafted action is a draft, never created.
 
 ### The write pair
 
 One confirmation, two calls, **note first**:
 
-1. `glassfrog_update_project(project_id, note=<old note + new line>)` -- with `status` in the same call when a gate closes the project.
+1. `glassfrog_update_project(project_id, note=<old note + new line>)` -- with `status` in the same call when a gate closes the project, when a `needs-info` route moves it to `waiting` (Step 5), or when a route takes a `waiting` project back to `current`.
 2. For a state, `glassfrog_set_project_tags(project_id, tag_names=...)` as the read-modify-write in `./triage-states.md` Step 3. The argument is `tag_names`.
 
-If the tag write fails, the note still records the decision; report the failure. The reverse order could leave a tag with no reason.
+If the tag write fails, the note still records the decision; report the failure. The reverse order could leave a tag with no reason. When tag writes are unavailable, the status change still rides on the note call, because the note line is the record; the tag stays a draft. Readers of the queue therefore treat a last triage line of `needs-info` as the route when the tag is missing.
 
 ### Movement
 
-A `needs-info` project is shown again only when it has **moved** since its last triage line:
+In the standard pass, a `needs-info` project is shown again only when it has **moved** since its last triage line:
 
 - its `updated_at` is **more than 10 minutes** after that line's timestamp, or
 - an action on it was created or updated after that timestamp.
 
 The 10-minute window absorbs the bump from the triage write itself. Actions are checked separately because adding an action does not bump the project's `updated_at`. This is a heuristic: an owner who answers by editing the project within 10 minutes of the triage write is missed until the next edit. Say so when it matters.
+
+The `needs-info` resolution mode ignores movement and walks every `needs-info` project, `current` and `waiting`, with one exception: a project whose last triage line is `needs-info -- answered; add first action:` is counted and not walked until it moves, so a later run does not ask again a question the owner already answered.
 
 A project tagged `ready-for-agent` or `ready-for-human` is counted and not walked. A project whose note has no triage line but carries a state tag set by hand counts as moved.
 
@@ -98,4 +109,6 @@ A project tagged `ready-for-agent` or `ready-for-human` is counted and not walke
 | Step 1 fails | note line + `status: completed` |
 | Step 2, 3 or 4 fails | note line + `status: archived` |
 | Routed at Step 5 | note line, then the state tag (read-modify-write) |
+| Routed to `needs-info`, another party must answer | note line + `status: waiting`, then the tag |
+| Routed from a `waiting` project, nobody else must answer now | note line + `status: current`, then the tag |
 | Deferred | nothing |
